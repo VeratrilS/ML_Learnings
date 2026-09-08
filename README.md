@@ -1,6 +1,8 @@
-# React + Vite
+# Productivity Automations
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+**Production Deployment:** [https://productivity-automations.vercel.app](https://productivity-automations.vercel.app)
+
+A personalized platform that automates daily routines, generates reports, and sends learning challenges via email using LLMs.R and some Oxlint rules.
 
 Currently, two official plugins are available:
 
