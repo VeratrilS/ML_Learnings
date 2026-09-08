@@ -13,7 +13,6 @@ class BaseNotifier(ABC):
     We cannot instantiate BaseNotifier directly. It forces child classes to implement `run()`.
     """
     def __init__(self, llm_client: LLMClient, email_client: EmailClient, repo: NotificationRepository, receiver_email: str):
-        # DEPENDENCY INJECTION: We inject the complex clients into the notifier.
         self.llm = llm_client
         self.email = email_client
         self.repo = repo
