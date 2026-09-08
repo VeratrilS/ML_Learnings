@@ -1,7 +1,7 @@
 import pytest
-from backend.core.db import Base, engine, SessionLocal
-from backend.domain.models import NotificationLog, Settings
-from backend.domain.repositories import NotificationRepository
+from api.core.db import Base, engine, SessionLocal
+from api.domain.models import NotificationLog, Settings
+from api.domain.repositories import NotificationRepository
 
 @pytest.fixture(scope="module")
 def db_session():

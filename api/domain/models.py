@@ -5,7 +5,7 @@ We inherit from the SQLAlchemy `Base` class.
 """
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
 from datetime import datetime
-from backend.core.db import Base
+from api.core.db import Base
 
 class NotificationLog(Base):
     __tablename__ = "notification_logs"

@@ -4,8 +4,8 @@ This file handles HTTP routing only. It delegates the heavy lifting to the Domai
 """
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from backend.core.db import init_db, SessionLocal
-from backend.domain.factory import NotifierFactory
+from api.core.db import init_db, SessionLocal
+from api.domain.factory import NotifierFactory
 
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
@@ -14,7 +14,7 @@ CORS(app)
 # Initialize the Database
 init_db()
 
-from backend.domain.repositories import NotificationRepository
+from api.domain.repositories import NotificationRepository
 from datetime import datetime
 
 @app.route('/api/trigger', methods=['POST'])

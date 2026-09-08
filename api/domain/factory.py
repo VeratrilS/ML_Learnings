@@ -9,9 +9,9 @@ This heavily decouples our application.
 """
 import os
 from dotenv import load_dotenv
-from backend.core.clients import LLMClient, EmailClient
-from backend.domain.repositories import NotificationRepository
-from backend.domain.notifiers import IncidentNotifier, LeetcodeNotifier
+from api.core.clients import LLMClient, EmailClient
+from api.domain.repositories import NotificationRepository
+from api.domain.notifiers import IncidentNotifier, LeetcodeNotifier
 
 class NotifierFactory:
     @staticmethod

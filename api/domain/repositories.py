@@ -5,7 +5,7 @@ Instead of writing SQL queries all over our application, we encapsulate the DB a
 inside a repository class. If we change the database later, we only update the repository.
 """
 from sqlalchemy.orm import Session
-from backend.domain.models import NotificationLog
+from api.domain.models import NotificationLog
 
 class NotificationRepository:
     def __init__(self, db_session: Session):
@@ -33,7 +33,7 @@ class NotificationRepository:
         return self.db.query(NotificationLog).filter(NotificationLog.task_type == "leetcode").order_by(NotificationLog.timestamp.desc()).all()
 
     def mark_task_completed(self, log_id: int, is_completed: bool):
-        from backend.domain.models import NotificationLog
+        from api.domain.models import NotificationLog
         log = self.db.query(NotificationLog).filter(NotificationLog.id == log_id).first()
         if log:
             log.is_completed = is_completed
@@ -48,12 +48,12 @@ class NotificationRepository:
         ).all()
 
     def get_setting(self, key: str, default_value: str = None):
-        from backend.domain.models import Settings
+        from api.domain.models import Settings
         setting = self.db.query(Settings).filter(Settings.key == key).first()
         return setting.value if setting else default_value
 
     def set_setting(self, key: str, value: str):
-        from backend.domain.models import Settings
+        from api.domain.models import Settings
         setting = self.db.query(Settings).filter(Settings.key == key).first()
         if setting:
             setting.value = value

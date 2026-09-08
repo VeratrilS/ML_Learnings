@@ -4,8 +4,8 @@ This script allows the Windows Task Scheduler to trigger our business logic
 without needing to make HTTP requests to the Flask app.
 """
 import argparse
-from backend.core.db import init_db, SessionLocal
-from backend.domain.factory import NotifierFactory
+from api.core.db import init_db, SessionLocal
+from api.domain.factory import NotifierFactory
 
 def main():
     parser = argparse.ArgumentParser(description="Run background automations.")
