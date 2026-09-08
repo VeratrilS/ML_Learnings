@@ -10,8 +10,10 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 import os
 
 # 1. ENCAPSULATION: We hide the connection details inside this module.
-# Vercel uses a read-only filesystem except for /tmp.
-if os.getenv("VERCEL"):
+if os.getenv("POSTGRES_URL"):
+    # Vercel Postgres provides postgres:// but SQLAlchemy needs postgresql://
+    DATABASE_URL = os.getenv("POSTGRES_URL").replace("postgres://", "postgresql://", 1)
+elif os.getenv("VERCEL"):
     DATABASE_URL = "sqlite:////tmp/notifications.db"
 else:
     DATABASE_URL = "sqlite:///notifications.db"

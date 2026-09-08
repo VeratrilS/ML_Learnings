@@ -68,28 +68,51 @@ class IncidentNotifier(BaseNotifier):
 # POLYMORPHISM: LeetcodeNotifier provides a completely different implementation of `run()`
 class LeetcodeNotifier(BaseNotifier):
     def run(self) -> dict:
-        prompt = """
-        Pick a random, highly requested Data Structures and Algorithms problem from Striver's SDE/A2Z Sheet.
-        Provide a JSON response with keys: 
-        "title": the problem name (e.g. 'Two Sum'), 
-        "difficulty": (Easy/Medium/Hard),
-        "question": brief problem statement,
-        "solution": the optimal approach in Python or C++.
-        """
+        uncompleted_tasks = self.repo.get_uncompleted_leetcode_tasks()
+        all_logs = self.repo.get_all_leetcode_logs()
+        completed_titles = [log.title for log in all_logs if log.is_completed]
+        total_sent = len(all_logs) + 1
+
+        if uncompleted_tasks and random.random() < 0.5:
+            task = random.choice(uncompleted_tasks)
+            prompt = f"""
+            Generate a detailed approach and C++ solution for the Data Structures and Algorithms problem: '{task.title}'.
+            Provide a JSON response with keys: 
+            "title": "{task.title}", 
+            "difficulty": (Easy/Medium/Hard),
+            "question": brief problem statement,
+            "approach": Detailed step-by-step optimal approach and intuition,
+            "cpp_code": The optimal solution written in C++.
+            """
+        else:
+            avoid_list = ", ".join(completed_titles[-50:])
+            prompt = f"""
+            Pick a random, highly requested Data Structures and Algorithms problem from Striver's SDE/A2Z Sheet.
+            IMPORTANT: Pick a completely DIFFERENT problem. Do NOT pick any of these: {avoid_list}.
+            Provide a JSON response with keys: 
+            "title": the problem name (e.g. 'Two Sum'), 
+            "difficulty": (Easy/Medium/Hard),
+            "question": brief problem statement,
+            "approach": Detailed step-by-step optimal approach and intuition,
+            "cpp_code": The optimal solution written in C++.
+            """
+        
         try:
             data = self.llm.generate_json(prompt)
             title = data.get("title", "Random DSA Problem")
             difficulty = data.get("difficulty", "Medium")
             question = data.get("question", "Question missing")
-            solution = data.get("solution", "Solution missing")
+            approach = data.get("approach", "Approach missing")
+            cpp_code = data.get("cpp_code", "Code missing")
         except Exception:
-            title = "Two Sum (Fallback)"
+            title = "Reverse Linked List (Fallback)"
             difficulty = "Easy"
-            question = "Given an array of integers, return indices of the two numbers such that they add up to a specific target."
-            solution = "Use a hash map to store seen values."
+            question = "Reverse a singly linked list."
+            approach = "Iterate through the list and change next pointers to previous nodes."
+            cpp_code = "class Solution {\npublic:\n    ListNode* reverseList(ListNode* head) {\n        ListNode *prev = NULL, *curr = head;\n        while (curr != NULL) {\n            ListNode *nextTemp = curr->next;\n            curr->next = prev;\n            prev = curr;\n            curr = nextTemp;\n        }\n        return prev;\n    }\n};"
 
-        subject = f"Hourly LeetCode Challenge: {title} ({difficulty})"
-        body = f"🔥 Striver's Sheet Problem\n\nTitle: {title}\nDifficulty: {difficulty}\n\nQuestion:\n{question}\n\nOptimal Solution:\n{solution}\n\n--- Keep Grinding!"
+        subject = f"Question #{total_sent} | LeetCode Challenge: {title} ({difficulty})"
+        body = f"🔥 Striver's Sheet Problem\n\nTitle: {title}\nDifficulty: {difficulty}\n\nQuestion:\n{question}\n\nApproach:\n{approach}\n\nC++ Code:\n{cpp_code}\n\n--- Keep Grinding!"
 
         success = self.email.send_email(self.receiver_email, subject, body)
         

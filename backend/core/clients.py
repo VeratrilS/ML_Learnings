@@ -21,6 +21,7 @@ class LLMClient:
         try:
             response = self.client.chat.completions.create(
                 model="google/gemini-2.5-flash",
+                temperature=0.9,
                 max_tokens=800,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that outputs only valid JSON. Do not include markdown formatting or backticks, just the raw JSON object."},
