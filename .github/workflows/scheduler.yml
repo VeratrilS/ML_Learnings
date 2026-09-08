@@ -2,18 +2,29 @@ name: Productivity Automation Scheduler
 
 on:
   schedule:
-    # Run every 5 minutes. The Vercel API will check the database to see
-    # if the user's requested interval (e.g. 10m or 60m) has passed.
+    # Run every 5 minutes for LeetCode. The Vercel API checks the DB interval.
     - cron: '*/5 * * * *'
+    # Run daily at 8:30 UTC = 2:00 PM IST for Incident Report
+    - cron: '30 8 * * *'
   # Allow manual trigger from GitHub UI
   workflow_dispatch:
 
 jobs:
-  ping_vercel:
+  leetcode_cron:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Vercel Cron Endpoint
+      - name: Ping LeetCode Cron Endpoint
         run: |
-          # Replace with your actual Vercel production URL if it changes
           curl -X POST https://productivity-automations.vercel.app/api/cron \
           -H "Content-Type: application/json"
+
+  incident_cron:
+    runs-on: ubuntu-latest
+    # Only run this job at 8:30 UTC, not every 5 mins
+    if: github.event.schedule == '30 8 * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Trigger Daily Incident Report
+        run: |
+          curl -X POST https://productivity-automations.vercel.app/api/trigger \
+          -H "Content-Type: application/json" \
+          -d '{"type": "incident"}}'
