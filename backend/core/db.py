@@ -7,8 +7,14 @@ from the specific database implementation (SQLite in this case).
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+import os
+
 # 1. ENCAPSULATION: We hide the connection details inside this module.
-DATABASE_URL = "sqlite:///notifications.db"
+# Vercel uses a read-only filesystem except for /tmp.
+if os.getenv("VERCEL"):
+    DATABASE_URL = "sqlite:////tmp/notifications.db"
+else:
+    DATABASE_URL = "sqlite:///notifications.db"
 
 # Create the engine (the actual connection to the database)
 engine = create_engine(DATABASE_URL, echo=False)
