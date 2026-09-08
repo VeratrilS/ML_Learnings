@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incident Reporter Control Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="background-orb orb-1"></div>
+    <div class="background-orb orb-2"></div>
+    
+    <div class="container">
+        <header>
+            <div class="logo-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 8V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 16H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <h1>Incident Reporter</h1>
+            <p>Control Panel & Automation Dashboard</p>
+        </header>
+
+        <main>
+            <div class="status-card">
+                <div class="status-indicator">
+                    <span class="dot active"></span>
+                    <span>Automation Active</span>
+                </div>
+                <p class="status-text">Daily reports are scheduled for 14:00 PM</p>
+            </div>
+
+            <div class="action-card">
+                <h2>Manual Trigger</h2>
+                <p>Generate and send a random incident report immediately.</p>
+                <button id="triggerBtn" class="primary-btn">
+                    <span class="btn-text">Generate & Send Now</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div id="resultCard" class="result-card hidden">
+                <div class="result-header">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                    <h3>Email Sent Successfully!</h3>
+                </div>
+                <div class="result-details">
+                    <div class="detail-row">
+                        <span class="label">Category</span>
+                        <span class="value" id="resCategory">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Type</span>
+                        <span class="value" id="resType">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Title</span>
+                        <span class="value" id="resTitle">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="errorCard" class="error-card hidden">
+                <div class="error-header">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <h3>Action Failed</h3>
+                </div>
+                <p id="errorMsg" class="error-msg"></p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const btn = document.getElementById('triggerBtn');
+        const btnText = btn.querySelector('.btn-text');
+        const spinner = btn.querySelector('.spinner');
+        const resultCard = document.getElementById('resultCard');
+        const errorCard = document.getElementById('errorCard');
+
+        btn.addEventListener('click', async () => {
+            // UI State loading
+            btn.classList.add('loading');
+            btn.disabled = true;
+            btnText.textContent = 'Generating...';
+            spinner.classList.remove('hidden');
+            resultCard.classList.add('hidden');
+            errorCard.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/trigger', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    document.getElementById('resCategory').textContent = data.data.category;
+                    document.getElementById('resType').textContent = data.data.type;
+                    document.getElementById('resTitle').textContent = data.data.title;
+                    resultCard.classList.remove('hidden');
+                    
+                    // Small animation
+                    resultCard.style.animation = 'none';
+                    resultCard.offsetHeight; /* trigger reflow */
+                    resultCard.style.animation = 'slideUp 0.4s ease forwards';
+                } else {
+                    document.getElementById('errorMsg').textContent = data.message || 'An unknown error occurred.';
+                    errorCard.classList.remove('hidden');
+                }
+            } catch (error) {
+                document.getElementById('errorMsg').textContent = 'Network error or server is unreachable.';
+                errorCard.classList.remove('hidden');
+            } finally {
+                // UI State restore
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                btnText.textContent = 'Generate & Send Now';
+                spinner.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
