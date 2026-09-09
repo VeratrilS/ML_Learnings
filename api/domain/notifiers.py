@@ -66,33 +66,17 @@ class IncidentNotifier(BaseNotifier):
 
 # POLYMORPHISM: LeetcodeNotifier provides a completely different implementation of `run()`
 class LeetcodeNotifier(BaseNotifier):
-    def run(self) -> dict:
-        uncompleted_tasks = self.repo.get_uncompleted_leetcode_tasks()
-        all_logs = self.repo.get_all_leetcode_logs()
-        completed_titles = [log.title for log in all_logs if log.is_completed]
-        
-        unique_titles = set(log.title for log in all_logs)
-        is_retry = False
+    MAX_DEDUP_RETRIES = 3
 
-        if uncompleted_tasks and random.random() < 0.5:
-            task = random.choice(uncompleted_tasks)
-            is_retry = True
-            prompt = f"""
-            Generate a detailed approach and C++ solution for the Data Structures and Algorithms problem: '{task.title}'.
-            Provide a JSON response with keys: 
-            "title": "{task.title}", 
-            "difficulty": (Easy/Medium/Hard),
-            "question": brief problem statement,
-            "approach": Detailed step-by-step optimal approach and intuition,
-            "cpp_code": The optimal solution written in C++,
-            "leetcode_link": "A valid URL to this problem on LeetCode or GeeksForGeeks",
-            "striver_link": "A valid URL to this topic on takeUforward/Striver"
-            """
-        else:
-            avoid_list = ", ".join(completed_titles[-50:])
+    def _generate_new_problem(self, all_sent_titles: set) -> dict:
+        """Generates a new problem from the LLM, with dedup retry logic."""
+        avoid_list = ", ".join(sorted(all_sent_titles)) if all_sent_titles else "None"
+        
+        for attempt in range(self.MAX_DEDUP_RETRIES):
             prompt = f"""
             Pick a random, highly requested Data Structures and Algorithms problem from Striver's SDE/A2Z Sheet.
-            IMPORTANT: Pick a completely DIFFERENT problem. Do NOT pick any of these: {avoid_list}.
+            IMPORTANT: Pick a completely DIFFERENT problem. Do NOT pick any of these previously sent problems: [{avoid_list}].
+            {"CRITICAL: Your last suggestion was a duplicate. You MUST pick a DIFFERENT problem this time." if attempt > 0 else ""}
             Provide a JSON response with keys: 
             "title": the problem name (e.g. 'Two Sum'), 
             "difficulty": (Easy/Medium/Hard),
@@ -102,9 +86,48 @@ class LeetcodeNotifier(BaseNotifier):
             "leetcode_link": "A valid URL to this problem on LeetCode or GeeksForGeeks",
             "striver_link": "A valid URL to this topic on takeUforward/Striver"
             """
-        
-        try:
+            
             data = self.llm.generate_json(prompt)
+            title = data.get("title", "Random DSA Problem")
+            
+            # Programmatic dedup check: reject if already sent
+            if title not in all_sent_titles:
+                return data
+            
+            print(f"Dedup: LLM returned duplicate '{title}', retrying ({attempt + 1}/{self.MAX_DEDUP_RETRIES})...")
+        
+        # After all retries, accept whatever the LLM gives (better than nothing)
+        print(f"Warning: Could not find unique problem after {self.MAX_DEDUP_RETRIES} retries. Using last result.")
+        return data
+
+    def _generate_retry_problem(self, task_title: str) -> dict:
+        """Generates a detailed solution for a previously sent problem (spaced repetition)."""
+        prompt = f"""
+        Generate a detailed approach and C++ solution for the Data Structures and Algorithms problem: '{task_title}'.
+        Provide a JSON response with keys: 
+        "title": "{task_title}", 
+        "difficulty": (Easy/Medium/Hard),
+        "question": brief problem statement,
+        "approach": Detailed step-by-step optimal approach and intuition,
+        "cpp_code": The optimal solution written in C++,
+        "leetcode_link": "A valid URL to this problem on LeetCode or GeeksForGeeks",
+        "striver_link": "A valid URL to this topic on takeUforward/Striver"
+        """
+        return self.llm.generate_json(prompt)
+
+    def run(self) -> dict:
+        uncompleted_tasks = self.repo.get_uncompleted_leetcode_tasks()
+        all_sent_titles = self.repo.get_all_sent_titles()
+        is_retry = False
+
+        try:
+            if uncompleted_tasks and random.random() < 0.5:
+                task = random.choice(uncompleted_tasks)
+                is_retry = True
+                data = self._generate_retry_problem(task.title)
+            else:
+                data = self._generate_new_problem(all_sent_titles)
+            
             title = data.get("title", "Random DSA Problem")
             difficulty = data.get("difficulty", "Medium")
             question = data.get("question", "Question missing")
@@ -124,7 +147,7 @@ class LeetcodeNotifier(BaseNotifier):
         if is_retry:
             subject = f"Retry | LeetCode Challenge: {title} ({difficulty})"
         else:
-            total_sent = len(unique_titles) + 1
+            total_sent = len(all_sent_titles) + 1
             subject = f"Question #{total_sent} | LeetCode Challenge: {title} ({difficulty})"
             
         body = f"🔥 Striver's Sheet Problem\n\nTitle: {title}\nDifficulty: {difficulty}\n\nLinks:\n- Practice: {leetcode_link}\n- Learn: {striver_link}\n\nQuestion:\n{question}\n\nApproach:\n{approach}\n\nC++ Code:\n{cpp_code}\n\n--- Keep Grinding!"

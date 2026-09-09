@@ -4,7 +4,7 @@ Models define the structure of our data. They map Python objects to Database row
 We inherit from the SQLAlchemy `Base` class.
 """
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
-from datetime import datetime
+from datetime import datetime, timezone
 from api.core.db import Base
 
 class NotificationLog(Base):
@@ -17,7 +17,7 @@ class NotificationLog(Base):
     content = Column(Text, nullable=True)
     status = Column(String(20), default="success") # 'success' or 'failed'
     is_completed = Column(Boolean, default=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         """String representation of the object (Magic Method)"""

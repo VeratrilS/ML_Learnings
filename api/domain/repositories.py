@@ -47,6 +47,22 @@ class NotificationRepository:
             NotificationLog.is_completed == False
         ).all()
 
+    def get_all_sent_titles(self):
+        """Returns a set of ALL previously sent leetcode problem titles (completed + uncompleted).
+        Used for programmatic dedup to prevent sending the same question twice."""
+        logs = self.db.query(NotificationLog.title).filter(
+            NotificationLog.task_type == "leetcode"
+        ).all()
+        return set(row.title for row in logs)
+
+    def get_latest_successful_leetcode_log(self):
+        """Returns the most recent SUCCESSFUL leetcode log, ignoring failed sends.
+        Used by the cron interval logic so a failed send doesn't reset the timer."""
+        return self.db.query(NotificationLog).filter(
+            NotificationLog.task_type == "leetcode",
+            NotificationLog.status == "success"
+        ).order_by(NotificationLog.timestamp.desc()).first()
+
     def get_setting(self, key: str, default_value: str = None):
         from api.domain.models import Settings
         setting = self.db.query(Settings).filter(Settings.key == key).first()

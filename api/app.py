@@ -15,7 +15,7 @@ CORS(app)
 init_db()
 
 from api.domain.repositories import NotificationRepository
-from datetime import datetime
+from datetime import datetime, timezone
 
 @app.route('/api/trigger', methods=['POST'])
 def trigger_notification():
@@ -82,10 +82,10 @@ def cron_trigger():
         repo = NotificationRepository(db)
         interval_minutes = int(repo.get_setting("leetcode_interval_minutes", "60"))
         
-        logs = repo.get_all_leetcode_logs()
-        if logs:
-            last_run = logs[0].timestamp
-            elapsed = (datetime.utcnow() - last_run).total_seconds() / 60.0
+        # Bug 5 fix: Only check successful sends, so a failed email doesn't reset the timer
+        last_successful = repo.get_latest_successful_leetcode_log()
+        if last_successful:
+            elapsed = (datetime.now(timezone.utc) - last_successful.timestamp.replace(tzinfo=timezone.utc)).total_seconds() / 60.0
             if elapsed < interval_minutes:
                 return jsonify({"status": "skipped", "message": f"Only {elapsed:.1f} mins elapsed."})
         
