@@ -66,38 +66,36 @@ class IncidentNotifier(BaseNotifier):
 
 # POLYMORPHISM: LeetcodeNotifier provides a completely different implementation of `run()`
 class LeetcodeNotifier(BaseNotifier):
-    MAX_DEDUP_RETRIES = 3
-
     def _generate_new_problem(self, all_sent_titles: set) -> dict:
-        """Generates a new problem from the LLM, with dedup retry logic."""
-        avoid_list = ", ".join(sorted(all_sent_titles)) if all_sent_titles else "None"
+        """Generates a new problem dynamically using the LLM, but enforces a random topic to ensure variety and speed."""
+        # Only pass the last 20 sent problems to avoid confusing the LLM with a massive list
+        recent_sent = list(all_sent_titles)[-20:] if all_sent_titles else []
+        avoid_list = ", ".join(recent_sent) if recent_sent else "None"
         
-        for attempt in range(self.MAX_DEDUP_RETRIES):
-            prompt = f"""
-            Pick a random, highly requested Data Structures and Algorithms problem from Striver's SDE/A2Z Sheet.
-            IMPORTANT: Pick a completely DIFFERENT problem. Do NOT pick any of these previously sent problems: [{avoid_list}].
-            {"CRITICAL: Your last suggestion was a duplicate. You MUST pick a DIFFERENT problem this time." if attempt > 0 else ""}
-            Provide a JSON response with keys: 
-            "title": the problem name (e.g. 'Two Sum'), 
-            "difficulty": (Easy/Medium/Hard),
-            "question": brief problem statement,
-            "approach": Detailed step-by-step optimal approach and intuition,
-            "cpp_code": The optimal solution written in C++,
-            "leetcode_link": "A valid URL to this problem on LeetCode or GeeksForGeeks",
-            "striver_link": "A valid URL to this topic on takeUforward/Striver"
-            """
-            
-            data = self.llm.generate_json(prompt)
-            title = data.get("title", "Random DSA Problem")
-            
-            # Programmatic dedup check: reject if already sent
-            if title not in all_sent_titles:
-                return data
-            
-            print(f"Dedup: LLM returned duplicate '{title}', retrying ({attempt + 1}/{self.MAX_DEDUP_RETRIES})...")
+        topics = [
+            "Arrays", "Binary Search", "Strings", "Linked List", "Recursion",
+            "Bit Manipulation", "Stack and Queue", "Sliding Window", "Two Pointer",
+            "Heaps", "Greedy Algorithms", "Binary Trees", "Binary Search Trees",
+            "Graphs", "Dynamic Programming", "Tries", "Maths"
+        ]
+        topic = random.choice(topics)
         
-        # After all retries, accept whatever the LLM gives (better than nothing)
-        print(f"Warning: Could not find unique problem after {self.MAX_DEDUP_RETRIES} retries. Using last result.")
+        prompt = f"""
+        Pick a highly requested Data Structures problem from Striver's A2Z DSA Sheet.
+        IMPORTANT: The problem MUST be from the topic '{topic}'.
+        DO NOT pick any of these recently sent problems: [{avoid_list}].
+        Provide a JSON response with keys: 
+        "title": the problem name, 
+        "difficulty": (Easy/Medium/Hard),
+        "question": brief problem statement,
+        "approach": Detailed step-by-step optimal approach and intuition,
+        "cpp_code": The optimal solution written in C++,
+        "leetcode_link": "A valid URL to this problem on LeetCode or GeeksForGeeks",
+        "striver_link": "A valid URL to this topic on takeUforward/Striver"
+        """
+        
+        data = self.llm.generate_json(prompt)
+        # We trust the LLM to follow the topic and avoid list, eliminating slow retry loops!
         return data
 
     def _generate_retry_problem(self, task_title: str) -> dict:
