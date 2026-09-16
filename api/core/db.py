@@ -11,15 +11,18 @@ import os
 
 # 1. ENCAPSULATION: We hide the connection details inside this module.
 if os.getenv("POSTGRES_URL"):
-    # Vercel Postgres provides postgres:// but SQLAlchemy needs postgresql://
+    # Vercel/Neon Postgres provides postgres:// but SQLAlchemy needs postgresql://
     DATABASE_URL = os.getenv("POSTGRES_URL").replace("postgres://", "postgresql://", 1)
+    # Remove channel_binding param if present (not supported by psycopg2)
+    if "channel_binding" in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?").replace("?channel_binding=require", "")
+    engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
 elif os.getenv("VERCEL"):
     DATABASE_URL = "sqlite:////tmp/notifications.db"
+    engine = create_engine(DATABASE_URL, echo=False)
 else:
     DATABASE_URL = "sqlite:///notifications.db"
-
-# Create the engine (the actual connection to the database)
-engine = create_engine(DATABASE_URL, echo=False)
+    engine = create_engine(DATABASE_URL, echo=False)
 
 # SessionLocal will be used to create isolated database sessions for each transaction.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

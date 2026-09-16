@@ -20,7 +20,7 @@ class LLMClient:
         """Sends a prompt to the LLM and returns the parsed JSON."""
         try:
             response = self.client.chat.completions.create(
-                model="google/gemini-2.5-flash",
+                model="openrouter/free",
                 temperature=0.9,
                 max_tokens=800,
                 messages=[
