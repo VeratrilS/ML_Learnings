@@ -100,8 +100,11 @@ import uuid
 import os
 from api.domain.pdf_analyzer import PDFAnalyzer
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+if os.environ.get('VERCEL') == '1':
+    UPLOAD_FOLDER = '/tmp'
+else:
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.route('/api/pdf/defaults', methods=['GET'])
 def get_default_pdfs():
