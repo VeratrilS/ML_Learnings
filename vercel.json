@@ -1,5 +1,10 @@
 {
   "name": "productivity-automations",
+  "functions": {
+    "api/**/*.py": {
+      "includeFiles": "api/default_pdfs/**, api/default_pdfs_metadata.json"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",

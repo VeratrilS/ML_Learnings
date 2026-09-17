@@ -292,3 +292,41 @@ No analytics on problem difficulty patterns, completion rates, or learning curve
 | Multi-Tenant | 🟡 Low | 🔴 High | **P3** |
 | Microservices | 🟡 Low | 🔴 High | **P4** |
 | ML Integration | 🟡 Low | 🔴 High | **P4** |
+| Browser Automation Agent | 🟡 Low | 🔴 High | **P5** |
+
+---
+
+## 11. Browser Automation Agent (ChatGPT UI Integration)
+
+### Current Problem
+Currently, API costs scale linearly with usage. Sometimes, leveraging a user's existing ChatGPT Plus subscription via the web UI is desired to save API costs or leverage specific web-only models.
+
+### Proposed HLD
+```
+┌──────────┐     ┌──────────────┐     ┌──────────────┐
+│  React   │──▶  │  Playwright  │──▶  │    Brave     │
+│   UI     │     │   Service    │     │   Browser    │
+└──────────┘     └──────────────┘     └──────────────┘
+ (Next/Prev/Stop)         │                  │ (DOM Interacts)
+                          ▼                  ▼
+                    ┌───────────┐     ┌──────────────┐
+                    │  State    │     │ chatgpt.com  │
+                    │  Machine  │     └──────────────┘
+                    └───────────┘
+```
+
+### Is it Possible?
+**Yes, absolutely.** You can build a system where the frontend has `Next`, `Prev`, and `Stop` buttons. These buttons hit backend API endpoints (`/api/agent/next`, etc.). The backend runs a stateful **Playwright** or **Selenium** script that:
+1. Launches the Brave browser (using your local user profile so it's already logged in).
+2. Navigates to ChatGPT.
+3. Automatically finds the input box, pastes the chunk, and hits send.
+4. Uses DOM observers to wait for the generation to finish and then reads the output.
+
+### What You'll Learn
+- **Browser Automation** (Playwright for Python/Node)
+- **State Machines** for handling agent execution flow
+- **DOM Scraping** and handling dynamic single-page applications
+
+### Challenges
+- UI changes on ChatGPT's end can break the bot (fragility).
+- Cloudflare/Bot-protection might require specialized drivers (like `undetected-chromedriver`).

@@ -162,7 +162,7 @@ function App() {
                 )}
             </section>
         </>
-        ) : (
+        ) : activeTab === 'solved' ? (
         <>
             <section className={`p-6 rounded-xl shadow-sm border border-t border-b border-l border-r ${factory.getCardBackground()} ${factory.getCardBorder()}`}>
                 <h2 className={`text-xl font-bold ${factory.getHeading()} mb-4`}>✅ Solved Problems Archive</h2>

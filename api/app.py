@@ -95,10 +95,23 @@ def cron_trigger():
     finally:
         db.close()
 
+import uuid
+import os
 from api.domain.pdf_analyzer import PDFAnalyzer
 
-@app.route('/api/pdf/explain', methods=['POST'])
-def explain_pdf():
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+@app.route('/api/pdf/defaults', methods=['GET'])
+def get_default_pdfs():
+    metadata_path = os.path.join(os.path.dirname(__file__), 'default_pdfs_metadata.json')
+    if os.path.exists(metadata_path):
+        with open(metadata_path, 'r') as f:
+            return jsonify(json.load(f))
+    return jsonify([])
+
+@app.route('/api/pdf/parse', methods=['POST'])
+def parse_pdf():
     if 'file' not in request.files:
         return jsonify({"status": "error", "message": "No file provided"}), 400
     
@@ -106,11 +119,47 @@ def explain_pdf():
     if file.filename == '':
         return jsonify({"status": "error", "message": "Empty filename"}), 400
         
-    # We will use 10 pages per chunk as requested
+    if not file.filename.lower().endswith('.pdf'):
+        return jsonify({"status": "error", "message": "Only PDF files are allowed. Please upload a .pdf document."}), 400
+        
+    # Save the file temporarily
+    file_id = str(uuid.uuid4())
+    filepath = os.path.join(UPLOAD_FOLDER, f"{file_id}.pdf")
+    file.save(filepath)
+    
+    try:
+        analyzer = PDFAnalyzer(chunk_size=10)
+        chunks = analyzer.parse_pdf_chunks(filepath)
+        return jsonify({
+            "status": "success", 
+            "file_id": file_id,
+            "chunks": chunks
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/pdf/explain', methods=['POST'])
+def explain_pdf():
+    data = request.json or {}
+    file_id = data.get("file_id")
+    chunk_start = data.get("chunk_start")
+    chunk_end = data.get("chunk_end")
+    
+    if not file_id or chunk_start is None or chunk_end is None:
+        return jsonify({"status": "error", "message": "Missing required parameters"}), 400
+        
+    if file_id.startswith("default_"):
+        filepath = os.path.join(os.path.dirname(__file__), "default_pdfs", file_id.replace("default_", ""))
+    else:
+        filepath = os.path.join(UPLOAD_FOLDER, f"{file_id}.pdf")
+        
+    if not os.path.exists(filepath):
+        return jsonify({"status": "error", "message": "File not found or expired"}), 404
+        
     analyzer = PDFAnalyzer(chunk_size=10)
     
     # We stream the results back using Server-Sent Events (SSE)
-    return Response(analyzer.analyze_pdf_stream(file), mimetype='text/event-stream')
+    return Response(analyzer.analyze_specific_chunk(filepath, int(chunk_start), int(chunk_end)), mimetype='text/event-stream')
 
 @app.route('/api/pdf/quiz', methods=['POST'])
 def generate_quiz():
