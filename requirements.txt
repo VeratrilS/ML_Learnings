@@ -6,3 +6,6 @@ gunicorn==21.2.0
 SQLAlchemy>=2.0.0
 Flask-Cors>=4.0.0
 psycopg2-binary>=2.9.0
+langchain>=0.1.0
+langchain-openai>=0.1.0
+PyMuPDF>=1.23.0

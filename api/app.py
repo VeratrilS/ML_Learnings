@@ -2,7 +2,7 @@
 SYSTEM DESIGN CONCEPT: Controller Layer (Model-View-Controller pattern)
 This file handles HTTP routing only. It delegates the heavy lifting to the Domain/Service layers.
 """
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from api.core.db import init_db, SessionLocal
 from api.domain.factory import NotifierFactory
@@ -94,6 +94,38 @@ def cron_trigger():
         return jsonify({"status": "success", "data": result})
     finally:
         db.close()
+
+from api.domain.pdf_analyzer import PDFAnalyzer
+
+@app.route('/api/pdf/explain', methods=['POST'])
+def explain_pdf():
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file provided"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "Empty filename"}), 400
+        
+    # We will use 10 pages per chunk as requested
+    analyzer = PDFAnalyzer(chunk_size=10)
+    
+    # We stream the results back using Server-Sent Events (SSE)
+    return Response(analyzer.analyze_pdf_stream(file), mimetype='text/event-stream')
+
+@app.route('/api/pdf/quiz', methods=['POST'])
+def generate_quiz():
+    data = request.json or {}
+    text = data.get("text")
+    if not text:
+        return jsonify({"status": "error", "message": "No text provided"}), 400
+        
+    analyzer = PDFAnalyzer()
+    result = analyzer.generate_quiz(text)
+    
+    if result["status"] == "success":
+        return jsonify(result)
+    else:
+        return jsonify(result), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

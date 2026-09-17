@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import NotifierCard from './components/NotifierCard';
+import PDFAnalyzer from './components/PDFAnalyzer';
 import { useTheme } from './themes/ThemeContext';
 
 function App() {
@@ -71,6 +72,11 @@ function App() {
               <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
                 {solvedLogs.length}
               </span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('pdf')} 
+              className={`px-3 py-2 text-sm font-medium rounded-md ${activeTab === 'pdf' ? 'bg-indigo-600 text-white' : factory.getText() + ' hover:bg-slate-800'}`}>
+              PDF Analyzer
             </button>
           </div>
           <button onClick={toggleTheme} className={`px-4 py-2 rounded-md font-medium shadow-sm transition-colors ${factory.getSecondaryButton()}`}>
@@ -182,7 +188,9 @@ function App() {
                 )}
             </section>
         </>
-        )}
+        ) : activeTab === 'pdf' ? (
+            <PDFAnalyzer />
+        ) : null}
 
       </div>
     </div>
