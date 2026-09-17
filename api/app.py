@@ -3,6 +3,7 @@ SYSTEM DESIGN CONCEPT: Controller Layer (Model-View-Controller pattern)
 This file handles HTTP routing only. It delegates the heavy lifting to the Domain/Service layers.
 """
 from flask import Flask, jsonify, request, Response
+import json
 from flask_cors import CORS
 from api.core.db import init_db, SessionLocal
 from api.domain.factory import NotifierFactory
