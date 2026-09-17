@@ -155,11 +155,18 @@ export default function PDFAnalyzer() {
     };
 
     const handleFileChange = (e) => {
-        if (e.target.files && e.target.files.length > 0) {
-            setFile(e.target.files[0]);
+        const selected = e.target.files[0];
+        if (selected) {
+            if (selected.type !== 'application/pdf' && !selected.name.toLowerCase().endsWith('.pdf')) {
+                setError('Only PDF files are allowed. Please select a valid .pdf document.');
+                setFile(null);
+                e.target.value = null;
+                return;
+            }
+            setFile(selected);
             setError('');
-            setChunks([]);
             setFileId(null);
+            setChunks([]);
             setExpandedChunks({});
             setChunkResults({});
         }
