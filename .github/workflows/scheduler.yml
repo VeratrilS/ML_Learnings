@@ -6,8 +6,6 @@ on:
     - cron: '*/5 * * * *'
     # 02:30 UTC = 8:00 AM IST: morning digest
     - cron: '30 2 * * *'
-    # 08:30 UTC = 2:00 PM IST: incident report
-    - cron: '30 8 * * *'
     # 13:30 UTC on Wed + Sun = 7:00 PM IST: end-sem study reminder
     - cron: '30 13 * * 0,3'
   workflow_dispatch:
@@ -29,13 +27,6 @@ jobs:
     steps:
       - name: Send morning digest
         run: curl -sS -X POST "$APP/api/digest" --max-time 120
-
-  incident_cron:
-    runs-on: ubuntu-latest
-    if: github.event.schedule == '30 8 * * *'
-    steps:
-      - name: Trigger daily incident report
-        run: curl -sS -X POST "$APP/api/cron/incident" --max-time 310
 
   study_reminder:
     runs-on: ubuntu-latest

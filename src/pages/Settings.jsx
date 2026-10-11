@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, User, Tv, Wrench, ShieldCheck, Lock, Plus, Trash2, Minus, Star, Save, Smartphone, CircleCheck, CircleAlert, Pencil, X } from 'lucide-react';
+import { Mail, User, Tv, ShieldCheck, Lock, Plus, Trash2, Minus, Star, Save, Smartphone, CircleCheck, CircleAlert, Pencil, X } from 'lucide-react';
 import { api, setToken } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { Button, Card, CardHeader, Skeleton, Toggle, useToast, cx } from '../components/ui';
@@ -113,11 +113,6 @@ export default function Settings() {
             <SeriesManager />
 
             <Card className="card-pad">
-                <CardHeader title="Tools" icon={Wrench} />
-                <ToolRow title="Incident reporter" desc="Emails a synthetic incident report (runs daily at 2 PM IST)." type="incident" />
-            </Card>
-
-            <Card className="card-pad">
                 <CardHeader title="System" icon={ShieldCheck} />
                 {!s ? <Skeleton className="h-16" /> : (
                     <div className="grid sm:grid-cols-2 gap-3">
@@ -171,19 +166,6 @@ function HandleField({ label, value, placeholder, onSave }) {
             </div>
         </form>
     );
-}
-
-function ToolRow({ title, desc, type }) {
-    const [busy, setBusy] = useState(false);
-    const toast = useToast();
-    const run = async () => {
-        setBusy(true);
-        try {
-            const r = await api('/trigger', { method: 'POST', body: { type } });
-            toast(`Sent: ${r.data.title}`);
-        } catch (e) { toast(e.message, 'error'); } finally { setBusy(false); }
-    };
-    return <Row title={title} desc={desc}><Button size="sm" loading={busy} onClick={run} icon={Mail}>Send now</Button></Row>;
 }
 
 const EMPTY_SERIES = { title: '', url_template: '', total_episodes: 24, next_episode: 1 };

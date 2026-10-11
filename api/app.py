@@ -52,7 +52,7 @@ for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, insights_
 # When APP_PASSCODE is set, every API call needs X-App-Key = sha256("daily:" + passcode).
 # Scheduler endpoints stay open: each is throttled server-side, so they can't be used to spam.
 _OPEN_ENDPOINTS = {"/api/health", "/api/auth/status", "/api/auth/login",
-                   "/api/cron", "/api/cron/incident", "/api/digest", "/api/syllabus/remind"}
+                   "/api/cron", "/api/digest", "/api/syllabus/remind"}
 
 
 def _auth_token():
@@ -194,20 +194,6 @@ def trigger_notification():
         return _err(str(e), 500)
     finally:
         db.close()
-
-
-@app.route('/api/cron/incident', methods=['POST'])
-def cron_incident():
-    """Scheduler entry for the daily incident report; at most one per 20 hours."""
-    with _Repo() as repo:
-        last = repo.get_setting("incident_last")
-        if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(hours=20):
-            return jsonify({"status": "skipped", "message": "Already sent today."})
-        notifier = NotifierFactory.get_notifier("incident", repo.db)
-        result = notifier.run()
-        if result["status"] == "success":
-            repo.set_setting("incident_last", datetime.now(timezone.utc).isoformat())
-        return jsonify({"status": result["status"], "data": result})
 
 
 def _in_quiet_hours(start: int, end: int, hour: int) -> bool:
