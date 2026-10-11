@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { invalidate as invalidateCache, isCacheable, readSnapshot, selectKey, writeSelected, writeSnapshot } from './cache';
 
 // Hash routing (#/problems/12) so the app works as a static SPA and as a browser homepage.
 export function useHashRoute() {
@@ -28,25 +29,119 @@ export function useLocalStorage(key, initial) {
     return [value, setValue];
 }
 
+// ---- Request dedupe -------------------------------------------------------------
+// Concurrent identical GETs (several cards asking for /settings, /stats, ...) share one
+// in-flight promise. A "fresh" request (explicit reload, or a deps change that usually
+// follows a mutation) only joins a request that started within JOIN_FRESH_MS, i.e. in
+// the same render/effect pass, so it can never be handed a response that predates a write.
+const inflight = new Map(); // path -> { promise, started }
+const latestStart = new Map(); // path -> start time of the newest request (snapshot ordering)
+const JOIN_FRESH_MS = 25;
+
+const clone = (v) => {
+    try { return typeof structuredClone === 'function' ? structuredClone(v) : JSON.parse(JSON.stringify(v)); }
+    catch { return v; }
+};
+
+function sharedGet(path, { fresh = false } = {}) {
+    const now = Date.now();
+    const cur = inflight.get(path);
+    // Joiners get their own copy so an in-place mutation in one card can't leak into another.
+    if (cur && (!fresh || now - cur.started <= JOIN_FRESH_MS)) return cur.promise.then(clone);
+    latestStart.set(path, now);
+    const promise = api(path)
+        .then((res) => {
+            // Only the newest request for a path may write its snapshot (no out-of-order overwrite).
+            if (latestStart.get(path) === now) writeSnapshot(path, res);
+            return res;
+        })
+        .finally(() => { if (inflight.get(path)?.promise === promise) inflight.delete(path); });
+    inflight.set(path, { promise, started: now });
+    return promise;
+}
+
+/** Drop cached snapshots (and in-flight dedupe entries) for paths starting with `prefix`. */
+export function invalidate(prefix = '') {
+    for (const p of [...inflight.keys()]) if (p.startsWith(prefix)) inflight.delete(p);
+    invalidateCache(prefix);
+}
+
+// Initial state for a path: hydrate from the snapshot cache if we have one.
+function initialState(path, select) {
+    if (!path) return { path, data: null, error: null, loading: false, hydrated: false };
+    const snap = readSnapshot(path);
+    if (snap) {
+        try {
+            const key = selectKey(select);
+            const data = snap.sel && key in snap.sel ? snap.sel[key] : select(snap.raw);
+            return { path, data, error: null, loading: false, hydrated: true };
+        } catch { /* snapshot shape no longer matches select(); fall through to a cold load */ }
+    }
+    return { path, data: null, error: null, loading: true, hydrated: false };
+}
+
 // GET a resource; returns { data, error, loading, reload, setData }.
+// Stale-while-revalidate: a cached snapshot renders instantly (loading=false), then the
+// hook refreshes in the background. Fresh responses and setData() edits are snapshotted.
 export function useApi(path, { select = (d) => d.data, deps = [] } = {}) {
-    const [state, setState] = useState({ data: null, error: null, loading: !!path });
     const selectRef = useRef(select);
     selectRef.current = select;
-    const reload = useCallback(async ({ silent } = {}) => {
+    const [state, setState] = useState(() => initialState(path, select));
+    // Path changed: re-derive state for the new path during render (no flash of old data).
+    let cur = state;
+    if (state.path !== path) {
+        cur = initialState(path, select);
+        setState(cur);
+    }
+
+    const reqId = useRef(0);
+    const alive = useRef(true);
+    useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+    const run = useCallback(async ({ silent, fresh } = {}) => {
         if (!path) return;
-        if (!silent) setState((s) => ({ ...s, loading: true }));
+        const id = ++reqId.current;
+        if (!silent) setState((s) => (s.path === path ? { ...s, loading: true } : s));
         try {
-            const res = await api(path);
-            setState({ data: selectRef.current(res), error: null, loading: false });
+            const res = await sharedGet(path, { fresh });
+            if (!alive.current || id !== reqId.current) return;
+            const data = selectRef.current(res);
+            setState((s) => (s.path === path ? { ...s, data, error: null, loading: false } : s));
         } catch (e) {
-            setState((s) => ({ ...s, error: e.message, loading: false }));
+            if (!alive.current || id !== reqId.current) return;
+            setState((s) => (s.path === path ? { ...s, error: e.message, loading: false } : s));
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [path, ...deps]);
-    useEffect(() => { reload(); }, [reload]);
-    const setData = useCallback((fn) => setState((s) => ({ ...s, data: typeof fn === 'function' ? fn(s.data) : fn })), []);
-    return { ...state, reload, setData };
+
+    // Public reload: always a fresh request (it typically follows a mutation).
+    const reload = useCallback((opts = {}) => run({ ...opts, fresh: true }), [run]);
+
+    // First run for a path joins any in-flight request and is silent when hydrated;
+    // later runs (deps changed) fetch fresh, like the original hook.
+    const lastPath = useRef(undefined);
+    useEffect(() => {
+        if (!path) return;
+        const first = lastPath.current !== path;
+        lastPath.current = path;
+        if (first) run({ silent: state.hydrated && state.path === path, fresh: false });
+        else run({ fresh: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [run]);
+
+    // Persist optimistic edits so they survive a page reload.
+    const dirty = useRef(false);
+    const setData = useCallback((fn) => {
+        dirty.current = true;
+        setState((s) => ({ ...s, data: typeof fn === 'function' ? fn(s.data) : fn }));
+    }, []);
+    useEffect(() => {
+        if (!dirty.current) return;
+        dirty.current = false;
+        if (isCacheable(state.path)) writeSelected(state.path, selectKey(selectRef.current), state.data);
+    }, [state.data, state.path]);
+
+    return { data: cur.data, error: cur.error, loading: cur.loading, reload, setData };
 }
 
 export function timeAgo(iso) {

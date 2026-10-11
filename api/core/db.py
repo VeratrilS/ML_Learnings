@@ -49,6 +49,10 @@ _ADDED_COLUMNS = {
         "completed_at": "TIMESTAMP",
         "review_stage": "INTEGER",
         "next_review_at": "TIMESTAMP",
+        "stability": "FLOAT",
+        "difficulty_fsrs": "FLOAT",
+        "last_review_at": "TIMESTAMP",
+        "lapses": "INTEGER",
     },
 }
 

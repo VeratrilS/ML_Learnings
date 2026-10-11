@@ -22,11 +22,14 @@ from api.domain import integrations
 from api.domain.todos import todos_bp
 from api.domain.contests import contests_bp
 from api.domain.syllabus import syllabus_bp
+from api.domain.learning import learning_bp
+from api.domain.insights import insights_bp
+from api.domain.focus import focus_bp
 
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
 CORS(app)
-for bp in (todos_bp, contests_bp, syllabus_bp):
+for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, insights_bp, focus_bp):
     app.register_blueprint(bp)
 
 # ---------------- Passcode login ----------------
@@ -82,6 +85,7 @@ SETTING_DEFAULTS = {
     "leetcode_username": "Veratril",
     "cf_handle": "Veratril",
     "daily_goal": "2",
+    "daily_study_hours": "3",
 }
 
 
@@ -90,6 +94,7 @@ NUMERIC_SETTINGS = {
     "quiet_start": (0, 23),
     "quiet_end": (0, 23),
     "daily_goal": (1, 50),
+    "daily_study_hours": (1, 16),
 }
 
 
@@ -277,26 +282,49 @@ def regenerate_writeup(log_id):
 
 
 # ---------------- Spaced repetition ----------------
+def _serialize_review(repo, l, now=None):
+    return {**_serialize_log(l), "review_stage": l.review_stage or 0, "lapses": l.lapses or 0,
+            "recall": round(repo.recall_now(l, now), 3),
+            "stability_days": round(l.stability, 2) if l.stability is not None else None,
+            "difficulty_fsrs": round(l.difficulty_fsrs, 2) if l.difficulty_fsrs is not None else None,
+            "next_review_at": _iso(l.next_review_at), "last_review_at": _iso(l.last_review_at)}
+
+
 @app.route('/api/reviews', methods=['GET'])
 def due_reviews():
+    """Due problems, weakest memory first. `data` stays a list (the digest reads it)."""
     with _Repo() as repo:
         due = repo.get_due_reviews(limit=20)
-        return jsonify({"status": "success", "data": [
-            {**_serialize_log(l), "review_stage": l.review_stage or 0} for l in due]})
+        upcoming = repo.upcoming_reviews(days=7)
+        return jsonify({"status": "success", "data": [_serialize_review(repo, l) for l in due],
+                        "due_count": repo.count_due_reviews(), "upcoming": upcoming,
+                        "week_count": sum(d["count"] for d in upcoming)})
 
 
 @app.route('/api/reviews/<int:log_id>', methods=['POST'])
 def record_review(log_id):
-    result = (request.json or {}).get("result", "easy")
-    if result not in ("easy", "hard"):
-        return _err("result must be 'easy' or 'hard'")
+    """Body {grade: again|hard|good|easy}; legacy {result: easy|hard} maps to good|again."""
+    from api.domain.repositories import GRADES, LEGACY_RESULTS
+    body = request.get_json(silent=True) or {}
+    if "grade" in body:
+        grade = str(body.get("grade") or "").lower()
+    else:
+        result = str(body.get("result") or "easy").lower()
+        if result not in LEGACY_RESULTS:
+            return _err("result must be 'easy' or 'hard'")
+        grade = LEGACY_RESULTS[result]
+    if grade not in GRADES:
+        return _err("grade must be one of: " + ", ".join(GRADES))
     with _Repo() as repo:
         log = repo.get_log(log_id)
         if not log or log.task_type != "leetcode" or not log.is_completed:
             return _err("Not found", 404)
-        log = repo.record_review(log, result)
-        return jsonify({"status": "success", "data": {**_serialize_log(log), "review_stage": log.review_stage,
-                                                      "next_review_at": _iso(log.next_review_at)}})
+        log = repo.record_review(log, grade)
+        interval = (log.next_review_at - log.last_review_at).total_seconds() / 86400 if log.next_review_at else None
+        return jsonify({"status": "success", "data": {
+            **_serialize_review(repo, log), "grade": grade, "graduated": log.next_review_at is None,
+            "stability": round(log.stability, 2), "recall": round(getattr(log, "recall_before", 1.0), 3),
+            "interval_days": round(interval) if interval is not None else None}})
 
 
 # ---------------- Settings ----------------
@@ -558,10 +586,13 @@ def stats():
                 d -= timedelta(days=1)
             return n
 
-        best, run, prev = 0, 0, None
-        for d in sorted(solves_by_day):
-            run = run + 1 if prev and d - prev == timedelta(days=1) else 1
-            best, prev = max(best, run), d
+        # Solve streak with freezes (earned/spent deterministically from history) and exam rest days
+        from api.domain.focus import compute_streak, focus_minutes_by_day, suggest_goal, theory_exam_days
+        rest_days = theory_exam_days(repo.db)
+        solve_streak = compute_streak({d for d, n in solves_by_day.items() if n}, rest_days, today)
+        frozen = set(solve_streak["frozen_days"])
+        goal = int(repo.get_setting("daily_goal", "2") or 2)
+        focus_by_day = focus_minutes_by_day(repo.db, datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7 * 53 + 2))
 
         lc = repo.get_logs("leetcode")
         cf = repo.get_logs("codeforces")
@@ -575,14 +606,24 @@ def stats():
                 topics[l.topic]["solved"] += int(bool(l.is_completed))
 
         days = 7 * 53
-        heatmap = [{"date": (today - timedelta(days=i)).isoformat(), "count": solves_by_day.get(today - timedelta(days=i), 0)}
-                   for i in range(days - 1, -1, -1)]
+
+        def cell(d):
+            iso = d.isoformat()
+            return {"date": iso, "count": solves_by_day.get(d, 0), "focus": focus_by_day.get(d, 0),
+                    "frozen": iso in frozen, "rest": d in rest_days}
+
+        heatmap = [cell(today - timedelta(days=i)) for i in range(days - 1, -1, -1)]
         week = [{"date": (today - timedelta(days=i)).isoformat(), "count": solves_by_day.get(today - timedelta(days=i), 0)}
                 for i in range(6, -1, -1)]
         return jsonify({"status": "success", "data": {
             "today": {"solved": solves_by_day.get(today, 0), "watched": watch_by_day.get(today, 0),
-                      "goal": int(repo.get_setting("daily_goal", "2") or 2), "date": today.isoformat()},
-            "streak": streak(solves_by_day), "best_streak": best, "watch_streak": streak(watch_by_day),
+                      "goal": goal, "date": today.isoformat(), "focus_minutes": focus_by_day.get(today, 0)},
+            "streak": solve_streak["streak"], "best_streak": solve_streak["best_streak"],
+            "freezes_available": solve_streak["freezes_available"], "frozen_days": solve_streak["frozen_days"],
+            "rest_days": sorted(d.isoformat() for d in rest_days),
+            "suggested_goal": suggest_goal(solves_by_day, today, goal, rest_days),
+            "focus_minutes_today": focus_by_day.get(today, 0),
+            "watch_streak": streak(watch_by_day),
             "totals": {"lc_sent": len(lc), "lc_solved": sum(1 for l in lc if l.is_completed),
                        "cf_sent": len(cf), "cf_solved": sum(1 for l in cf if l.is_completed),
                        "episodes": sum(watch_by_day.values())},

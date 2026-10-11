@@ -1,9 +1,13 @@
-import { Component, lazy, Suspense, useEffect } from 'react';
-import { Sun, Moon, Code2, Swords, FileText, Settings as SettingsIcon, House, Flame, GraduationCap, Search, RotateCcw } from 'lucide-react';
+import { Component, lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import {
+    Sun, Moon, Code2, Swords, FileText, Settings as SettingsIcon, House, Flame, GraduationCap, Search, RotateCcw,
+    MonitorPlay, ChartLine, Ellipsis, ChevronRight,
+} from 'lucide-react';
 import { useTheme } from './themes/ThemeContext';
 import { useApi, useHashRoute, navigate } from './lib/hooks';
-import { cx, Spinner } from './components/ui';
+import { cx, Sheet, Spinner } from './components/ui';
 import CommandPalette from './components/CommandPalette';
+import RankBadge, { RankUpOverlay } from './components/RankBadge';
 import Today from './pages/Today';
 import Problems from './pages/Problems';
 
@@ -11,15 +15,22 @@ const Codeforces = lazy(() => import('./pages/Codeforces'));
 const Study = lazy(() => import('./pages/Study'));
 const PdfStudio = lazy(() => import('./pages/PdfStudio'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Learn = lazy(() => import('./pages/Learn'));
+const Insights = lazy(() => import('./pages/Insights'));
 
+// `tab`: shown in the mobile bottom bar; everything else lives under "More" on mobile.
 const NAV = [
-    { id: 'today', label: 'Today', icon: House },
-    { id: 'problems', label: 'DSA', long: 'DSA Problems', icon: Code2 },
-    { id: 'study', label: 'Study', long: 'End-sem Prep', icon: GraduationCap },
+    { id: 'today', label: 'Today', icon: House, tab: true },
+    { id: 'problems', label: 'DSA', long: 'DSA Problems', icon: Code2, tab: true },
+    { id: 'study', label: 'Study', long: 'End-sem Prep', icon: GraduationCap, tab: true },
+    { id: 'learn', label: 'Learn', icon: MonitorPlay, tab: true },
     { id: 'cf', label: 'Codeforces', short: 'CF', icon: Swords },
     { id: 'pdf', label: 'PDF Studio', short: 'PDF', icon: FileText },
-    { id: 'settings', label: 'Settings', icon: SettingsIcon, desktopOnly: true },
+    { id: 'insights', label: 'Insights', icon: ChartLine },
+    { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
+const TABS = NAV.filter((n) => n.tab);
+const MORE = NAV.filter((n) => !n.tab);
 
 const openPalette = () => window.dispatchEvent(new CustomEvent('open-command-palette'));
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -41,7 +52,7 @@ class ErrorBoundary extends Component {
     }
 }
 
-function Logo() {
+function Logo({ rank }) {
     return (
         <div className="flex items-center gap-2.5">
             <div className="grid place-items-center h-8 w-8 rounded-[10px] bg-accent text-accent-fg shadow-[0_6px_20px_-6px_var(--accent)]">
@@ -49,7 +60,9 @@ function Logo() {
             </div>
             <div className="leading-none">
                 <div className="text-[15px] font-bold tracking-tight">Daily</div>
-                <div className="text-[10.5px] text-subtle mt-0.5 font-medium">keep the streak alive</div>
+                <div className="text-[10.5px] text-subtle mt-0.5 font-medium truncate max-w-40" title={rank ? 'Your rank' : undefined}>
+                    {rank || 'keep the streak alive'}
+                </div>
             </div>
         </div>
     );
@@ -80,8 +93,15 @@ export default function App() {
     const current = NAV.some((n) => n.id === page) ? page : 'today';
     const stats = useApi('/stats', { deps: [current] });
     const streak = stats.data?.streak;
+    // XP refetches when solve counts change and on navigation; Today also reloads it after plan/journal changes.
+    const t = stats.data?.totals;
+    const solvedKey = t ? `${t.lc_solved}:${t.cf_solved}:${t.episodes}:${stats.data.today.solved}` : '';
+    const xp = useApi(stats.data || stats.error ? '/xp' : null, { deps: [current, solvedKey] });
+    const [moreOpen, setMoreOpen] = useState(false);
+    const closeMore = useCallback(() => setMoreOpen(false), []);
+    const inMore = MORE.some((n) => n.id === current);
 
-    // Keyboard shortcuts 1-6 switch sections (ignored while typing)
+    // Keyboard shortcuts 1-8 switch sections (ignored while typing)
     useEffect(() => {
         const onKey = (e) => {
             if (e.metaKey || e.ctrlKey || e.altKey || /input|textarea|select/i.test(e.target.tagName) || e.target.isContentEditable) return;
@@ -97,10 +117,11 @@ export default function App() {
     return (
         <div className="min-h-dvh">
             <CommandPalette />
+            <RankUpOverlay data={xp.data} />
 
             {/* Desktop sidebar */}
             <aside className="hidden lg:flex fixed inset-y-0 left-0 w-60 flex-col border-r border-line bg-surface/60 backdrop-blur-xl px-3 py-5 z-40">
-                <div className="px-2 mb-5"><Logo /></div>
+                <div className="px-2 mb-5"><Logo rank={xp.data?.rank} /></div>
                 <button onClick={openPalette} className="mx-1 mb-5 flex items-center gap-2 h-9 px-3 rounded-xl border border-line bg-surface-2/70 text-sm text-subtle hover:text-fg hover:border-line-strong transition-colors">
                     <Search className="h-4 w-4" />
                     <span className="flex-1 text-left truncate">Search…</span>
@@ -122,16 +143,19 @@ export default function App() {
                         </a>
                     ))}
                 </nav>
-                <div className="mt-auto flex items-center justify-between px-1">
-                    <StreakPill streak={streak} />
-                    <ThemeButton />
+                <div className="mt-auto space-y-2.5 px-1">
+                    <RankBadge data={xp.data} />
+                    <div className="flex items-center justify-between">
+                        <StreakPill streak={streak} />
+                        <ThemeButton />
+                    </div>
                 </div>
             </aside>
 
             {/* Mobile top bar */}
             <header className="lg:hidden sticky top-0 z-40 border-b border-line bg-bg/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
                 <div className="flex items-center justify-between h-14 px-4">
-                    <Logo />
+                    <Logo rank={xp.data?.rank} />
                     <div className="flex items-center gap-0.5">
                         <StreakPill streak={streak} />
                         <button onClick={openPalette} className="btn btn-ghost btn-icon" aria-label="Search"><Search className="h-[18px] w-[18px]" /></button>
@@ -145,11 +169,13 @@ export default function App() {
                 <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 pt-5 sm:pt-8 pb-28 lg:pb-16">
                     <ErrorBoundary resetKey={current}>
                         <Suspense fallback={<div className="grid place-items-center py-24 text-subtle"><Spinner className="h-5 w-5" /></div>}>
-                            {current === 'today' && <Today stats={stats} />}
+                            {current === 'today' && <Today stats={stats} xp={xp} />}
                             {current === 'problems' && <Problems openId={rest[0]} onChange={() => stats.reload({ silent: true })} />}
                             {current === 'study' && <Study />}
                             {current === 'cf' && <Codeforces />}
                             {current === 'pdf' && <PdfStudio />}
+                            {current === 'learn' && <Learn />}
+                            {current === 'insights' && <Insights />}
                             {current === 'settings' && <Settings />}
                         </Suspense>
                     </ErrorBoundary>
@@ -159,10 +185,11 @@ export default function App() {
             {/* Mobile bottom tabs */}
             <nav className="lg:hidden fixed bottom-0 inset-x-0 z-50 border-t border-line bg-bg/85 backdrop-blur-xl safe-bottom">
                 <div className="grid grid-cols-5 h-16">
-                    {NAV.filter((n) => !n.desktopOnly).map((n) => (
+                    {TABS.map((n) => (
                         <a
                             key={n.id}
                             href={`#/${n.id}`}
+                            aria-current={current === n.id ? 'page' : undefined}
                             className={cx('flex flex-col items-center justify-center gap-1 text-[10.5px] font-medium transition-colors',
                                 current === n.id ? 'text-accent' : 'text-subtle active:text-fg')}
                         >
@@ -170,8 +197,44 @@ export default function App() {
                             {n.short || n.label}
                         </a>
                     ))}
+                    <button
+                        type="button"
+                        onClick={() => setMoreOpen(true)}
+                        aria-haspopup="dialog"
+                        aria-expanded={moreOpen}
+                        className={cx('flex flex-col items-center justify-center gap-1 text-[10.5px] font-medium transition-colors',
+                            inMore || moreOpen ? 'text-accent' : 'text-subtle active:text-fg')}
+                    >
+                        <Ellipsis className="h-[21px] w-[21px]" strokeWidth={inMore ? 2.4 : 2} />
+                        More
+                    </button>
                 </div>
             </nav>
+
+            <Sheet open={moreOpen} onClose={closeMore}>
+                <div className="px-4 pt-2 pb-6 sm:pt-6 safe-bottom">
+                    <div className="eyebrow px-2 mb-2">More</div>
+                    <nav className="flex flex-col gap-0.5">
+                        {MORE.map((n) => (
+                            <a
+                                key={n.id}
+                                href={`#/${n.id}`}
+                                onClick={closeMore}
+                                aria-current={current === n.id ? 'page' : undefined}
+                                className={cx('flex items-center gap-3 rounded-xl px-2 h-12 text-[15px] font-medium transition-colors',
+                                    current === n.id ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg hover:bg-surface-2 active:bg-surface-2')}
+                            >
+                                <span className={cx('grid place-items-center h-8 w-8 rounded-lg border border-line bg-surface-2',
+                                    current === n.id ? 'text-accent' : 'text-muted')}>
+                                    <n.icon className="h-4 w-4" />
+                                </span>
+                                <span className="flex-1">{n.long || n.label}</span>
+                                <ChevronRight className="h-4 w-4 text-subtle" />
+                            </a>
+                        ))}
+                    </nav>
+                </div>
+            </Sheet>
         </div>
     );
 }

@@ -78,20 +78,24 @@ def test_difficulty_preference(repo):
 
 def test_spaced_repetition_schedule(repo):
     from datetime import timedelta
-    from api.domain.repositories import REVIEW_INTERVALS
-    log = repo.log_notification("leetcode", "Two Sum", None, slug="two-sum")
+    from api.domain.repositories import INITIAL_STABILITY
+    log = repo.log_notification("leetcode", "Two Sum", None, slug="two-sum", difficulty="Easy")
     repo.mark_task_completed(log.id, True)
-    assert log.review_stage == 0 and log.next_review_at - log.completed_at == timedelta(days=REVIEW_INTERVALS[0])
+    assert log.review_stage == 0 and log.next_review_at - log.completed_at == timedelta(days=INITIAL_STABILITY["Easy"])
     assert repo.get_due_reviews() == []
     log.next_review_at = log.completed_at - timedelta(minutes=1)
     repo.db.commit()
     assert [l.id for l in repo.get_due_reviews()] == [log.id]
-    repo.record_review(log, "easy")
+    repo.record_review(log, "good")
     assert log.review_stage == 1 and repo.get_due_reviews() == []
-    repo.record_review(log, "hard")
-    assert log.review_stage == 0
-    for _ in REVIEW_INTERVALS:
-        repo.record_review(log, "easy")
+    repo.record_review(log, "again")
+    assert log.review_stage == 2 and log.lapses == 1  # review_stage counts reviews
+    now = log.last_review_at
+    for _ in range(40):  # on-time 'easy' reviews eventually retire the problem
+        if log.next_review_at is None:
+            break
+        now = log.next_review_at
+        repo.record_review(log, "easy", now=now)
     assert log.next_review_at is None  # graduated
 
 

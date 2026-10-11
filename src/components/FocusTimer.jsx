@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Play, Pause, RotateCcw, SkipForward, Timer } from 'lucide-react';
+import { api } from '../lib/api';
 import { useLocalStorage } from '../lib/hooks';
 import { Card, CardHeader, ProgressRing, Segmented, cx } from './ui';
 
@@ -23,6 +24,8 @@ function beep() {
     } catch { /* audio unavailable */ }
 }
 
+const MIN_PARTIAL_MIN = 5; // abandoned focus sessions this long still count
+
 const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 export default function FocusTimer() {
@@ -30,13 +33,37 @@ export default function FocusTimer() {
     const [state, setState] = useLocalStorage('focus:state', { mode: 'focus', endsAt: null, left: 25 * 60 });
     const [sessions, setSessions] = useLocalStorage('focus:sessions', { day: todayKey(), count: 0 });
     const [, tick] = useState(0);
+    const [serverMinutes, setServerMinutes] = useState(null); // today's focused minutes from the API (null = unknown)
     const baseTitle = useRef(document.title);
+    const loggedRef = useRef(null); // endsAt of the last session we logged (guards double effects)
 
     const durations = { focus: focusLen * 60, short: 5 * 60, long: 15 * 60 };
     const total = durations[state.mode];
     const running = !!state.endsAt;
     const left = running ? Math.max(0, Math.round((state.endsAt - Date.now()) / 1000)) : state.left;
     const todayCount = sessions.day === todayKey() ? sessions.count : 0;
+    const focusedMinutes = serverMinutes ?? todayCount * focusLen;
+
+    useEffect(() => {
+        let alive = true;
+        api('/focus?days=1').then((r) => alive && setServerMinutes(r.today_minutes ?? 0)).catch(() => { /* fall back to local count */ });
+        return () => { alive = false; };
+    }, []);
+
+    // Persist a focus session server-side; optimistic so the subtitle updates instantly.
+    const logSession = (minutes, completed, startedAtMs) => {
+        if (minutes < 1) return;
+        setServerMinutes((m) => (m == null ? m : m + minutes));
+        api('/focus', { method: 'POST', body: { minutes, completed, started_at: new Date(startedAtMs).toISOString() } })
+            .then((r) => setServerMinutes(r.today_minutes ?? null))
+            .catch(() => setServerMinutes(null)); // server unreachable: show the local count instead
+    };
+    // Resetting/skipping a focus block after >= 5 minutes still logs what was done
+    const logPartial = () => {
+        if (state.mode !== 'focus') return;
+        const elapsed = total - left;
+        if (elapsed >= MIN_PARTIAL_MIN * 60) logSession(Math.floor(elapsed / 60), false, Date.now() - elapsed * 1000);
+    };
 
     useEffect(() => {
         if (!running) return;
@@ -54,7 +81,13 @@ export default function FocusTimer() {
         if (!running || left > 0) return;
         beep();
         const wasFocus = state.mode === 'focus';
-        if (wasFocus) setSessions({ day: todayKey(), count: todayCount + 1 });
+        if (wasFocus) {
+            setSessions({ day: todayKey(), count: todayCount + 1 });
+            if (loggedRef.current !== state.endsAt) {
+                loggedRef.current = state.endsAt;
+                logSession(Math.round(total / 60), true, state.endsAt - total * 1000);
+            }
+        }
         const next = wasFocus ? ((todayCount + 1) % 4 === 0 ? 'long' : 'short') : 'focus';
         try {
             if ('Notification' in window && Notification.permission === 'granted') {
@@ -79,9 +112,9 @@ export default function FocusTimer() {
     };
     startRef.current = () => { if (!running) start(); };
     const pause = () => setState({ ...state, endsAt: null, left });
-    const reset = () => setState({ mode: state.mode, endsAt: null, left: total });
+    const reset = () => { logPartial(); setState({ mode: state.mode, endsAt: null, left: total }); };
     const switchMode = (mode) => setState({ mode, endsAt: null, left: durations[mode] });
-    const skip = () => switchMode(state.mode === 'focus' ? 'short' : 'focus');
+    const skip = () => { logPartial(); switchMode(state.mode === 'focus' ? 'short' : 'focus'); };
     const changeLen = (len) => {
         setFocusLen(len);
         if (state.mode === 'focus' && !running) setState({ mode: 'focus', endsAt: null, left: len * 60 });
@@ -91,7 +124,7 @@ export default function FocusTimer() {
         <Card className="card-pad">
             <CardHeader
                 title="Focus"
-                subtitle={`${todayCount} session${todayCount === 1 ? '' : 's'} today · ${todayCount * focusLen} min`}
+                subtitle={`${todayCount} session${todayCount === 1 ? '' : 's'} · ${focusedMinutes} min focused today`}
                 icon={Timer}
                 action={<Segmented value={focusLen} onChange={changeLen} options={[{ value: 25, label: '25' }, { value: 50, label: '50' }]} />}
             />

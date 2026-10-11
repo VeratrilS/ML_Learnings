@@ -216,11 +216,15 @@ export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }) {
     const [toasts, setToasts] = useState([]);
-    const push = useCallback((message, type = 'success') => {
+    const dismiss = useCallback((id) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+    // toast(message, type?, { action: { label, onClick }, duration }?)
+    const push = useCallback((message, type = 'success', opts = {}) => {
         const id = Math.random().toString(36).slice(2);
-        setToasts((t) => [...t.slice(-2), { id, message, type }]);
-        setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), type === 'error' ? 6000 : 3200);
-    }, []);
+        const action = opts?.action && typeof opts.action.onClick === 'function' ? opts.action : null;
+        setToasts((t) => [...t.slice(-2), { id, message, type, action }]);
+        const ms = opts?.duration ?? (type === 'error' ? 6000 : action ? 6000 : 3200);
+        setTimeout(() => dismiss(id), ms);
+    }, [dismiss]);
     const icons = { success: CheckCircle2, error: AlertCircle, info: Info };
     return (
         <ToastCtx.Provider value={push}>
@@ -231,7 +235,16 @@ export function ToastProvider({ children }) {
                     return (
                         <div key={t.id} className="pointer-events-auto animate-rise flex items-start gap-2.5 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm shadow-xl">
                             <Icon className={cx('h-4 w-4 mt-0.5 shrink-0', t.type === 'error' ? 'text-danger' : t.type === 'success' ? 'text-ok' : 'text-accent')} />
-                            <span className="leading-snug">{t.message}</span>
+                            <span className="leading-snug flex-1 min-w-0">{t.message}</span>
+                            {t.action && (
+                                <button
+                                    type="button"
+                                    onClick={() => { dismiss(t.id); t.action.onClick(); }}
+                                    className="-my-1 -mr-1.5 shrink-0 rounded-lg px-2 h-7 text-[13px] font-semibold text-accent hover:bg-accent-soft transition-colors focus-visible:outline-2 focus-visible:outline-accent"
+                                >
+                                    {t.action.label || 'Undo'}
+                                </button>
+                            )}
                         </div>
                     );
                 })}

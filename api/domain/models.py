@@ -3,7 +3,7 @@ OOP CONCEPT: Encapsulation & Inheritance
 Models define the structure of our data. They map Python objects to Database rows.
 We inherit from the SQLAlchemy `Base` class.
 """
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, Float
 from datetime import datetime, timezone
 from api.core.db import Base
 
@@ -32,6 +32,12 @@ class NotificationLog(Base):
     # Spaced repetition: how many reviews done, and when the next one is due (naive UTC)
     review_stage = Column(Integer, nullable=True)
     next_review_at = Column(DateTime, nullable=True)
+    # FSRS-lite memory model (see repositories.py): stability in days (interval at which recall
+    # drops to 90%), difficulty 1..10, last successful/failed review time (naive UTC), failure count
+    stability = Column(Float, nullable=True)
+    difficulty_fsrs = Column(Float, nullable=True)
+    last_review_at = Column(DateTime, nullable=True)
+    lapses = Column(Integer, nullable=True)
 
     def __repr__(self):
         """String representation of the object (Magic Method)"""
