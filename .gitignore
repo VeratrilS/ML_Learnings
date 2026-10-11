@@ -17,3 +17,6 @@ notifications.db
 uploads/
 test.pdf
 scratch/
+.agents/
+.claude/
+skills-lock.json

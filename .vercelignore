@@ -6,3 +6,9 @@ __pycache__/
 .env
 .vercel/
 dist/
+.agents/
+.claude/
+skills-lock.json
+scratch/
+uploads/
+notifications.db
