@@ -18,7 +18,9 @@ if os.getenv("TEST_DATABASE_URL"):
     engine = create_engine(DATABASE_URL, echo=False)
 elif os.getenv("POSTGRES_URL") or (os.getenv("DATABASE_URL") or "").startswith("postgres"):
     # Vercel/Neon Postgres provides postgres:// but SQLAlchemy needs postgresql://
-    DATABASE_URL = (os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")).replace("postgres://", "postgresql://", 1)
+    # Pin the psycopg2 driver explicitly: SQLAlchemy 2.1 defaults "postgresql://" to psycopg (v3), which isn't installed
+    DATABASE_URL = (os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL"))
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1).replace("postgresql://", "postgresql+psycopg2://", 1)
     # Remove channel_binding param if present (not supported by psycopg2)
     if "channel_binding" in DATABASE_URL:
         DATABASE_URL = DATABASE_URL.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?").replace("?channel_binding=require", "")
