@@ -15,3 +15,5 @@ os.environ["SENDER_EMAIL"] = ""
 os.environ["SENDER_PASSWORD"] = ""
 os.environ["GEMINI_API_KEY"] = ""
 os.environ["OPENROUTER_API_KEY"] = ""
+
+os.environ["APP_PASSCODE"] = ""  # tests that need the lock set it themselves
