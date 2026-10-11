@@ -1,7 +1,7 @@
 import { createContext, lazy, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
     ChartLine, Dumbbell, Sparkles, HeartPulse, Sunrise, Moon, Medal, Briefcase, Timer, MessagesSquare, Layers,
-    Bug, Zap, Wand2, GraduationCap,
+    Bug, Zap, Wand2, GraduationCap, CalendarRange,
 } from 'lucide-react';
 import { api } from './api';
 
@@ -11,6 +11,7 @@ import { api } from './api';
 const PAGE_FILES = import.meta.glob([
     '../pages/Insights.jsx', '../pages/Gym.jsx', '../pages/Cards.jsx',
     '../pages/Placements.jsx', '../pages/OA.jsx', '../pages/Interview.jsx', '../pages/Mistakes.jsx',
+    '../pages/Weekly.jsx',
 ]);
 const COMPONENT_FILES = import.meta.glob([
     '../components/InsightsCard.jsx', '../components/BriefCard.jsx', '../components/RingsCard.jsx',
@@ -44,6 +45,7 @@ export const FEATURES = [
     { id: 'mistakes', label: 'Mistake journal', icon: Bug, desc: 'Log what went wrong; AI tags it; get a personal pre-submit checklist.', page: page('Mistakes'), cards: [] },
     { id: 'capture', label: 'Quick capture', icon: Zap, desc: 'Press C anywhere (or share from Android) to capture tasks and links.', global: comp('QuickCapture') },
     { id: 'tutor', label: 'AI tutor & code review', icon: Wand2, desc: 'Socratic tutor and solution reviewer inside each problem.', cards: [] },
+    { id: 'weekly', label: 'Weekly report', icon: CalendarRange, desc: 'Sunday 7:30 PM email recapping your week: solves, Apple sheet, videos, focus, vs last week. Emails start once approved.', page: page('Weekly'), cards: [] },
     { id: 'pdfextract', label: 'PDF → topics & cards', icon: GraduationCap, desc: 'Extract syllabus topics and flashcards from lecture PDFs.', cards: [] },
 ].map((f) => ({ ...f, cards: (f.cards || []).filter(Boolean), available: !!(f.page || f.global || f.cards?.some(Boolean) || ['now', 'shutdown', 'ranks', 'tutor', 'pdfextract'].includes(f.id)) }));
 

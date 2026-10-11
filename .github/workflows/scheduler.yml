@@ -8,6 +8,8 @@ on:
     - cron: '30 2 * * *'
     # 13:30 UTC on Wed + Sun = 7:00 PM IST: end-sem study reminder
     - cron: '30 13 * * 0,3'
+    # 14:00 UTC on Sun = 7:30 PM IST: weekly report (only sends once approved in the Beta Lab)
+    - cron: '0 14 * * 0'
   workflow_dispatch:
 
 env:
@@ -34,3 +36,10 @@ jobs:
     steps:
       - name: Send end-sem study reminder
         run: curl -sS -X POST "$APP/api/syllabus/remind" --max-time 120
+
+  weekly_report:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 14 * * 0'
+    steps:
+      - name: Send weekly report
+        run: curl -sS -X POST "$APP/api/weekly/cron" --max-time 120
