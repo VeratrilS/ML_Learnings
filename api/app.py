@@ -10,16 +10,21 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 
-from api.core.config import now_ist, to_ist, RECEIVER_EMAIL
+from api.core.config import IST, now_ist, to_ist, RECEIVER_EMAIL, APP_URL
 from api.core.db import init_db, SessionLocal
 from api.domain.factory import NotifierFactory
 from api.domain.repositories import NotificationRepository, normalize_title
 from api.domain.models import WatchSeries
 from api.domain import integrations
+from api.domain.todos import todos_bp
+from api.domain.contests import contests_bp
+from api.domain.syllabus import syllabus_bp
 
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
 CORS(app)
+for bp in (todos_bp, contests_bp, syllabus_bp):
+    app.register_blueprint(bp)
 
 # Initialize the Database
 init_db()
@@ -30,9 +35,17 @@ SETTING_DEFAULTS = {
     "quiet_start": "23",       # IST hour; no emails from 23:00 ...
     "quiet_end": "7",          # ... until 07:00
     "leetcode_difficulty": "mixed",
-    "leetcode_username": "",
-    "cf_handle": "",
+    "leetcode_username": "Veratril",
+    "cf_handle": "Veratril",
     "daily_goal": "2",
+}
+
+
+NUMERIC_SETTINGS = {
+    "leetcode_interval_minutes": (1, 10080),
+    "quiet_start": (0, 23),
+    "quiet_end": (0, 23),
+    "daily_goal": (1, 50),
 }
 
 
@@ -97,7 +110,16 @@ def trigger_notification():
     db = SessionLocal()
     try:
         notifier = NotifierFactory.get_notifier(notif_type, db)
-        result = notifier.run()
+        if notif_type == "leetcode":
+            solved_keys = set()
+            try:
+                solved_keys = _sync_leetcode(NotificationRepository(db), NotificationRepository(db).get_setting(
+                    "leetcode_username", SETTING_DEFAULTS["leetcode_username"]))[1]
+            except Exception as e:
+                print(f"LeetCode sync failed: {e}")
+            result = notifier.run(skip=solved_keys)
+        else:
+            result = notifier.run()
 
         if result["status"] == "success":
             return jsonify({"status": "success", "data": result})
@@ -139,15 +161,16 @@ def cron_trigger():
                 return jsonify({"status": "skipped", "message": f"Only {elapsed:.1f} mins elapsed."})
 
         # Best effort: auto-complete problems already solved on LeetCode so reminders stay accurate
-        username = repo.get_setting("leetcode_username", "")
+        username = repo.get_setting("leetcode_username", SETTING_DEFAULTS["leetcode_username"])
+        solved_keys = set()
         if username:
             try:
-                _sync_leetcode(repo, username)
+                solved_keys = _sync_leetcode(repo, username)[1]
             except Exception as e:
                 print(f"LeetCode sync failed: {e}")
 
         notifier = NotifierFactory.get_notifier("leetcode", db)
-        result = notifier.run()
+        result = notifier.run(skip=solved_keys)
         return jsonify({"status": "success", "data": result})
     finally:
         db.close()
@@ -165,7 +188,7 @@ def get_logs():
 def log_detail(log_id):
     with _Repo() as repo:
         if request.method == 'DELETE':
-            if not repo.delete_log(log_id):
+            if not repo.hide_log(log_id):
                 return _err("Not found", 404)
             return jsonify({"status": "success"})
         if request.method == 'PUT':
@@ -195,14 +218,43 @@ def regenerate_writeup(log_id):
         return jsonify({"status": "success", "data": _serialize_log(log, full=True)})
 
 
+# ---------------- Spaced repetition ----------------
+@app.route('/api/reviews', methods=['GET'])
+def due_reviews():
+    with _Repo() as repo:
+        due = repo.get_due_reviews(limit=20)
+        return jsonify({"status": "success", "data": [
+            {**_serialize_log(l), "review_stage": l.review_stage or 0} for l in due]})
+
+
+@app.route('/api/reviews/<int:log_id>', methods=['POST'])
+def record_review(log_id):
+    result = (request.json or {}).get("result", "easy")
+    if result not in ("easy", "hard"):
+        return _err("result must be 'easy' or 'hard'")
+    with _Repo() as repo:
+        log = repo.get_log(log_id)
+        if not log or log.task_type != "leetcode" or not log.is_completed:
+            return _err("Not found", 404)
+        log = repo.record_review(log, result)
+        return jsonify({"status": "success", "data": {**_serialize_log(log), "review_stage": log.review_stage,
+                                                      "next_review_at": _iso(log.next_review_at)}})
+
+
 # ---------------- Settings ----------------
 @app.route('/api/settings', methods=['GET', 'POST'])
 def handle_settings():
     with _Repo() as repo:
         if request.method == 'POST':
             for key, value in (request.json or {}).items():
-                if key in SETTING_DEFAULTS:
-                    repo.set_setting(key, str(value).strip()[:100])
+                if key not in SETTING_DEFAULTS:
+                    continue
+                value = str(value).strip()[:100]
+                if key in NUMERIC_SETTINGS:
+                    lo, hi = NUMERIC_SETTINGS[key]
+                    if not value.isdigit() or not lo <= int(value) <= hi:
+                        return _err(f"{key} must be a number between {lo} and {hi}")
+                repo.set_setting(key, value)
         settings = {k: repo.get_setting(k, v) for k, v in SETTING_DEFAULTS.items()}
         settings["receiver_email"] = RECEIVER_EMAIL
         settings["llm_configured"] = bool(os.getenv("GEMINI_API_KEY"))
@@ -214,27 +266,27 @@ def handle_settings():
 def _sync_leetcode(repo, username):
     recent = integrations.leetcode_recent_accepted(username, limit=20)
     keys, when = set(), {}
-    for r in recent:
+    for r in recent:  # newest first; keep the most recent solve time
         for k in (r["slug"], normalize_title(r["title"])):
             keys.add(k)
-            when[k] = r["solved_at"]
-    return repo.mark_completed_by_keys("leetcode", keys, when)
+            when.setdefault(k, r["solved_at"])
+    return repo.mark_completed_by_keys("leetcode", keys, when), keys
 
 
 @app.route('/api/leetcode/sync', methods=['POST'])
 def leetcode_sync():
     with _Repo() as repo:
-        username = repo.get_setting("leetcode_username", "")
+        username = repo.get_setting("leetcode_username", SETTING_DEFAULTS["leetcode_username"])
         if not username:
             return _err("Set your LeetCode username in Settings first.")
-        updated = _sync_leetcode(repo, username)
+        updated, _ = _sync_leetcode(repo, username)
         return jsonify({"status": "success", "updated": [l.title for l in updated]})
 
 
 @app.route('/api/leetcode/profile', methods=['GET'])
 def leetcode_profile():
     with _Repo() as repo:
-        username = repo.get_setting("leetcode_username", "")
+        username = repo.get_setting("leetcode_username", SETTING_DEFAULTS["leetcode_username"])
     if not username:
         return jsonify({"status": "success", "data": None})
     return jsonify({"status": "success", "data": {"username": username, **integrations.leetcode_profile(username)}})
@@ -251,7 +303,7 @@ def _cf_suggested_range(rating):
 @app.route('/api/cf/meta', methods=['GET'])
 def cf_meta():
     with _Repo() as repo:
-        handle = repo.get_setting("cf_handle", "")
+        handle = repo.get_setting("cf_handle", SETTING_DEFAULTS["cf_handle"])
     user = None
     if handle:
         try:
@@ -269,7 +321,7 @@ def cf_suggest():
     count = max(1, min(int(data.get("count", 5)), 10))
     tags = [t for t in data.get("tags", []) if isinstance(t, str)]
     with _Repo() as repo:
-        handle = repo.get_setting("cf_handle", "")
+        handle = repo.get_setting("cf_handle", SETTING_DEFAULTS["cf_handle"])
         exclude = repo.get_sent_keys("codeforces")
         rating = None
         if handle:
@@ -293,10 +345,8 @@ def cf_suggest():
             task_type="codeforces", title=f"{p['contest_id']}{p['index']} · {p['name']}", content=None,
             slug=p["key"], difficulty=str(p["rating"]), link=p["url"], topic=", ".join(p["tags"])) for p in picked]
 
-        if data.get("email"):
-            _email_cf_set(logs)
-
-        return jsonify({"status": "success", "data": [_serialize_log(l) for l in logs]})
+        emailed = bool(data.get("email")) and _email_cf_set(logs)
+        return jsonify({"status": "success", "emailed": emailed, "data": [_serialize_log(l) for l in logs]})
 
 
 def _email_cf_set(logs):
@@ -320,7 +370,7 @@ def _email_cf_set(logs):
 @app.route('/api/cf/sync', methods=['POST'])
 def cf_sync():
     with _Repo() as repo:
-        handle = repo.get_setting("cf_handle", "")
+        handle = repo.get_setting("cf_handle", SETTING_DEFAULTS["cf_handle"])
         if not handle:
             return _err("Set your Codeforces handle in Settings first.")
         solved, _ = integrations.cf_user_submissions(handle)
@@ -506,6 +556,90 @@ def generate_quiz():
         return _err("No text provided")
     result = PDFAnalyzer().generate_quiz(text)
     return jsonify(result) if result["status"] == "success" else (jsonify(result), 500)
+
+
+# ---------------- Morning digest ----------------
+def _internal_get(path):
+    """Reuse our own endpoints so the digest always matches what the dashboard shows."""
+    try:
+        res = app.test_client().get(path)
+        return res.get_json() if res.status_code == 200 else None
+    except Exception as e:
+        print(f"digest: {path} failed: {e}")
+        return None
+
+
+@app.route('/api/digest', methods=['POST'])
+def morning_digest():
+    import html as h
+    from api.core.clients import EmailClient
+    sender, password = os.getenv("SENDER_EMAIL"), os.getenv("SENDER_PASSWORD")
+    if not (sender and password):
+        return jsonify({"status": "skipped", "message": "Email not configured."})
+    with _Repo() as repo:
+        last = repo.get_setting("digest_last")
+        if last and request.args.get("force") != "1" and                 datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(hours=20):
+            return jsonify({"status": "skipped", "message": "Digest already sent today."})
+
+    e = h.escape
+    sections = []
+
+    def section(title, items):
+        if items:
+            lis = "".join(f'<li style="margin:0 0 6px">{i}</li>' for i in items)
+            sections.append(f'<h3 style="margin:22px 0 8px;font:600 12px system-ui,sans-serif;letter-spacing:.08em;'
+                            f'text-transform:uppercase;color:#6b7280">{title}</h3>'
+                            f'<ul style="margin:0;padding-left:18px;font:15px/1.5 system-ui,sans-serif;color:#111827">{lis}</ul>')
+
+    def link(url, text):
+        return f'<a href="{e(url or "")}" style="color:#c2410c;text-decoration:none;font-weight:600">{e(text)}</a>'
+
+    watch = (_internal_get("/api/watch") or {}).get("data") or []
+    active = next((x for x in watch if x.get("is_active")), None)
+    if active and not active.get("finished"):
+        section("Today's episode", [link(active["next_url"], f'{active["title"]} · Episode {active["next_episode"]}')])
+
+    todos = (_internal_get("/api/todos") or {}).get("data") or []
+    section("Today's plan", [e(t["text"]) + (' <span style="color:#9ca3af">(carried over)</span>' if t.get("carried") else "")
+                             for t in todos if not t.get("done")])
+
+    reviews = (_internal_get("/api/reviews") or {}).get("data") or []
+    section(f"Revise ({len(reviews)} due)", [link(r["link"], r["title"]) for r in reviews[:5]])
+
+    pending = [l for l in ((_internal_get("/api/logs?type=leetcode") or {}).get("data") or []) if not l["is_completed"]]
+    section(f"Pending problems ({len(pending)})", [link(l["link"], l["title"]) + f' <span style="color:#9ca3af">· {e(l.get("difficulty") or "")}</span>'
+                                                  for l in pending[:4]])
+
+    soon = []
+    for c in (_internal_get("/api/contests") or {}).get("data") or []:
+        start = datetime.fromisoformat(c["start"].replace("Z", "+00:00"))
+        if start - datetime.now(timezone.utc) < timedelta(hours=36):
+            soon.append(link(c["url"], c["name"]) + f' <span style="color:#9ca3af">· {start.astimezone(IST).strftime("%a %I:%M %p")} IST</span>')
+    section("Contests coming up", soon)
+
+    syl = _internal_get("/api/syllabus") or {}
+    nxt = syl.get("next_exam")
+    if nxt:
+        section("End-sem", [f'<b>{e(nxt["subject"])}</b> in {nxt["days_left"]} days'])
+
+    stats = (_internal_get("/api/stats") or {}).get("data") or {}
+    streak = stats.get("streak", 0)
+    today = now_ist()
+    body = (f'<!doctype html><html><body style="margin:0;background:#f5f5f7;padding:24px 12px">'
+            f'<div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:28px">'
+            f'<div style="font:600 12px system-ui,sans-serif;color:#6b7280">{today.strftime("%A, %d %B")}</div>'
+            f'<h1 style="margin:8px 0 4px;font:700 24px system-ui,sans-serif;color:#111827">Good morning, Sai.</h1>'
+            f'<p style="margin:0;font:15px system-ui,sans-serif;color:#4b5563">🔥 Streak: <b>{streak} day{"s" if streak != 1 else ""}</b>. '
+            f'Goal today: <b>{stats.get("today", {}).get("goal", 2)}</b> problems.</p>'
+            + "".join(sections) +
+            f'<p style="margin:26px 0 0"><a href="{APP_URL}" style="display:inline-block;background:#111827;color:#fff;padding:11px 18px;'
+            f'border-radius:10px;font:600 14px system-ui,sans-serif;text-decoration:none">Open dashboard</a></p></div></body></html>')
+    plain = "Your daily dashboard: " + APP_URL
+    ok = EmailClient(sender, password).send_email(RECEIVER_EMAIL, f"☀️ Today · streak {streak} · {len(reviews)} to revise", plain, html=body)
+    if ok:
+        with _Repo() as repo:
+            repo.set_setting("digest_last", datetime.now(timezone.utc).isoformat())
+    return jsonify({"status": "success" if ok else "error", "sections": len(sections)})
 
 
 @app.route('/api/health', methods=['GET'])

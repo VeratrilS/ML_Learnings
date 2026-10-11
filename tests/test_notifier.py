@@ -74,3 +74,29 @@ def test_difficulty_preference(repo):
     repo.set_setting("leetcode_difficulty", "hard")
     notifier = _notifier(repo)
     assert all(notifier.run()["difficulty"] == "Hard" for _ in range(5))
+
+
+def test_spaced_repetition_schedule(repo):
+    from datetime import timedelta
+    from api.domain.repositories import REVIEW_INTERVALS
+    log = repo.log_notification("leetcode", "Two Sum", None, slug="two-sum")
+    repo.mark_task_completed(log.id, True)
+    assert log.review_stage == 0 and log.next_review_at - log.completed_at == timedelta(days=REVIEW_INTERVALS[0])
+    assert repo.get_due_reviews() == []
+    log.next_review_at = log.completed_at - timedelta(minutes=1)
+    repo.db.commit()
+    assert [l.id for l in repo.get_due_reviews()] == [log.id]
+    repo.record_review(log, "easy")
+    assert log.review_stage == 1 and repo.get_due_reviews() == []
+    repo.record_review(log, "hard")
+    assert log.review_stage == 0
+    for _ in REVIEW_INTERVALS:
+        repo.record_review(log, "easy")
+    assert log.next_review_at is None  # graduated
+
+
+def test_hidden_rows_still_block_repeats(repo):
+    log = repo.log_notification("leetcode", "Two Sum", None, slug="two-sum")
+    repo.hide_log(log.id)
+    assert "two-sum" in repo.get_sent_keys("leetcode")
+    assert repo.get_logs("leetcode") == []

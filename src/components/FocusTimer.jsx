@@ -65,10 +65,19 @@ export default function FocusTimer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [running, left]);
 
+    // Command palette can start a session: window.dispatchEvent(new CustomEvent('focus-timer', {detail:{action:'start'}}))
+    const startRef = useRef(null);
+    useEffect(() => {
+        const onEvent = (e) => e.detail?.action === 'start' && startRef.current?.();
+        window.addEventListener('focus-timer', onEvent);
+        return () => window.removeEventListener('focus-timer', onEvent);
+    }, []);
+
     const start = () => {
         try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch { /* ignore */ }
         setState({ ...state, endsAt: Date.now() + left * 1000 });
     };
+    startRef.current = () => { if (!running) start(); };
     const pause = () => setState({ ...state, endsAt: null, left });
     const reset = () => setState({ mode: state.mode, endsAt: null, left: total });
     const switchMode = (mode) => setState({ mode, endsAt: null, left: durations[mode] });

@@ -5,7 +5,7 @@ Instead of writing SQL queries all over our application, we encapsulate the DB a
 inside a repository class. If we change the database later, we only update the repository.
 """
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from api.domain.models import NotificationLog, Settings, WatchSeries
 
@@ -14,6 +14,13 @@ def normalize_title(title: str) -> str:
     """'Two Sum (Fallback)' / 'two-sum' / 'Two  Sum' -> 'twosum'. Used for robust de-duplication."""
     title = re.sub(r"\(.*?\)", "", (title or "").lower())
     return re.sub(r"[^a-z0-9]", "", title)
+
+
+# Days after solving (then after each review) before a problem comes back for revision
+REVIEW_INTERVALS = [1, 3, 7, 21, 60]
+
+# 'sending' = claimed by an in-flight run, 'hidden' = deleted by the user. Both must still block repeats.
+SENT_STATUSES = ("success", "sending", "hidden")
 
 
 def _utcnow():
@@ -72,12 +79,48 @@ class NotificationRepository:
     def _set_completed(log, is_completed: bool):
         log.is_completed = is_completed
         log.completed_at = _utcnow() if is_completed else None
+        if log.task_type == "leetcode":
+            log.review_stage = 0 if is_completed else None
+            log.next_review_at = (log.completed_at + timedelta(days=REVIEW_INTERVALS[0])) if is_completed else None
+
+    def get_due_reviews(self, limit: int = 20):
+        return self.db.query(NotificationLog).filter(
+            NotificationLog.task_type == "leetcode",
+            NotificationLog.status == "success",
+            NotificationLog.is_completed == True,  # noqa: E712
+            NotificationLog.next_review_at != None,  # noqa: E711
+            NotificationLog.next_review_at <= _utcnow(),
+        ).order_by(NotificationLog.next_review_at.asc()).limit(limit).all()
+
+    def record_review(self, log, result: str):
+        """result: 'easy' advances the schedule, 'hard' restarts it at 1 day."""
+        stage = 0 if result == "hard" else min((log.review_stage or 0) + 1, len(REVIEW_INTERVALS))
+        log.review_stage = stage
+        log.next_review_at = None if stage >= len(REVIEW_INTERVALS) else _utcnow() + timedelta(days=REVIEW_INTERVALS[stage])
+        self.db.commit()
+        self.db.refresh(log)
+        return log
 
     def delete_log(self, log_id: int):
         log = self.get_log(log_id)
         if log:
             self.db.delete(log)
             self.db.commit()
+        return log
+
+    def hide_log(self, log_id: int):
+        """Soft delete: disappears from lists but still counts as sent, so it is never suggested again."""
+        log = self.get_log(log_id)
+        if log:
+            log.status = "hidden"
+            self.db.commit()
+        return log
+
+    def update_log(self, log, **fields):
+        for k, v in fields.items():
+            setattr(log, k, v)
+        self.db.commit()
+        self.db.refresh(log)
         return log
 
     def get_uncompleted_leetcode_tasks(self):
@@ -95,7 +138,7 @@ class NotificationRepository:
     def get_sent_keys(self, task_type: str):
         """Slugs + normalized titles of everything successfully sent. Anything in this set is never sent again."""
         rows = self.db.query(NotificationLog.slug, NotificationLog.title).filter(
-            NotificationLog.task_type == task_type, NotificationLog.status == "success").all()
+            NotificationLog.task_type == task_type, NotificationLog.status.in_(SENT_STATUSES)).all()
         keys = set()
         for slug, title in rows:
             if slug:
@@ -106,10 +149,11 @@ class NotificationRepository:
 
     def get_latest_successful_leetcode_log(self):
         """Returns the most recent SUCCESSFUL leetcode log, ignoring failed sends.
-        Used by the cron interval logic so a failed send doesn't reset the timer."""
+        Used by the cron interval logic so a failed send doesn't reset the timer.
+        In-flight ('sending') runs count too, so two overlapping runs can't both fire."""
         return self.db.query(NotificationLog).filter(
             NotificationLog.task_type == "leetcode",
-            NotificationLog.status == "success"
+            NotificationLog.status.in_(("success", "sending"))
         ).order_by(NotificationLog.timestamp.desc()).first()
 
     def mark_completed_by_keys(self, task_type: str, keys: set, when: dict = None) -> list:
@@ -127,7 +171,10 @@ class NotificationRepository:
             if match:
                 self._set_completed(log, True)
                 if when and when.get(match):
-                    log.completed_at = when[match]
+                    # Never earlier than when the problem was sent (it may have been solved before)
+                    log.completed_at = max(when[match], log.timestamp or when[match])
+                    if log.next_review_at:
+                        log.next_review_at = log.completed_at + timedelta(days=REVIEW_INTERVALS[0])
                 updated.append(log)
         if updated:
             self.db.commit()
@@ -136,6 +183,7 @@ class NotificationRepository:
     def get_completed_logs(self):
         return self.db.query(NotificationLog).filter(
             NotificationLog.is_completed == True,  # noqa: E712
+            NotificationLog.status == "success",
             NotificationLog.task_type.in_(["leetcode", "codeforces", "watch"]),
         ).all()
 

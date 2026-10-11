@@ -2,31 +2,47 @@ name: Productivity Automation Scheduler
 
 on:
   schedule:
-    # Run every 5 minutes for LeetCode. The Vercel API checks the DB interval.
+    # Every 5 minutes: LeetCode problem (the API enforces interval, pause and quiet hours)
     - cron: '*/5 * * * *'
-    # Run daily at 8:30 UTC = 2:00 PM IST for Incident Report
+    # 02:30 UTC = 8:00 AM IST: morning digest
+    - cron: '30 2 * * *'
+    # 08:30 UTC = 2:00 PM IST: incident report
     - cron: '30 8 * * *'
-  # Allow manual trigger from GitHub UI
+    # 13:30 UTC on Wed + Sun = 7:00 PM IST: end-sem study reminder
+    - cron: '30 13 * * 0,3'
   workflow_dispatch:
+
+env:
+  APP: https://productivity-automations.vercel.app
 
 jobs:
   leetcode_cron:
     runs-on: ubuntu-latest
-    # Only run on the 5-minute schedule, not on the daily 8:30 incident schedule
     if: github.event.schedule == '*/5 * * * *' || github.event_name == 'workflow_dispatch'
     steps:
-      - name: Ping LeetCode Cron Endpoint
-        run: |
-          curl -X POST https://productivity-automations.vercel.app/api/cron \
-          -H "Content-Type: application/json"
+      - name: Ping LeetCode cron endpoint
+        run: curl -sS -X POST "$APP/api/cron" -H "Content-Type: application/json" --max-time 310
+
+  morning_digest:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '30 2 * * *'
+    steps:
+      - name: Send morning digest
+        run: curl -sS -X POST "$APP/api/digest" --max-time 120
 
   incident_cron:
     runs-on: ubuntu-latest
-    # Only run this job at 8:30 UTC, not every 5 mins
-    if: github.event.schedule == '30 8 * * *' || github.event_name == 'workflow_dispatch'
+    if: github.event.schedule == '30 8 * * *'
     steps:
-      - name: Trigger Daily Incident Report
+      - name: Trigger daily incident report
         run: |
-          curl -X POST https://productivity-automations.vercel.app/api/trigger \
-          -H "Content-Type: application/json" \
-          -d '{"type": "incident"}'
+          curl -sS -X POST "$APP/api/trigger" \
+            -H "Content-Type: application/json" \
+            -d '{"type": "incident"}' --max-time 310
+
+  study_reminder:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '30 13 * * 0,3'
+    steps:
+      - name: Send end-sem study reminder
+        run: curl -sS -X POST "$APP/api/syllabus/remind" --max-time 120

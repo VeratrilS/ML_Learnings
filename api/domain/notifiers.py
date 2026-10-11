@@ -105,10 +105,31 @@ Return a JSON object with exactly these keys:
 - "cpp_code": complete, compilable, optimal C++ solution in LeetCode's class Solution format with brief comments.
 - "related": array of 2-3 related LeetCode problem titles to practice next."""
     data = llm.generate_json(prompt, temperature=0.4, system=WRITEUP_SYSTEM)
-    for key in ("hints", "approach", "edge_cases", "related"):
-        if isinstance(data.get(key), str):
-            data[key] = [data[key]]
-    return data
+    return sanitize_writeup(data)
+
+
+def _as_text(v) -> str:
+    if isinstance(v, str):
+        return v
+    if isinstance(v, dict):
+        return " — ".join(str(x) for x in v.values() if x)
+    return "" if v is None else str(v)
+
+
+def sanitize_writeup(data: dict) -> dict:
+    """LLMs occasionally return objects where we expect strings; the UI only renders strings."""
+    if not isinstance(data, dict):
+        raise ValueError("Write-up is not a JSON object")
+    clean = {}
+    for key, value in data.items():
+        if key in ("hints", "approach", "edge_cases", "related"):
+            items = value if isinstance(value, list) else [value]
+            clean[key] = [t for t in (_as_text(i).strip() for i in items) if t]
+        else:
+            clean[key] = _as_text(value)
+    if not clean.get("cpp_code"):
+        raise ValueError("Write-up is missing code")
+    return clean
 
 
 def problem_links(slug: str, title: str) -> dict:
@@ -121,10 +142,10 @@ def problem_links(slug: str, title: str) -> dict:
 
 # POLYMORPHISM: LeetcodeNotifier provides a completely different implementation of `run()`
 class LeetcodeNotifier(BaseNotifier):
-    def pick_problem(self, difficulty_pref: str = "mixed"):
+    def pick_problem(self, difficulty_pref: str = "mixed", skip: set = frozenset()):
         """Deterministically picks the next never-sent problem from the curated bank.
         Topics rotate (never the same topic twice in a row) and each topic progresses easy -> hard."""
-        sent = self.repo.get_sent_keys("leetcode")
+        sent = self.repo.get_sent_keys("leetcode") | set(skip)  # skip = already solved on LeetCode
         allowed = DIFFICULTY_PREFS.get(difficulty_pref, DIFFICULTY_PREFS["mixed"])
         unsent = [p for p in PROBLEMS if p[1] not in sent and normalize_title(p[0]) not in sent]
         candidates = [p for p in unsent if p[2] in allowed] or unsent
@@ -143,19 +164,22 @@ class LeetcodeNotifier(BaseNotifier):
         title, slug, difficulty, topic, lc_id = next(p for p in candidates if p[3] == topic)
         return {"title": title, "slug": slug, "difficulty": difficulty, "topic": topic, "id": lc_id}
 
-    def run(self) -> dict:
-        problem = self.pick_problem(self.repo.get_setting("leetcode_difficulty", "mixed"))
+    def run(self, skip: set = frozenset()) -> dict:
+        problem = self.pick_problem(self.repo.get_setting("leetcode_difficulty", "mixed"), skip)
         title, slug, difficulty, topic = problem["title"], problem["slug"], problem["difficulty"], problem["topic"]
         links = problem_links(slug, title)
+        number = len(self.repo.get_all_leetcode_logs()) + 1
+        pending = self.repo.get_uncompleted_leetcode_tasks()[:3]
+
+        # Claim the problem before the slow LLM call so an overlapping run can't pick it too
+        log = self.repo.log_notification(task_type="leetcode", title=title, content=None, status="sending",
+                                         slug=slug, difficulty=difficulty, link=links["leetcode"], topic=topic)
 
         try:
             writeup = generate_writeup(self.llm, title, slug, difficulty)
         except Exception as e:
             print(f"Write-up generation failed: {e}")
             writeup = {}
-
-        number = len(self.repo.get_all_leetcode_logs()) + 1
-        pending = self.repo.get_uncompleted_leetcode_tasks()[:3]
 
         subject = f"#{number} · {title} ({difficulty}) · {topic}"
         body = _leetcode_plain(title, difficulty, topic, links, writeup, pending)
@@ -164,9 +188,7 @@ class LeetcodeNotifier(BaseNotifier):
         success = self.email.send_email(self.receiver_email, subject, body, html=html_body)
         status = "success" if success else "failed"
 
-        log = self.repo.log_notification(
-            task_type="leetcode", title=title, content=json.dumps(writeup) if writeup else None, status=status,
-            slug=slug, difficulty=difficulty, link=links["leetcode"], topic=topic)
+        self.repo.update_log(log, status=status, content=json.dumps(writeup) if writeup else None)
 
         return {"status": status, "id": log.id, "title": title, "difficulty": difficulty, "topic": topic,
                 "link": links["leetcode"], "has_writeup": bool(writeup)}

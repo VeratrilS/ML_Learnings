@@ -3,6 +3,7 @@ External platform integrations (LeetCode public GraphQL, Codeforces public API).
 Pure functions over HTTP; no DB access here.
 """
 import random
+import re
 import time
 from datetime import datetime, timezone
 
@@ -42,6 +43,7 @@ def leetcode_random_unsent(exclude: set, difficulties: list = None) -> dict:
         r.raise_for_status()
         rows = ((r.json().get("data") or {}).get("questionList") or {}).get("data") or []
         rows = [q for q in rows if not q["isPaidOnly"] and q["acRate"] >= 40 and q["titleSlug"] not in exclude
+                and re.sub(r"[^a-z0-9]", "", q["title"].lower()) not in exclude
                 and (not difficulties or q["difficulty"] in difficulties)]
         if rows:
             q = random.choice(rows)
@@ -56,7 +58,10 @@ def leetcode_profile(username: str) -> dict:
       matchedUser(username: $username) {
         submitStatsGlobal { acSubmissionNum { difficulty count } }
         profile { ranking }
+        userCalendar { streak totalActiveDays }
       }
+      userContestRanking(username: $username) { rating attendedContestsCount globalRanking topPercentage }
+      allQuestionsCount { difficulty count }
     }"""
     r = requests.post("https://leetcode.com/graphql", json={"query": query, "variables": {"username": username}},
                       headers=_HEADERS, timeout=15)
@@ -64,9 +69,18 @@ def leetcode_profile(username: str) -> dict:
     user = (r.json().get("data") or {}).get("matchedUser")
     if not user:
         raise ValueError(f"LeetCode user '{username}' not found")
+    data = r.json()["data"]
     counts = {x["difficulty"]: x["count"] for x in user["submitStatsGlobal"]["acSubmissionNum"]}
+    totals = {x["difficulty"]: x["count"] for x in data.get("allQuestionsCount") or []}
+    contest = data.get("userContestRanking") or {}
+    calendar = user.get("userCalendar") or {}
     return {"total": counts.get("All", 0), "easy": counts.get("Easy", 0), "medium": counts.get("Medium", 0),
-            "hard": counts.get("Hard", 0), "ranking": (user.get("profile") or {}).get("ranking")}
+            "hard": counts.get("Hard", 0), "ranking": (user.get("profile") or {}).get("ranking"),
+            "available": {"easy": totals.get("Easy"), "medium": totals.get("Medium"), "hard": totals.get("Hard")},
+            "contest_rating": round(contest["rating"]) if contest.get("rating") else None,
+            "contests_attended": contest.get("attendedContestsCount"),
+            "top_percentage": contest.get("topPercentage"),
+            "streak": calendar.get("streak"), "active_days": calendar.get("totalActiveDays")}
 
 
 # ---------------- Codeforces ----------------

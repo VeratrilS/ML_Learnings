@@ -150,12 +150,20 @@ class EmailClient:
         if html:
             msg.attach(MIMEText(html, 'html', 'utf-8'))
 
+        server = None
         try:
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20) as server:
-                server.login(self.sender_email, self.sender_password)
-                server.sendmail(self.sender_email, receiver_email, msg.as_string())
-            print(f"Email sent successfully to {receiver_email}")
-            return True
+            server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20)
+            server.login(self.sender_email, self.sender_password)
+            server.sendmail(self.sender_email, receiver_email, msg.as_string())
         except Exception as e:
             print(f"Failed to send email: {e}")
             return False
+        finally:
+            # Once sendmail returned, the email is delivered; a failing QUIT must not mark it failed
+            try:
+                if server:
+                    server.quit()
+            except Exception:
+                pass
+        print(f"Email sent successfully to {receiver_email}")
+        return True

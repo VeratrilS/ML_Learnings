@@ -99,7 +99,7 @@ export default function Codeforces() {
             const fresh = res.data || [];
             history.setData((d) => [...fresh, ...(d || []).filter((l) => !fresh.some((n) => n.id === l.id))]);
             setLatestIds(fresh.map((l) => l.id));
-            toast(`${fresh.length} fresh problem${fresh.length === 1 ? '' : 's'} ready${body.email ? ' · emailed' : ''}`);
+            toast(`${fresh.length} fresh problem${fresh.length === 1 ? '' : 's'} ready${res.emailed ? ' · emailed' : body.email ? ' · email failed' : ''}`);
         } catch (e) {
             toast(e.message, 'error');
         } finally {

@@ -29,6 +29,9 @@ class NotificationLog(Base):
     link = Column(String(500), nullable=True)
     topic = Column(String(200), nullable=True)
     completed_at = Column(DateTime, nullable=True)
+    # Spaced repetition: how many reviews done, and when the next one is due (naive UTC)
+    review_stage = Column(Integer, nullable=True)
+    next_review_at = Column(DateTime, nullable=True)
 
     def __repr__(self):
         """String representation of the object (Magic Method)"""

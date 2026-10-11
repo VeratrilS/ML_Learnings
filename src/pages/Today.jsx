@@ -7,6 +7,11 @@ import EpisodeCard from '../components/EpisodeCard';
 import FocusTimer from '../components/FocusTimer';
 import Heatmap from '../components/Heatmap';
 import ProblemRow from '../components/ProblemRow';
+import PlanCard from '../components/PlanCard';
+import RevisionCard from '../components/RevisionCard';
+import ContestsCard from '../components/ContestsCard';
+import LeetCodeCard from '../components/LeetCodeCard';
+import StudyCard from '../components/StudyCard';
 
 const QUOTES = [
     ['Not everyone who works hard is rewarded. But all those who succeed have worked hard.', 'Kamogawa Genji'],
@@ -130,6 +135,7 @@ export default function Today({ stats }) {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
                 <div className="lg:col-span-2 space-y-5 sm:space-y-6">
                     <EpisodeCard onChange={() => stats.reload({ silent: true })} />
+                    <PlanCard />
 
                     <Card className="overflow-hidden">
                         <div className="card-pad pb-0">
@@ -170,10 +176,14 @@ export default function Today({ stats }) {
                             </div>
                         )}
                     </Card>
+                    <RevisionCard />
+                    <StudyCard />
                 </div>
 
                 <div className="space-y-5 sm:space-y-6">
                     <FocusTimer />
+                    <ContestsCard limit={4} />
+                    <LeetCodeCard />
                     <WeekCard week={s?.week} goal={goal} />
                 </div>
             </div>

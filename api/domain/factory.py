@@ -24,7 +24,7 @@ class NotifierFactory:
             raise ValueError("Missing SENDER_EMAIL / SENDER_PASSWORD environment variables.")
 
         # Instantiate our core clients
-        llm = LLMClient()
+        llm = LLMClient(budget=150)
         email = EmailClient(sender_email=sender_email, sender_password=sender_password)
         repo = NotificationRepository(db_session=db_session)
 
