@@ -9,3 +9,9 @@ _tmp.close()
 os.environ["TEST_DATABASE_URL"] = f"sqlite:///{_tmp.name}"
 os.environ.pop("POSTGRES_URL", None)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Never send real email or call real LLMs from tests, even if a test forgets to mock
+os.environ["SENDER_EMAIL"] = ""
+os.environ["SENDER_PASSWORD"] = ""
+os.environ["GEMINI_API_KEY"] = ""
+os.environ["OPENROUTER_API_KEY"] = ""

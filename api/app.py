@@ -2,8 +2,11 @@
 SYSTEM DESIGN CONCEPT: Controller Layer (Model-View-Controller pattern)
 This file handles HTTP routing only. It delegates the heavy lifting to the Domain/Service layers.
 """
+import hashlib
+import hmac
 import json
 import os
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -25,6 +28,47 @@ app = Flask(__name__)
 CORS(app)
 for bp in (todos_bp, contests_bp, syllabus_bp):
     app.register_blueprint(bp)
+
+# ---------------- Passcode login ----------------
+# When APP_PASSCODE is set, every API call needs X-App-Key = sha256("daily:" + passcode).
+# Scheduler endpoints stay open: each is throttled server-side, so they can't be used to spam.
+_OPEN_ENDPOINTS = {"/api/health", "/api/auth/status", "/api/auth/login",
+                   "/api/cron", "/api/cron/incident", "/api/digest", "/api/syllabus/remind"}
+
+
+def _auth_token():
+    passcode = os.getenv("APP_PASSCODE", "")
+    return hashlib.sha256(f"daily:{passcode}".encode()).hexdigest() if passcode else None
+
+
+def _authorized():
+    expected = _auth_token()
+    return expected is None or hmac.compare_digest(request.headers.get("X-App-Key", ""), expected)
+
+
+@app.before_request
+def _require_passcode():
+    if request.method == "OPTIONS" or not request.path.startswith("/api/") or request.path.rstrip("/") in _OPEN_ENDPOINTS:
+        return None
+    if not _authorized():
+        return jsonify({"status": "error", "message": "Locked. Enter your passcode.", "auth_required": True}), 401
+
+
+@app.route('/api/auth/status', methods=['GET'])
+def auth_status():
+    return jsonify({"status": "success", "required": _auth_token() is not None, "ok": _authorized()})
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    expected = _auth_token()
+    if expected is None:
+        return jsonify({"status": "success", "token": ""})
+    passcode = str((request.json or {}).get("passcode", ""))
+    if not hmac.compare_digest(passcode, os.getenv("APP_PASSCODE", "")):
+        time.sleep(1)  # slow down guessing
+        return _err("Wrong passcode", 401)
+    return jsonify({"status": "success", "token": expected})
 
 # Initialize the Database
 init_db()
@@ -129,6 +173,20 @@ def trigger_notification():
         return _err(str(e), 500)
     finally:
         db.close()
+
+
+@app.route('/api/cron/incident', methods=['POST'])
+def cron_incident():
+    """Scheduler entry for the daily incident report; at most one per 20 hours."""
+    with _Repo() as repo:
+        last = repo.get_setting("incident_last")
+        if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(hours=20):
+            return jsonify({"status": "skipped", "message": "Already sent today."})
+        notifier = NotifierFactory.get_notifier("incident", repo.db)
+        result = notifier.run()
+        if result["status"] == "success":
+            repo.set_setting("incident_last", datetime.now(timezone.utc).isoformat())
+        return jsonify({"status": result["status"], "data": result})
 
 
 def _in_quiet_hours(start: int, end: int, hour: int) -> bool:

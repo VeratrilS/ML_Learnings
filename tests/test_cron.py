@@ -147,3 +147,19 @@ def test_watch_tracker_flow(client):
 def test_watch_rejects_template_without_placeholder(client):
     res = client.post('/api/watch', json={"title": "X", "url_template": "https://x.com/ep-1"})
     assert res.status_code == 400
+
+
+def test_passcode_lock(client, monkeypatch):
+    import hashlib
+    monkeypatch.setenv("APP_PASSCODE", "1234")
+    assert client.get('/api/settings').status_code == 401
+    assert client.get('/api/auth/status').get_json() == {"status": "success", "required": True, "ok": False}
+    assert client.post('/api/auth/login', json={"passcode": "nope"}).status_code == 401
+    token = client.post('/api/auth/login', json={"passcode": "1234"}).get_json()["token"]
+    assert token == hashlib.sha256(b"daily:1234").hexdigest()
+    assert client.get('/api/settings', headers={"X-App-Key": token}).status_code == 200
+    # scheduler endpoints stay reachable (they are throttled server-side)
+    with patch('api.domain.factory.NotifierFactory.get_notifier') as mock_factory:
+        mock_factory.return_value.run.return_value = {"status": "success", "title": "T"}
+        assert client.post('/api/cron').status_code != 401
+    assert client.get('/api/health').status_code == 200

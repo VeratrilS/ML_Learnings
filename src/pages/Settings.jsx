@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Mail, User, Tv, Wrench, ShieldCheck, Plus, Trash2, Minus, Star, Save, Smartphone, CircleCheck, CircleAlert, Pencil, X } from 'lucide-react';
-import { api } from '../lib/api';
+import { Mail, User, Tv, Wrench, ShieldCheck, Lock, Plus, Trash2, Minus, Star, Save, Smartphone, CircleCheck, CircleAlert, Pencil, X } from 'lucide-react';
+import { api, setToken } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { Button, Card, CardHeader, Skeleton, Toggle, useToast, cx } from '../components/ui';
 
@@ -130,8 +130,11 @@ export default function Settings() {
                     <div className="text-sm text-muted space-y-1">
                         <p><span className="text-fg font-medium">Install on your phone:</span> open this site in Chrome → menu → <em>Add to Home screen</em> (Safari: Share → Add to Home Screen).</p>
                         <p><span className="text-fg font-medium">Make it your homepage:</span> browser settings → On startup / Home button → <span className="font-mono text-xs bg-surface px-1.5 py-0.5 rounded border border-line">{window.location.origin}</span></p>
-                        <p className="text-xs text-subtle">Keyboard: press 1-5 to switch sections.</p>
+                        <p className="text-xs text-subtle">Keyboard: 1-6 switch sections · Ctrl/⌘ K opens the command palette · N adds a task.</p>
                     </div>
+                </div>
+                <div className="mt-3 flex justify-end">
+                    <Button size="sm" variant="ghost" icon={Lock} onClick={() => { setToken(''); window.location.reload(); }}>Lock this device</Button>
                 </div>
             </Card>
         </div>

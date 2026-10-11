@@ -21,7 +21,7 @@ jobs:
     if: github.event.schedule == '*/5 * * * *' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Ping LeetCode cron endpoint
-        run: curl -sS -X POST "$APP/api/cron" -H "Content-Type: application/json" --max-time 310
+        run: curl -sS -X POST "$APP/api/cron" --max-time 310
 
   morning_digest:
     runs-on: ubuntu-latest
@@ -35,10 +35,7 @@ jobs:
     if: github.event.schedule == '30 8 * * *'
     steps:
       - name: Trigger daily incident report
-        run: |
-          curl -sS -X POST "$APP/api/trigger" \
-            -H "Content-Type: application/json" \
-            -d '{"type": "incident"}' --max-time 310
+        run: curl -sS -X POST "$APP/api/cron/incident" --max-time 310
 
   study_reminder:
     runs-on: ubuntu-latest

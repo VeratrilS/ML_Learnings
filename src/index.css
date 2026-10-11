@@ -156,6 +156,7 @@ body {
 .animate-rise { animation: rise 0.28s cubic-bezier(.2,.7,.2,1) both; }
 @keyframes sheet-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 .animate-sheet { animation: sheet-in 0.24s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes shake { 0%,100% { transform: none; } 20%,60% { transform: translateX(-8px); } 40%,80% { transform: translateX(8px); } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .animate-fade { animation: fade 0.2s ease both; }
 
