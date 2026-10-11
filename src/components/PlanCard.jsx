@@ -14,6 +14,12 @@ const fmtDay = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString(un
 
 export default function PlanCard({ onChange }) {
     const { data, error, loading, reload, setData } = useApi('/todos');
+    // Quick capture (and other features) announce new tasks with a window event.
+    useEffect(() => {
+        const onChanged = () => reload({ silent: true });
+        window.addEventListener('todos-changed', onChanged);
+        return () => window.removeEventListener('todos-changed', onChanged);
+    }, [reload]);
     const toast = useToast();
     const [draft, setDraft] = useState('');
     const [editingId, setEditingId] = useState(null);

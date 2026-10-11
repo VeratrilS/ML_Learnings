@@ -125,8 +125,11 @@ def test_start_behavioral_and_system_design(client):
 
 
 def test_start_avoids_recent_repeats(client):
-    seen = {_start(client, "system_design")["title"] for _ in range(len(iv.SYSTEM_DESIGN_PROMPTS))}
-    assert len(seen) == len(iv.SYSTEM_DESIGN_PROMPTS)
+    from api.core.db import SessionLocal
+    db = SessionLocal(); db.query(iv.MockSession).delete(); db.commit(); db.close()  # earlier tests in this module also started sessions
+    n = min(len(iv.SYSTEM_DESIGN_PROMPTS), iv.RECENT_AVOID + 1)  # only the last RECENT_AVOID are avoided
+    seen = [_start(client, "system_design")["title"] for _ in range(n)]
+    assert len(set(seen)) == n
 
 
 def test_start_validation(client):

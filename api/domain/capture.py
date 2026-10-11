@@ -140,7 +140,7 @@ def classify_url(url, hint=""):
 
 
 # "tomorrow" / "tmrw" (optionally after by/for/on/@), not possessive ("tomorrow's quiz").
-_TOMORROW_RE = re.compile(r"(?:\b(?:by|for|on|due)\s+)?@?\b(?:tomorrow|tmrw|tmr|tmrw|tomorow)\b(?!['’]\w)", re.I)
+_TOMORROW_RE = re.compile(r"(?:\b(?:by|for|on|due)\s+)?@?\b(?:tomorrow|tmrw|tmr|tomorow)\b(?!['’]\w)", re.I)
 _TODAY_RE = re.compile(r"(?:\b(?:by|for|on|due)\s+)?@?\b(?:today|tonight|tdy)\b(?!['’]\w)", re.I)
 _TAG_RE = re.compile(r"(?<![\w&/])#([A-Za-z][\w-]{0,29})")
 _BULLET_RE = re.compile(r"^\s*(?:[-*•●>]+|\d{1,2}[.)]|\[\s?\])\s+")
@@ -261,7 +261,7 @@ def _todo_text(item):
         head = f"Read: {title}" if title else "Read"
     else:
         head, url = _str(item.get("text"), MAX_TEXT), ""
-    tail = (f" — {url}" if url else "") + suffix
+    tail = (f" {url}" if url else "") + suffix
     if len(head) + len(tail) > MAX_TEXT:
         if len(tail) > MAX_TEXT - 20:  # absurd URL: drop it rather than the task
             tail = suffix

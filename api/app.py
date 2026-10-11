@@ -25,11 +25,26 @@ from api.domain.syllabus import syllabus_bp
 from api.domain.learning import learning_bp
 from api.domain.insights import insights_bp
 from api.domain.focus import focus_bp
+from api.domain.journal import journal_bp
+from api.domain.xp import xp_bp
+from api.domain.features import features_bp
+from api.domain.pdf_extract import pdf_extract_bp
+from api.domain.mistakes import mistakes_bp
+from api.domain.placements import placements_bp
+from api.domain.oa import oa_bp
+from api.domain.interview import interview_bp
+from api.domain.gym import gym_bp
+from api.domain.brief import brief_bp
+from api.domain.habits import habits_bp
+from api.domain.capture import capture_bp
+from api.domain.flashcards import flashcards_bp
+from api.domain.tutor import tutor_bp
 
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
 CORS(app)
-for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, insights_bp, focus_bp):
+for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, insights_bp, focus_bp, journal_bp, xp_bp, features_bp,
+           pdf_extract_bp, mistakes_bp, placements_bp, oa_bp, interview_bp, gym_bp, brief_bp, habits_bp, capture_bp, flashcards_bp, tutor_bp):
     app.register_blueprint(bp)
 
 # ---------------- Passcode login ----------------

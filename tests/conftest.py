@@ -17,3 +17,15 @@ os.environ["GEMINI_API_KEY"] = ""
 os.environ["OPENROUTER_API_KEY"] = ""
 
 os.environ["APP_PASSCODE"] = ""  # tests that need the lock set it themselves
+
+import pytest
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _fresh_db_per_module():
+    """Each test module starts from empty tables so leftovers from other modules can't leak in."""
+    from api.core.db import Base, engine
+    import api.domain.models  # noqa: F401
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    yield

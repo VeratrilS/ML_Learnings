@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Flame, Trophy, Tv, Send, Swords, RefreshCw, ListTodo, ArrowRight, Sparkles, Zap } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApi, navigate } from '../lib/hooks';
@@ -8,7 +8,7 @@ import ShutdownCard from '../components/ShutdownCard';
 import RankBadge from '../components/RankBadge';
 import EpisodeCard from '../components/EpisodeCard';
 import LearnCard from '../components/LearnCard';
-import InsightsCard from '../components/InsightsCard';
+import { FEATURES, useFeatures } from '../lib/features';
 import FocusTimer from '../components/FocusTimer';
 import Heatmap from '../components/Heatmap';
 import ProblemRow from '../components/ProblemRow';
@@ -103,6 +103,7 @@ const SECTION = 'scroll-mt-20 lg:scroll-mt-6 min-w-0';
  * Props: `stats` (useApi('/stats')), optional `xp` (useApi('/xp')) from App so the sidebar and page share one fetch.
  */
 export default function Today({ stats, xp }) {
+    const features = useFeatures();
     const s = stats.data;
     const pending = useApi('/logs?type=leetcode', { select: (d) => d.data.filter((l) => !l.is_completed) });
     const settings = useApi('/settings', { select: (d) => d });
@@ -222,9 +223,11 @@ export default function Today({ stats, xp }) {
                 Desktop: main column (span 2) + side column. */}
             <div className="flex flex-col gap-5 lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
                 <div className="contents lg:flex lg:flex-col lg:gap-6 lg:col-span-2 lg:min-w-0">
-                    <div className={cx(SECTION, 'order-1')}>
-                        <NowCard rev={rev} onPlanChange={planChangedOutside} />
-                    </div>
+                    {features.isOn('now') && (
+                        <div className={cx(SECTION, 'order-1')}>
+                            <NowCard rev={rev} onPlanChange={planChangedOutside} />
+                        </div>
+                    )}
                     <div id="plan" className={cx(SECTION, 'order-2')}>
                         <PlanCard key={planKey} onChange={planChangedInside} />
                     </div>
@@ -234,15 +237,22 @@ export default function Today({ stats, xp }) {
                         <LearnCard onChange={progressChanged} />
                     </div>
                     <div id="revisions" className={cx(SECTION, 'order-6')}><RevisionCard /></div>
-                    <div className={cx(SECTION, 'order-7')}><InsightsCard /></div>
-                    <div id="shutdown" className={cx(SECTION, 'order-9')}>
-                        <ShutdownCard rev={rev} onPlanChange={planChangedOutside} onSaved={() => setRev((r) => r + 1)} />
-                    </div>
+                    {/* Cards of approved Beta Lab features */}
+                    <Suspense fallback={null}>
+                        {FEATURES.filter((f) => features.isOn(f.id)).flatMap((f) => f.cards.map((C, i) => (
+                            <div key={`${f.id}-${i}`} className={cx(SECTION, 'order-7')}><C /></div>
+                        )))}
+                    </Suspense>
+                    {features.isOn('shutdown') && (
+                        <div id="shutdown" className={cx(SECTION, 'order-9')}>
+                            <ShutdownCard rev={rev} onPlanChange={planChangedOutside} onSaved={() => setRev((r) => r + 1)} />
+                        </div>
+                    )}
                 </div>
 
                 <div className="contents lg:flex lg:flex-col lg:gap-6 lg:min-w-0">
                     <div id="focus-timer" className={cx(SECTION, 'order-10 lg:order-0')}><FocusTimer /></div>
-                    <div className={cx(SECTION, 'hidden lg:block')}><RankBadge variant="tile" data={xp ? xp.data : undefined} /></div>
+                    {features.isOn('ranks') && <div className={cx(SECTION, 'hidden lg:block')}><RankBadge variant="tile" data={xp ? xp.data : undefined} /></div>}
                     <div className={cx(SECTION, 'order-11 lg:order-0')}><ContestsCard limit={4} /></div>
                     <div className={cx(SECTION, 'order-8 lg:order-0')}><StudyCard /></div>
                     <div className={cx(SECTION, 'order-12 lg:order-0')}><LeetCodeCard /></div>

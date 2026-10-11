@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    BookOpen, Check, ChevronDown, CircleAlert, Clock, Copy, FileText, Info, ListChecks,
+    BookOpen, Check, ChevronDown, CircleAlert, Clock, Copy, FileText, Info, ListChecks, ListPlus,
     MessageSquareText, Play, RotateCcw, Sparkles, Square, Upload, X,
 } from 'lucide-react';
 import { Button, Card, ProgressBar, Segmented, Skeleton, Spinner, cx, useToast } from '../components/ui';
 import Markdown from '../components/Markdown';
+import ExtractSheet from '../components/ExtractSheet';
 import { api, streamSSE } from '../lib/api';
 import { timeAgo, useLocalStorage } from '../lib/hooks';
 import { extractText, openPdf, renderPagesForUpload } from '../lib/pdf';
@@ -397,6 +398,7 @@ export default function PdfStudio() {
                                 onExplain={() => explain(s)}
                                 onStop={() => stop(s.index)}
                                 getText={() => sectionText(s)}
+                                getPdf={() => pdfRef.current}
                                 disabled={!!runAll}
                             />
                         ))}
@@ -539,7 +541,7 @@ const STATUS = {
     error: { label: 'Error', cls: 'text-danger bg-danger/10' },
 };
 
-function Section({ section, total, doc, result, expanded, onToggle, onExplain, onStop, getText, disabled }) {
+function Section({ section, total, doc, result, expanded, onToggle, onExplain, onStop, getText, getPdf, disabled }) {
     const push = useToast();
     const status = result?.status || 'idle';
     const meta = STATUS[status] || STATUS.idle;
@@ -548,6 +550,8 @@ function Section({ section, total, doc, result, expanded, onToggle, onExplain, o
     const [copied, setCopied] = useState(null);
     const [copyingPrompt, setCopyingPrompt] = useState(false);
     const [quizOpen, setQuizOpen] = useState(false);
+    const [extractOpen, setExtractOpen] = useState(false);
+    const closeExtract = useCallback(() => setExtractOpen(false), []);
 
     useEffect(() => {
         if (!copied) return;
@@ -686,12 +690,24 @@ function Section({ section, total, doc, result, expanded, onToggle, onExplain, o
                             >
                                 {copied === 'prompt' ? 'Copied' : 'Copy for ChatGPT'}
                             </Button>
+                            <Button variant="secondary" icon={ListPlus} onClick={() => setExtractOpen(true)}>
+                                Extract topics &amp; cards
+                            </Button>
                         </div>
                     )}
 
                     {status === 'done' && quizOpen && <Quiz notes={result.text} onClose={() => setQuizOpen(false)} />}
                 </div>
             )}
+            <ExtractSheet
+                open={extractOpen}
+                onClose={closeExtract}
+                getPdf={getPdf}
+                doc={doc}
+                section={section}
+                label={label}
+                getText={getText}
+            />
         </Card>
     );
 }

@@ -3,7 +3,8 @@ Curated starter bank for the Aptitude Daily 5: quant, logical and verbal MCQs in
 Indian campus placement tests (TCS NQT, Infosys, Accenture, Wipro, Capgemini).
 
 Every answer here was worked out by hand and the numeric ones are recomputed in tests/test_aptitude.py.
-`answer` is the index of the correct option as written here (options get shuffled when seeded).
+`answer_index` is the index of the correct option as written here (options get shuffled when seeded,
+except for KEEP_ORDER types).
 """
 
 # key -> (label, section). Order is the display order.
@@ -31,8 +32,9 @@ TYPES = {
 KEEP_ORDER = {"syllogisms", "grammar"}
 
 
-def _q(type_, question, options, answer, explanation, difficulty):
-    return {"type": type_, "question": question, "options": options, "answer": answer,
+def _q(type_, question, options, answer_index, explanation, difficulty):
+    """difficulty: 1 easy, 2 medium, 3 hard."""
+    return {"type": type_, "question": question, "options": options, "answer_index": answer_index,
             "explanation": explanation, "difficulty": difficulty}
 
 

@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, BookOpen, CirclePlay, Lightbulb, Eye, Copy, Check, Wand2, RotateCcw, Clock, HardDrive, AlertTriangle, Link2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { timeAgo } from '../lib/hooks';
-import { Button, DifficultyBadge, Sheet, Skeleton, Spinner, useToast, cx } from './ui';
+import { Button, DifficultyBadge, Segmented, Sheet, Skeleton, Spinner, useToast, cx } from './ui';
+import TutorPanel from './TutorPanel';
+import CodeReview from './CodeReview';
+
+const TABS = [
+    { value: 'writeup', label: 'Write-up' },
+    { value: 'tutor', label: 'Tutor' },
+    { value: 'review', label: 'Review code' },
+];
 
 function Section({ title, icon: Icon, children }) {
     return (
@@ -41,11 +49,19 @@ export default function ProblemDetail({ id, onClose, onToggle }) {
     const [hints, setHints] = useState(0);
     const [showSolution, setShowSolution] = useState(false);
     const [generating, setGenerating] = useState(false);
+    const [tab, setTab] = useState('writeup');
+    const [visited, setVisited] = useState({ writeup: true });
     const toast = useToast();
+
+    // Reset per-problem state while rendering (React's "adjust state on prop change" pattern)
+    const [shownId, setShownId] = useState(id);
+    if (shownId !== id) {
+        setShownId(id);
+        setLog(null); setError(null); setHints(0); setShowSolution(false); setTab('writeup'); setVisited({ writeup: true });
+    }
 
     useEffect(() => {
         if (!id) return;
-        setLog(null); setError(null); setHints(0); setShowSolution(false);
         api(`/logs/${id}`).then((r) => setLog(r.data)).catch((e) => setError(e.message));
     }, [id]);
 
@@ -103,7 +119,17 @@ export default function ProblemDetail({ id, onClose, onToggle }) {
                             {links.video && <a href={links.video} target="_blank" rel="noreferrer" className="btn btn-ghost"><CirclePlay className="h-4 w-4" /> Video</a>}
                         </div>
 
-                        {!w?.cpp_code && (
+                        <Segmented
+                            options={TABS}
+                            value={tab}
+                            onChange={(v) => { setTab(v); setVisited((s) => ({ ...s, [v]: true })); }}
+                            className="mt-5"
+                        />
+                        {/* Tutor/review stay mounted once opened so the chat and code survive tab switches */}
+                        {visited.tutor && <div hidden={tab !== 'tutor'}><TutorPanel key={log.id} logId={log.id} /></div>}
+                        {visited.review && <div hidden={tab !== 'review'}><CodeReview key={log.id} logId={log.id} /></div>}
+
+                        {tab === 'writeup' && !w?.cpp_code && (
                             <div className="mt-6 rounded-2xl border border-dashed border-line-strong p-5 text-center">
                                 {w?.statement && <p className="text-sm text-muted text-left mb-4 whitespace-pre-wrap">{w.statement}</p>}
                                 <p className="text-sm font-medium">No AI write-up yet</p>
@@ -114,7 +140,7 @@ export default function ProblemDetail({ id, onClose, onToggle }) {
                             </div>
                         )}
 
-                        {w?.cpp_code && (
+                        {tab === 'writeup' && w?.cpp_code && (
                             <>
                                 {w.statement && (
                                     <Section title="Problem">

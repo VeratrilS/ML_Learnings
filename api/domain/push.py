@@ -222,7 +222,7 @@ def send(sub, payload, db=None, kind=None):
 def _broadcast(db, subs, payload, kind):
     counts = {"ok": 0, "gone": 0, "error": 0}
     for sub in subs:
-        counts[send(sub, dict(payload), db=db, kind=kind)] += 1
+        counts[send(sub, {**payload, "kind": kind}, db=db, kind=kind)] += 1
     return counts
 
 
@@ -239,7 +239,7 @@ def _pending_todos(db, today):
 
 def _due_reviews(repo):
     try:
-        return len(repo.get_due_reviews(limit=0))
+        return repo.count_due_reviews()
     except Exception as e:
         print(f"push: review count skipped: {e}")
         repo.db.rollback()

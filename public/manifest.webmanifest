@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "Daily — Productivity",
   "short_name": "Daily",
   "description": "DSA problems, Codeforces sets, focus timer, PDF study notes and your daily episode.",
@@ -7,14 +8,21 @@
   "display": "standalone",
   "background_color": "#08080a",
   "theme_color": "#08080a",
+  "launch_handler": { "client_mode": "focus-existing" },
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  },
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "DSA Problems", "url": "/#/problems" },
-    { "name": "Codeforces", "url": "/#/cf" },
-    { "name": "PDF Studio", "url": "/#/pdf" }
+    { "name": "Add task", "short_name": "Add", "url": "/#/today?capture=1", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Start focus", "short_name": "Focus", "url": "/#/today?focus=1", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "DSA Problems", "short_name": "DSA", "url": "/#/problems", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "End-sem", "short_name": "End-sem", "url": "/#/endsem", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }

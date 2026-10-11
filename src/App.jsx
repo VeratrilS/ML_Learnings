@@ -1,8 +1,9 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
     Sun, Moon, Code2, Swords, FileText, Settings as SettingsIcon, House, Flame, GraduationCap, Search, RotateCcw,
-    MonitorPlay, ChartLine, Ellipsis, ChevronRight,
+    MonitorPlay, Ellipsis, ChevronRight, FlaskConical,
 } from 'lucide-react';
+import { FEATURES, useFeatures } from './lib/features';
 import { useTheme } from './themes/ThemeContext';
 import { useApi, useHashRoute, navigate } from './lib/hooks';
 import { cx, Sheet, Spinner } from './components/ui';
@@ -16,7 +17,7 @@ const Study = lazy(() => import('./pages/Study'));
 const PdfStudio = lazy(() => import('./pages/PdfStudio'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Learn = lazy(() => import('./pages/Learn'));
-const Insights = lazy(() => import('./pages/Insights'));
+const Lab = lazy(() => import('./pages/Lab'));
 
 // `tab`: shown in the mobile bottom bar; everything else lives under "More" on mobile.
 const NAV = [
@@ -26,11 +27,10 @@ const NAV = [
     { id: 'learn', label: 'Learn', icon: MonitorPlay, tab: true },
     { id: 'cf', label: 'Codeforces', short: 'CF', icon: Swords },
     { id: 'pdf', label: 'PDF Studio', short: 'PDF', icon: FileText },
-    { id: 'insights', label: 'Insights', icon: ChartLine },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
-const TABS = NAV.filter((n) => n.tab);
-const MORE = NAV.filter((n) => !n.tab);
+const LAB = { id: 'lab', label: 'Beta Lab', icon: FlaskConical };
+const FEATURE_PAGES = FEATURES.filter((f) => f.page);
 
 const openPalette = () => window.dispatchEvent(new CustomEvent('open-command-palette'));
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -90,7 +90,14 @@ function StreakPill({ streak }) {
 
 export default function App() {
     const [page, ...rest] = useHashRoute();
-    const current = NAV.some((n) => n.id === page) ? page : 'today';
+    const features = useFeatures();
+    // Approved features join the nav (before Settings); beta ones stay reachable from the Beta Lab.
+    const approvedPages = FEATURE_PAGES.filter((f) => features.isOn(f.id));
+    const NAV_ALL = [...NAV.slice(0, -1), ...approvedPages, LAB, NAV[NAV.length - 1]];
+    const TABS = NAV_ALL.filter((n) => n.tab);
+    const MORE = NAV_ALL.filter((n) => !n.tab);
+    const featurePage = FEATURE_PAGES.find((f) => f.id === page);
+    const current = NAV.some((n) => n.id === page) || page === 'lab' || featurePage ? page : 'today';
     const stats = useApi('/stats', { deps: [current] });
     const streak = stats.data?.streak;
     // XP refetches when solve counts change and on navigation; Today also reloads it after plan/journal changes.
@@ -106,29 +113,32 @@ export default function App() {
         const onKey = (e) => {
             if (e.metaKey || e.ctrlKey || e.altKey || /input|textarea|select/i.test(e.target.tagName) || e.target.isContentEditable) return;
             const idx = Number(e.key) - 1;
-            if (idx >= 0 && idx < NAV.length) navigate(NAV[idx].id);
+            if (idx >= 0 && idx < NAV_ALL.length) navigate(NAV_ALL[idx].id);
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, []);
+    }, [NAV_ALL.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => { window.scrollTo({ top: 0 }); }, [current]);
 
     return (
         <div className="min-h-dvh">
             <CommandPalette />
-            <RankUpOverlay data={xp.data} />
+            {features.isOn('ranks') && <RankUpOverlay data={xp.data} />}
+            <Suspense fallback={null}>
+                {FEATURES.filter((f) => f.global && features.isOn(f.id)).map((f) => <f.global key={f.id} />)}
+            </Suspense>
 
             {/* Desktop sidebar */}
             <aside className="hidden lg:flex fixed inset-y-0 left-0 w-60 flex-col border-r border-line bg-surface/60 backdrop-blur-xl px-3 py-5 z-40">
-                <div className="px-2 mb-5"><Logo rank={xp.data?.rank} /></div>
+                <div className="px-2 mb-5"><Logo rank={features.isOn('ranks') ? xp.data?.rank : null} /></div>
                 <button onClick={openPalette} className="mx-1 mb-5 flex items-center gap-2 h-9 px-3 rounded-xl border border-line bg-surface-2/70 text-sm text-subtle hover:text-fg hover:border-line-strong transition-colors">
                     <Search className="h-4 w-4" />
                     <span className="flex-1 text-left truncate">Search…</span>
                     <kbd className="text-[10.5px] font-mono border border-line rounded px-1.5 py-0.5 bg-surface">{isMac ? '⌘' : 'Ctrl'} K</kbd>
                 </button>
                 <nav className="flex flex-col gap-0.5">
-                    {NAV.map((n, i) => (
+                    {NAV_ALL.map((n, i) => (
                         <a
                             key={n.id}
                             href={`#/${n.id}`}
@@ -144,7 +154,7 @@ export default function App() {
                     ))}
                 </nav>
                 <div className="mt-auto space-y-2.5 px-1">
-                    <RankBadge data={xp.data} />
+                    {features.isOn('ranks') && <RankBadge data={xp.data} />}
                     <div className="flex items-center justify-between">
                         <StreakPill streak={streak} />
                         <ThemeButton />
@@ -155,7 +165,7 @@ export default function App() {
             {/* Mobile top bar */}
             <header className="lg:hidden sticky top-0 z-40 border-b border-line bg-bg/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
                 <div className="flex items-center justify-between h-14 px-4">
-                    <Logo rank={xp.data?.rank} />
+                    <Logo rank={features.isOn('ranks') ? xp.data?.rank : null} />
                     <div className="flex items-center gap-0.5">
                         <StreakPill streak={streak} />
                         <button onClick={openPalette} className="btn btn-ghost btn-icon" aria-label="Search"><Search className="h-[18px] w-[18px]" /></button>
@@ -175,7 +185,19 @@ export default function App() {
                             {current === 'cf' && <Codeforces />}
                             {current === 'pdf' && <PdfStudio />}
                             {current === 'learn' && <Learn />}
-                            {current === 'insights' && <Insights />}
+                            {current === 'lab' && <Lab />}
+                            {featurePage && current === featurePage.id && (
+                                <>
+                                    {!features.isOn(featurePage.id) && (
+                                        <div className="mb-4 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent-soft px-3 py-2 text-[13px]">
+                                            <FlaskConical className="h-4 w-4 text-accent shrink-0" />
+                                            <span className="flex-1"><b className="text-accent">Beta</b>: try it out, then approve it in the Beta Lab.</span>
+                                            <button className="btn btn-primary btn-sm" onClick={() => features.setStatus(featurePage.id, 'approved')}>Approve</button>
+                                        </div>
+                                    )}
+                                    <featurePage.page />
+                                </>
+                            )}
                             {current === 'settings' && <Settings />}
                         </Suspense>
                     </ErrorBoundary>

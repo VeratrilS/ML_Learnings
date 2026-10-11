@@ -105,7 +105,8 @@ def _load_problem(log_id):
             except ValueError:
                 writeup = {"statement": log.content}  # legacy rows stored the question text only
         return {"title": log.title, "difficulty": log.difficulty or "", "topic": log.topic or "",
-                "slug": log.slug or "", "writeup": writeup}, None
+                "slug": log.slug or "", "link": log.link or "", "task_type": log.task_type,
+                "writeup": writeup}, None
     finally:
         db.close()
 
@@ -120,10 +121,13 @@ def problem_context(problem, include_code=False):
     """Plain-text brief of the problem for prompts. Reference code is redacted unless include_code."""
     w = problem.get("writeup") or {}
     lines = [f"Problem: {problem['title']}"
-             + (f" (LeetCode, {problem['difficulty']})" if problem.get("difficulty") else "")
+             + (f" ({'Codeforces' if problem.get('task_type') == 'codeforces' else 'LeetCode'}, {problem['difficulty']})"
+                if problem.get("difficulty") else "")
              + (f" — topic: {problem['topic']}" if problem.get("topic") else "")]
-    if problem.get("slug"):
-        lines.append(f"Link: https://leetcode.com/problems/{problem['slug']}/")
+    link = problem.get("link") or (f"https://leetcode.com/problems/{problem['slug']}/"
+                                   if problem.get("slug") and problem.get("task_type") != "codeforces" else "")
+    if link:
+        lines.append(f"Link: {link}")
     if w.get("statement"):
         lines.append(f"\nStatement:\n{w['statement']}")
     if w.get("pattern"):
@@ -219,7 +223,7 @@ def chat(log_id):
                     continue
                 buf += delta
                 # Hold back an unfinished fence so we never leak half a code block
-                if buf.count("```") % 2 == 1:
+                if buf.count("```") % 2 == 1 or buf.endswith("`"):
                     continue
                 clean = _strip_code_fences(buf)
                 if len(clean) > sent:
