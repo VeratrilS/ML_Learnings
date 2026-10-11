@@ -17,6 +17,13 @@ def client():
 @pytest.fixture(autouse=True)
 def clean_db():
     """Clean up test data between tests to prevent cross-contamination."""
+    db = SessionLocal()
+    repo = NotificationRepository(db)
+    # Disable quiet hours / pause so cron behaviour doesn't depend on the time of day
+    repo.set_setting("quiet_start", "0")
+    repo.set_setting("quiet_end", "0")
+    repo.set_setting("leetcode_paused", "0")
+    db.close()
     yield
     db = SessionLocal()
     try:
@@ -106,3 +113,37 @@ def test_settings_endpoint(client):
     assert response.status_code == 200
     data = response.get_json()
     assert data["leetcode_interval_minutes"] == "30"
+
+def test_cron_skips_when_paused(client):
+    db = SessionLocal()
+    NotificationRepository(db).set_setting("leetcode_paused", "1")
+    db.close()
+    data = client.post('/api/cron').get_json()
+    assert data["status"] == "skipped" and "Paused" in data["message"]
+
+
+def test_quiet_hours_window():
+    from api.app import _in_quiet_hours
+    assert _in_quiet_hours(23, 7, 23) and _in_quiet_hours(23, 7, 3)
+    assert not _in_quiet_hours(23, 7, 7) and not _in_quiet_hours(23, 7, 12)
+    assert _in_quiet_hours(1, 5, 2) and not _in_quiet_hours(1, 5, 5)
+    assert not _in_quiet_hours(0, 0, 0)
+
+
+def test_watch_tracker_flow(client):
+    series = client.get('/api/watch').get_json()["data"]
+    ippo = series[0]
+    assert "Ippo" in ippo["title"] and ippo["next_episode"] == 2
+    assert ippo["next_url"].endswith("/ep-2")
+
+    marked = client.post(f'/api/watch/{ippo["id"]}/watched').get_json()["data"]
+    assert marked["next_episode"] == 3 and marked["watched_today"] == [2]
+    assert marked["next_url"].endswith("/ep-3")
+
+    undone = client.delete(f'/api/watch/{ippo["id"]}/watched').get_json()["data"]
+    assert undone["next_episode"] == 2 and undone["watched_today"] == []
+
+
+def test_watch_rejects_template_without_placeholder(client):
+    res = client.post('/api/watch', json={"title": "X", "url_template": "https://x.com/ep-1"})
+    assert res.status_code == 400

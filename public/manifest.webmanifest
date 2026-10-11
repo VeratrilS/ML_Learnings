@@ -1,0 +1,20 @@
+{
+  "name": "Daily — Productivity",
+  "short_name": "Daily",
+  "description": "DSA problems, Codeforces sets, focus timer, PDF study notes and your daily episode.",
+  "start_url": "/#/today",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#08080a",
+  "theme_color": "#08080a",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "DSA Problems", "url": "/#/problems" },
+    { "name": "Codeforces", "url": "/#/cf" },
+    { "name": "PDF Studio", "url": "/#/pdf" }
+  ]
+}

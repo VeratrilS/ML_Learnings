@@ -1,31 +1,31 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { LightThemeFactory, DarkThemeFactory } from './ThemeFactory';
+import { createContext, useContext, useEffect, useState } from 'react';
 
-const ThemeContext = createContext();
+const ThemeContext = createContext({ isDark: true, toggleTheme: () => {} });
 
-export const useTheme = () => {
-    return useContext(ThemeContext);
+export const useTheme = () => useContext(ThemeContext);
+
+const initial = () => {
+    try {
+        const saved = localStorage.getItem('theme');
+        if (saved) return saved === 'dark';
+    } catch { /* storage unavailable */ }
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
 };
 
 export const ThemeProvider = ({ children }) => {
-    const [isDark, setIsDark] = useState(true);
+    const [isDark, setIsDark] = useState(initial);
 
     useEffect(() => {
-        // Automatically sync body class
-        if (isDark) {
-            document.body.className = "bg-slate-950 text-slate-100";
-        } else {
-            document.body.className = "bg-slate-50 text-slate-900";
-        }
+        const theme = isDark ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDark ? '#08080a' : '#f6f6f7');
+        try { localStorage.setItem('theme', theme); } catch { /* storage unavailable */ }
     }, [isDark]);
 
-    const toggleTheme = () => setIsDark(!isDark);
-
-    // The core of Abstract Factory: We provide the FACTORY, not just a string.
-    const factory = isDark ? new DarkThemeFactory() : new LightThemeFactory();
+    const toggleTheme = () => setIsDark((d) => !d);
 
     return (
-        <ThemeContext.Provider value={{ factory, isDark, toggleTheme }}>
+        <ThemeContext.Provider value={{ isDark, toggleTheme }}>
             {children}
         </ThemeContext.Provider>
     );

@@ -2,14 +2,21 @@
 OOP CONCEPTS: Abstraction, Inheritance, Polymorphism
 SYSTEM DESIGN: Strategy Pattern & Dependency Injection
 """
-from abc import ABC, abstractmethod
+import html
+import json
 import random
+from abc import ABC, abstractmethod
+from urllib.parse import quote_plus
+
 from api.core.clients import LLMClient, EmailClient
-from api.domain.repositories import NotificationRepository
+from api.core.config import APP_URL
+from api.domain.repositories import NotificationRepository, normalize_title
+from api.domain.problem_bank import PROBLEMS
+
 
 class BaseNotifier(ABC):
     """
-    ABSTRACTION: This is an Abstract Base Class (ABC). 
+    ABSTRACTION: This is an Abstract Base Class (ABC).
     We cannot instantiate BaseNotifier directly. It forces child classes to implement `run()`.
     """
     def __init__(self, llm_client: LLMClient, email_client: EmailClient, repo: NotificationRepository, receiver_email: str):
@@ -25,6 +32,7 @@ class BaseNotifier(ABC):
         """
         pass
 
+
 # INHERITANCE: IncidentNotifier inherits from BaseNotifier
 class IncidentNotifier(BaseNotifier):
     CATEGORIES = {
@@ -37,14 +45,14 @@ class IncidentNotifier(BaseNotifier):
         # 1. Generate content specific to Incidents
         category = random.choice(list(self.CATEGORIES.keys()))
         incident_type = random.choice(self.CATEGORIES[category])
-        
+
         prompt = f"""
         Generate a highly realistic fictional incident report for a sampling dataset.
         Category: '{category}', Type: '{incident_type}'.
         Provide a JSON response with keys: "title" and "description".
         """
         try:
-            data = self.llm.generate_json(prompt)
+            data = self.llm.generate_json(prompt, temperature=0.9)
             title = data.get("title", f"{incident_type} Incident")
             desc = data.get("description", "No description provided.")
         except Exception:
@@ -57,105 +65,191 @@ class IncidentNotifier(BaseNotifier):
 
         # 3. Send Email
         success = self.email.send_email(self.receiver_email, subject, body)
-        
+
         # 4. Log to Database via Repository Pattern
         status = "success" if success else "failed"
         self.repo.log_notification(task_type="incident", title=title, content=desc, status=status)
 
         return {"status": status, "title": title, "category": category, "type": incident_type}
 
+
+DIFFICULTY_PREFS = {
+    "mixed": ["Easy", "Medium", "Hard"],
+    "easy": ["Easy"],
+    "easy-medium": ["Easy", "Medium"],
+    "medium": ["Medium"],
+    "medium-hard": ["Medium", "Hard"],
+    "hard": ["Hard"],
+}
+
+WRITEUP_SYSTEM = (
+    "You are an elite competitive programmer and DSA mentor (Striver / takeUforward style). "
+    "You write precise, correct, interview-ready explanations. Never use LaTeX; write complexities like O(n log n)."
+)
+
+
+def generate_writeup(llm: LLMClient, title: str, slug: str, difficulty: str) -> dict:
+    """Asks the LLM for a structured write-up of ONE specific, already-chosen problem."""
+    prompt = f"""Write a complete study write-up for LeetCode problem "{title}" (https://leetcode.com/problems/{slug}/, {difficulty}).
+
+Return a JSON object with exactly these keys:
+- "statement": concise problem statement (3-6 sentences) including one small example with input/output.
+- "pattern": the core technique in a few words (e.g. "Monotonic stack", "Binary search on answer").
+- "hints": array of 3 progressive hints, from a gentle nudge to almost the idea. Do not give away the code.
+- "brute_force": 1-3 sentences on the naive approach and its complexity.
+- "intuition": a paragraph on the key insight that leads to the optimal solution.
+- "approach": array of clear step-by-step strings for the optimal algorithm.
+- "time_complexity": e.g. "O(n)".
+- "space_complexity": e.g. "O(1)".
+- "edge_cases": array of edge cases to watch for.
+- "cpp_code": complete, compilable, optimal C++ solution in LeetCode's class Solution format with brief comments.
+- "related": array of 2-3 related LeetCode problem titles to practice next."""
+    data = llm.generate_json(prompt, temperature=0.4, system=WRITEUP_SYSTEM)
+    for key in ("hints", "approach", "edge_cases", "related"):
+        if isinstance(data.get(key), str):
+            data[key] = [data[key]]
+    return data
+
+
+def problem_links(slug: str, title: str) -> dict:
+    return {
+        "leetcode": f"https://leetcode.com/problems/{slug}/",
+        "editorial": f"https://leetcode.com/problems/{slug}/editorial/",
+        "video": f"https://www.youtube.com/results?search_query={quote_plus('take u forward ' + title)}",
+    }
+
+
 # POLYMORPHISM: LeetcodeNotifier provides a completely different implementation of `run()`
 class LeetcodeNotifier(BaseNotifier):
-    def _generate_new_problem(self, all_sent_titles: set) -> dict:
-        """Generates a new problem dynamically using the LLM, but enforces a random topic to ensure variety and speed."""
-        # Only pass the last 20 sent problems to avoid confusing the LLM with a massive list
-        recent_sent = list(all_sent_titles)[-20:] if all_sent_titles else []
-        avoid_list = ", ".join(recent_sent) if recent_sent else "None"
-        
-        topics = [
-            "Arrays", "Binary Search", "Strings", "Linked List", "Recursion",
-            "Bit Manipulation", "Stack and Queue", "Sliding Window", "Two Pointer",
-            "Heaps", "Greedy Algorithms", "Binary Trees", "Binary Search Trees",
-            "Graphs", "Dynamic Programming", "Tries", "Maths"
-        ]
-        topic = random.choice(topics)
-        
-        prompt = f"""
-        Pick a highly requested Data Structures problem from Striver's A2Z DSA Sheet.
-        IMPORTANT: The problem MUST be from the topic '{topic}'.
-        DO NOT pick any of these recently sent problems: [{avoid_list}].
-        Provide a JSON response with keys: 
-        "title": the problem name, 
-        "difficulty": (Easy/Medium/Hard),
-        "question": brief problem statement,
-        "approach": Detailed step-by-step optimal approach and intuition,
-        "cpp_code": The optimal solution written in C++,
-        "leetcode_link": "A valid URL to this problem on LeetCode or GeeksForGeeks",
-        "striver_link": "A valid URL to this topic on takeUforward/Striver"
-        """
-        
-        data = self.llm.generate_json(prompt)
-        # We trust the LLM to follow the topic and avoid list, eliminating slow retry loops!
-        return data
+    def pick_problem(self, difficulty_pref: str = "mixed"):
+        """Deterministically picks the next never-sent problem from the curated bank.
+        Topics rotate (never the same topic twice in a row) and each topic progresses easy -> hard."""
+        sent = self.repo.get_sent_keys("leetcode")
+        allowed = DIFFICULTY_PREFS.get(difficulty_pref, DIFFICULTY_PREFS["mixed"])
+        unsent = [p for p in PROBLEMS if p[1] not in sent and normalize_title(p[0]) not in sent]
+        candidates = [p for p in unsent if p[2] in allowed] or unsent
 
-    def _generate_retry_problem(self, task_title: str) -> dict:
-        """Generates a detailed solution for a previously sent problem (spaced repetition)."""
-        prompt = f"""
-        Generate a detailed approach and C++ solution for the Data Structures and Algorithms problem: '{task_title}'.
-        Provide a JSON response with keys: 
-        "title": "{task_title}", 
-        "difficulty": (Easy/Medium/Hard),
-        "question": brief problem statement,
-        "approach": Detailed step-by-step optimal approach and intuition,
-        "cpp_code": The optimal solution written in C++,
-        "leetcode_link": "A valid URL to this problem on LeetCode or GeeksForGeeks",
-        "striver_link": "A valid URL to this topic on takeUforward/Striver"
-        """
-        return self.llm.generate_json(prompt)
+        if not candidates:
+            from api.domain.integrations import leetcode_random_unsent
+            q = leetcode_random_unsent(sent, allowed) or leetcode_random_unsent(sent)
+            if not q:
+                raise RuntimeError("No unsent problems left.")
+            return q
+
+        recent_topics = [l.topic for l in self.repo.get_recent_logs(limit=10) if l.task_type == "leetcode" and l.topic][:2]
+        topics = sorted({p[3] for p in candidates})
+        fresh_topics = [t for t in topics if t not in recent_topics] or topics
+        topic = random.choice(fresh_topics)
+        title, slug, difficulty, topic, lc_id = next(p for p in candidates if p[3] == topic)
+        return {"title": title, "slug": slug, "difficulty": difficulty, "topic": topic, "id": lc_id}
 
     def run(self) -> dict:
-        uncompleted_tasks = self.repo.get_uncompleted_leetcode_tasks()
-        all_sent_titles = self.repo.get_all_sent_titles()
-        is_retry = False
+        problem = self.pick_problem(self.repo.get_setting("leetcode_difficulty", "mixed"))
+        title, slug, difficulty, topic = problem["title"], problem["slug"], problem["difficulty"], problem["topic"]
+        links = problem_links(slug, title)
 
         try:
-            if uncompleted_tasks and random.random() < 0.5:
-                task = random.choice(uncompleted_tasks)
-                is_retry = True
-                data = self._generate_retry_problem(task.title)
-            else:
-                data = self._generate_new_problem(all_sent_titles)
-            
-            title = data.get("title", "Random DSA Problem")
-            difficulty = data.get("difficulty", "Medium")
-            question = data.get("question", "Question missing")
-            approach = data.get("approach", "Approach missing")
-            cpp_code = data.get("cpp_code", "Code missing")
-            leetcode_link = data.get("leetcode_link", "https://leetcode.com/problemset/all/")
-            striver_link = data.get("striver_link", "https://takeuforward.org/strivers-a2z-dsa-course/strivers-a2z-dsa-course-sheet-2/")
-        except Exception:
-            title = "Reverse Linked List (Fallback)"
-            difficulty = "Easy"
-            question = "Reverse a singly linked list."
-            approach = "Iterate through the list and change next pointers to previous nodes."
-            cpp_code = "class Solution {\npublic:\n    ListNode* reverseList(ListNode* head) {\n        ... \n    }\n};"
-            leetcode_link = "https://leetcode.com/problems/reverse-linked-list/"
-            striver_link = "https://takeuforward.org/data-structure/reverse-a-linked-list/"
+            writeup = generate_writeup(self.llm, title, slug, difficulty)
+        except Exception as e:
+            print(f"Write-up generation failed: {e}")
+            writeup = {}
 
-        if is_retry:
-            subject = f"Retry | LeetCode Challenge: {title} ({difficulty})"
-        else:
-            total_sent = len(all_sent_titles) + 1
-            subject = f"Question #{total_sent} | LeetCode Challenge: {title} ({difficulty})"
-            
-        body = f"🔥 Striver's Sheet Problem\n\nTitle: {title}\nDifficulty: {difficulty}\n\nLinks:\n- Practice: {leetcode_link}\n- Learn: {striver_link}\n\nQuestion:\n{question}\n\nApproach:\n{approach}\n\nC++ Code:\n{cpp_code}\n\n--- Keep Grinding!"
+        number = len(self.repo.get_all_leetcode_logs()) + 1
+        pending = self.repo.get_uncompleted_leetcode_tasks()[:3]
 
-        success = self.email.send_email(self.receiver_email, subject, body)
-        
+        subject = f"#{number} · {title} ({difficulty}) · {topic}"
+        body = _leetcode_plain(title, difficulty, topic, links, writeup, pending)
+        html_body = _leetcode_html(number, title, difficulty, topic, links, writeup, pending)
+
+        success = self.email.send_email(self.receiver_email, subject, body, html=html_body)
         status = "success" if success else "failed"
-        
-        # Only log new problems, don't duplicate logs for retries
-        if not is_retry:
-            self.repo.log_notification(task_type="leetcode", title=title, content=question, status=status)
 
-        return {"status": status, "title": title, "difficulty": difficulty}
+        log = self.repo.log_notification(
+            task_type="leetcode", title=title, content=json.dumps(writeup) if writeup else None, status=status,
+            slug=slug, difficulty=difficulty, link=links["leetcode"], topic=topic)
+
+        return {"status": status, "id": log.id, "title": title, "difficulty": difficulty, "topic": topic,
+                "link": links["leetcode"], "has_writeup": bool(writeup)}
+
+
+# ---------------- Email rendering ----------------
+_DIFF_COLORS = {"Easy": "#00a86b", "Medium": "#d97706", "Hard": "#dc2626"}
+
+
+def _leetcode_plain(title, difficulty, topic, links, w, pending):
+    parts = [f"{title}  [{difficulty}]  ·  {topic}", "", f"Solve: {links['leetcode']}", f"Editorial: {links['editorial']}", ""]
+    if w.get("statement"):
+        parts += ["PROBLEM", w["statement"], ""]
+    if w.get("hints"):
+        parts += ["HINTS"] + [f"{i}. {h}" for i, h in enumerate(w["hints"], 1)] + [""]
+    if w.get("intuition"):
+        parts += ["INTUITION", w["intuition"], ""]
+    if w.get("approach"):
+        parts += ["APPROACH"] + [f"{i}. {s}" for i, s in enumerate(w["approach"], 1)] + [""]
+    if w.get("time_complexity"):
+        parts += [f"Time: {w['time_complexity']}   Space: {w.get('space_complexity', '?')}", ""]
+    if w.get("cpp_code"):
+        parts += ["C++", w["cpp_code"], ""]
+    if not w:
+        parts += ["(AI write-up unavailable right now — open the app and tap 'Generate write-up'.)", ""]
+    if pending:
+        parts += ["STILL PENDING"] + [f"- {p.title}: {p.link or ''}" for p in pending] + [""]
+    parts.append(f"Open dashboard: {APP_URL}")
+    return "\n".join(parts)
+
+
+def _leetcode_html(number, title, difficulty, topic, links, w, pending):
+    e = html.escape
+    color = _DIFF_COLORS.get(difficulty, "#6366f1")
+
+    def section(label, inner):
+        return (f'<tr><td style="padding:18px 28px 0"><div style="font:600 11px/1 system-ui,-apple-system,Segoe UI,sans-serif;'
+                f'letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-bottom:8px">{label}</div>{inner}</td></tr>')
+
+    def para(t):
+        return f'<p style="margin:0;font:15px/1.6 system-ui,-apple-system,Segoe UI,sans-serif;color:#111827;white-space:pre-wrap">{e(t)}</p>'
+
+    def olist(items):
+        lis = "".join(f'<li style="margin:0 0 6px">{e(str(i))}</li>' for i in items)
+        return f'<ol style="margin:0;padding-left:20px;font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;color:#111827">{lis}</ol>'
+
+    def button(href, label, primary=False):
+        style = ("background:#111827;color:#fff;" if primary else "background:#f3f4f6;color:#111827;")
+        return (f'<a href="{e(href)}" style="{style}display:inline-block;padding:10px 16px;border-radius:10px;'
+                f'font:600 14px/1 system-ui,-apple-system,Segoe UI,sans-serif;text-decoration:none;margin:0 8px 8px 0">{label}</a>')
+
+    rows = [
+        f'<tr><td style="padding:28px 28px 0"><div style="font:600 12px/1 system-ui,sans-serif;color:#6b7280">DAILY DSA · #{number}</div>'
+        f'<h1 style="margin:10px 0 12px;font:700 24px/1.25 system-ui,-apple-system,Segoe UI,sans-serif;color:#111827">{e(title)}</h1>'
+        f'<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:{color}1a;color:{color};font:600 12px/1.4 system-ui,sans-serif">{e(difficulty)}</span> '
+        f'<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#eef2ff;color:#4338ca;font:600 12px/1.4 system-ui,sans-serif">{e(topic)}</span>'
+        f'{" " if w.get("pattern") else ""}'
+        + (f'<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#f3f4f6;color:#374151;font:600 12px/1.4 system-ui,sans-serif">{e(w["pattern"])}</span>' if w.get("pattern") else "")
+        + '</td></tr>',
+        f'<tr><td style="padding:18px 28px 0">{button(links["leetcode"], "Solve on LeetCode →", True)}{button(links["editorial"], "Editorial")}{button(links["video"], "Video")}</td></tr>',
+    ]
+    if w.get("statement"):
+        rows.append(section("Problem", para(w["statement"])))
+    if w.get("hints"):
+        rows.append(section("Hints — try before scrolling", olist(w["hints"])))
+    if w.get("intuition"):
+        rows.append(section("Intuition", para(w["intuition"])))
+    if w.get("approach"):
+        rows.append(section("Optimal approach", olist(w["approach"])))
+    if w.get("time_complexity"):
+        rows.append(section("Complexity", para(f"Time {w['time_complexity']}  ·  Space {w.get('space_complexity', '?')}")))
+    if w.get("edge_cases"):
+        rows.append(section("Edge cases", olist(w["edge_cases"])))
+    if w.get("cpp_code"):
+        rows.append(section("C++ solution", f'<pre style="margin:0;padding:16px;background:#0b1020;color:#e5e7eb;border-radius:12px;'
+                                             f'font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:pre">{e(w["cpp_code"])}</pre>'))
+    if not w:
+        rows.append(section("Write-up", para("AI write-up unavailable right now. Open the dashboard and tap 'Generate write-up'.")))
+    if pending:
+        items = "".join(f'<li style="margin:0 0 6px"><a href="{e(p.link or "")}" style="color:#4338ca;text-decoration:none">{e(p.title)}</a></li>' for p in pending)
+        rows.append(section(f"Still pending", f'<ul style="margin:0;padding-left:18px;font:14px/1.5 system-ui,sans-serif">{items}</ul>'))
+    rows.append(f'<tr><td style="padding:24px 28px 28px">{button(APP_URL, "Open dashboard")}</td></tr>')
+
+    return ('<!doctype html><html><body style="margin:0;background:#f5f5f7;padding:24px 12px">'
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;background:#ffffff;'
+            'border-radius:18px;border:1px solid #e5e7eb">' + "".join(rows) + '</table></body></html>')
