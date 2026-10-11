@@ -23,6 +23,7 @@ from api.domain.todos import todos_bp
 from api.domain.contests import contests_bp
 from api.domain.syllabus import syllabus_bp
 from api.domain.learning import learning_bp
+from api.domain.sheets import sheets_bp
 from api.domain.insights import insights_bp
 from api.domain.focus import focus_bp
 from api.domain.journal import journal_bp
@@ -43,7 +44,7 @@ from api.domain.tutor import tutor_bp
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
 CORS(app)
-for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, insights_bp, focus_bp, journal_bp, xp_bp, features_bp,
+for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, insights_bp, focus_bp, journal_bp, xp_bp, features_bp,
            pdf_extract_bp, mistakes_bp, placements_bp, oa_bp, interview_bp, gym_bp, brief_bp, habits_bp, capture_bp, flashcards_bp, tutor_bp):
     app.register_blueprint(bp)
 

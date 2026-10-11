@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { ExternalLink, Play, ListChecks } from 'lucide-react';
+import { Apple, ExternalLink, ListChecks, MonitorPlay, Play } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApi, useLocalStorage } from '../lib/hooks';
 import { Card, Checkbox, Empty, Segmented, Skeleton, cx, useToast } from '../components/ui';
 import LearnCard from '../components/LearnCard';
+import SheetTracker from '../components/SheetTracker';
 
 // Same optimistic update as LearnCard (kept local so each file only exports components).
 function patchLesson(data, id, done) {
@@ -82,8 +83,15 @@ function LessonRow({ lesson, isNext, onToggle }) {
     );
 }
 
+const TABS = [
+    { value: 'videos', label: <span className="inline-flex items-center gap-1.5"><MonitorPlay className="h-3.5 w-3.5" /> System Design</span> },
+    { value: 'apple', label: <span className="inline-flex items-center gap-1.5"><Apple className="h-3.5 w-3.5" /> Apple sheet</span> },
+];
+
 export default function Learn() {
-    const state = useApi('/learning');
+    const [tab, setTab] = useLocalStorage('learn:tab', 'videos');
+    const videos = tab !== 'apple';
+    const state = useApi(videos ? '/learning' : null);
     const { data, loading, setData, reload } = state;
     const [filter, setFilter] = useLocalStorage('learn:filter', 'all');
     const toast = useToast();
@@ -120,20 +128,30 @@ export default function Learn() {
                 <div className="min-w-0">
                     <h1 className="text-[28px] sm:text-3xl font-bold tracking-tight">Learn</h1>
                     <p className="text-sm text-muted mt-1">
-                        {course ? <>{course.channel} · {course.title}. </> : null}
-                        At least one video a day. More if you&apos;re on a roll.
+                        {videos ? (
+                            <>
+                                {course ? <>{course.channel} · {course.title}. </> : null}
+                                At least one video a day. More if you&apos;re on a roll.
+                            </>
+                        ) : (
+                            <>Apple&apos;s Medium + Hard LeetCode questions. At least one a day.</>
+                        )}
                     </p>
                 </div>
-                {course?.playlist_url && (
+                {videos && course?.playlist_url && (
                     <a href={course.playlist_url} target="_blank" rel="noreferrer" className="btn btn-secondary shrink-0 self-start sm:self-auto">
                         <ExternalLink className="h-4 w-4" /> Open playlist
                     </a>
                 )}
             </header>
 
-            <LearnCard state={state} hero />
+            <div className="max-w-full overflow-x-auto no-scrollbar">
+                <Segmented options={TABS} value={tab} onChange={setTab} />
+            </div>
 
-            {loading && !data ? (
+            {!videos ? <SheetTracker sheet="apple" /> : <LearnCard state={state} hero />}
+
+            {!videos ? null : loading && !data ? (
                 <Card className="divide-y divide-line">
                     {[0, 1, 2, 3, 4].map((i) => (
                         <div key={i} className="flex items-center gap-3 px-4 py-3">

@@ -33,7 +33,7 @@ function fmtLeft(sec) {
 }
 
 /** Today's count against the daily minimum. A minimum, never a cap. */
-function TodayPill({ count, min }) {
+export function TodayPill({ count, min }) {
     const met = count >= min;
     return (
         <span
