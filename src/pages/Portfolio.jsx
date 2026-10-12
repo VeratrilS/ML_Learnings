@@ -55,7 +55,7 @@ const EXPERIENCE = [
         org: 'DataAnnotation.tech',
         where: 'Remote',
         when: 'May 2026 – Present',
-        proof: { label: 'Proof of work', url: URLS.daProof },
+        proof: { label: 'Proof of work', url: URLS.daProof, ownerOnly: true }, // only shown behind the lock
         metrics: [['C++', 'LLM engine'], ['0', 'API breaks'], ['JS', 'graph evals']],
         points: [
             <>Fixed <b>XTC sampling</b> in a <b>llama.cpp</b>-based C++ LLM inference engine to preserve end-of-sequence and special tokens.</>,
@@ -681,7 +681,7 @@ function CPSection({ live }) {
     );
 }
 
-export default function Portfolio({ onUnlock }) {
+export default function Portfolio({ onUnlock, owner = false }) {
     const live = useLive();
     const taps = useRef([]);
     const progressRef = useRef(null);
@@ -876,7 +876,7 @@ export default function Portfolio({ onUnlock }) {
                                         </ul>
                                         <div className="mt-5 pt-4 border-t border-line flex flex-wrap items-center justify-between gap-3">
                                             <Tags items={x.tags} />
-                                            <Ext href={x.proof.url} className="text-sm"><BadgeCheck className="h-4 w-4" /> {x.proof.label}</Ext>
+                                            {(!x.proof.ownerOnly || owner) && <Ext href={x.proof.url} className="text-sm"><BadgeCheck className="h-4 w-4" /> {x.proof.label}</Ext>}
                                         </div>
                                     </Spot>
                                 </Reveal>

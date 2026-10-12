@@ -48,7 +48,7 @@ export default function AuthGate({ children }) {
     if (state === 'locked' || route === '#/portfolio') {
         return (
             <Suspense fallback={spinner}>
-                <Portfolio onUnlock={state === 'open' ? () => { window.location.hash = '#/today'; } : openLogin} />
+                <Portfolio owner={state === 'open'} onUnlock={state === 'open' ? () => { window.location.hash = '#/today'; } : openLogin} />
             </Suspense>
         );
     }
