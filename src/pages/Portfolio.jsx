@@ -335,7 +335,13 @@ function CountUp({ value, decimals = 0, suffix = '', className }) {
             if (p < 1) raf = requestAnimationFrame(tick);
         };
         raf = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf);
+        // rAF is paused in background tabs and throttled on slow devices: always land on the real value.
+        const done = setTimeout(() => {
+            cancelAnimationFrame(raf);
+            from.current = target;
+            setShown(target);
+        }, 1400);
+        return () => { cancelAnimationFrame(raf); clearTimeout(done); };
     }, [seen, target]);
     const fmt = (n) => n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     return (
