@@ -1076,10 +1076,11 @@ export default function Portfolio({ onUnlock, owner = false }) {
                 </section>
             </main>
 
-            <button type="button" onClick={() => scrollTo('about')} aria-label="Back to top" tabIndex={far ? 0 : -1} aria-hidden={!far}
-                className={cx('fixed right-4 z-40 bottom-[calc(1rem+env(safe-area-inset-bottom))] btn btn-secondary btn-icon h-11 w-11 rounded-full shadow-lg backdrop-blur transition-all',
-                    far ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3 pointer-events-none')}>
-                <ArrowUp className="h-4 w-4" />
+            <button type="button" aria-label="Back to top" title="Back to top" tabIndex={far ? 0 : -1} aria-hidden={!far}
+                onClick={() => window.scrollTo({ top: 0, behavior: prefersReduced() ? 'auto' : 'smooth' })}
+                className={cx('fixed right-4 sm:right-6 z-40 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] grid place-items-center h-12 w-12 rounded-full bg-accent text-accent-fg shadow-[0_10px_30px_-6px_var(--accent)] ring-4 ring-accent/15 hover:-translate-y-0.5 active:scale-95 transition-all duration-300',
+                    far ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-4 scale-90 pointer-events-none')}>
+                <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
             </button>
         </div>
     );
