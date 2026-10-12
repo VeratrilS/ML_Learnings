@@ -21,6 +21,31 @@ const POPULAR_TAGS = [
 const DEFAULT_FILTERS = { min: null, max: null, count: 5, tags: [], tagMode: 'any', email: false };
 const HISTORY_PAGE = 40;
 
+// Codeforces rank titles. Colours always come from cfColor so they match badges elsewhere.
+const CF_TIERS = [
+    { min: 0, name: 'Newbie' },
+    { min: 1200, name: 'Pupil' },
+    { min: 1400, name: 'Specialist' },
+    { min: 1600, name: 'Expert' },
+    { min: 1900, name: 'Candidate Master' },
+    { min: 2100, name: 'Master' },
+    { min: 2300, name: 'International Master' },
+    { min: 2400, name: 'Grandmaster' },
+    { min: 2600, name: 'International Grandmaster' },
+    { min: 3000, name: 'Legendary Grandmaster' },
+];
+// Colour bands of cfColor, used for the range preview strip (problem ratings 800–3500, +100 so the top bucket has width).
+const BANDS = [800, 1200, 1400, 1600, 1900, 2100, 2400, MAX_R + 100];
+const BAND_SPAN = MAX_R + 100 - MIN_R;
+const pctOf = (r) => ((Math.max(MIN_R, Math.min(MAX_R + 100, r)) - MIN_R) / BAND_SPAN) * 100;
+
+function tierOf(rating) {
+    const r = Number(rating) || 0;
+    let i = 0;
+    while (i + 1 < CF_TIERS.length && r >= CF_TIERS[i + 1].min) i += 1;
+    return { tier: CF_TIERS[i], next: CF_TIERS[i + 1] || null };
+}
+
 const clamp = (r) => Math.max(MIN_R, Math.min(MAX_R, r));
 const titleCase = (s) => (s || '').replace(/\b\w/g, (c) => c.toUpperCase());
 const splitTags = (topic) => (topic ? topic.split(',').map((t) => t.trim()).filter(Boolean) : []);
@@ -129,16 +154,27 @@ export default function Codeforces() {
                         <Swords className="h-6 w-6 text-accent shrink-0" aria-hidden />
                         Codeforces
                     </h1>
-                    <p className="text-sm text-subtle mt-0.5">Five fresh problems, tuned to your rating.</p>
+                    <p className="text-sm text-subtle mt-0.5">Fresh, unseen problems tuned to your rating.</p>
                 </div>
                 {hasHandle && (
-                    <Button icon={RefreshCw} size="sm" onClick={sync} loading={syncing}>
-                        Sync solved
+                    <Button
+                        icon={RefreshCw}
+                        size="sm"
+                        onClick={sync}
+                        loading={syncing}
+                        title="Mark problems you've solved on Codeforces as done"
+                    >
+                        {syncing ? 'Syncing…' : 'Sync solved'}
                     </Button>
                 )}
             </header>
 
-            <ProfileStrip loading={meta.loading && !meta.data} user={user} error={meta.error} />
+            <ProfileStrip
+                loading={meta.loading && !meta.data}
+                user={user}
+                error={meta.error}
+                range={meta.data ? [meta.data.suggested_min, meta.data.suggested_max] : null}
+            />
 
             <Generator
                 meta={meta.data}
