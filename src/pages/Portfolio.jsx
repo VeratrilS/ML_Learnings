@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-    ArrowRight, ArrowUp, ArrowUpRight, Award, BadgeCheck, Boxes, BookOpen, Briefcase, Check, Code2, Copy, Cpu, Database,
+    Lock,    ArrowRight, ArrowUp, ArrowUpRight, Award, BadgeCheck, Boxes, BookOpen, Briefcase, Check, Code2, Copy, Cpu, Database,
     FolderGit2, GitFork, GraduationCap, LayoutDashboard, Mail, MapPin, Moon, Radio, Server, Sparkles, Star, Sun, Terminal,
     Train, Trophy, Users,
 } from 'lucide-react';
 import { cx } from '../components/ui';
+import { getToken } from '../lib/api';
 import { useTheme } from '../themes/ThemeContext';
 
 /*
@@ -24,7 +25,6 @@ const URLS = {
     codeforces: 'https://codeforces.com/profile/Raghavan_CP',
     codechef: 'https://www.codechef.com/users/sairaghava1318',
     msilCert: 'https://drive.google.com/file/d/1SI_AFaqTetcKILkznr3fn2OW1-HCVuns/view?usp=sharing',
-    daProof: 'https://drive.google.com/file/d/1a4eKYbDAV47isPna7iFTe--GVPPcWMwT/view?usp=sharing',
 };
 
 const LINKS = [
@@ -55,7 +55,7 @@ const EXPERIENCE = [
         org: 'DataAnnotation.tech',
         where: 'Remote',
         when: 'May 2026 – Present',
-        proof: { label: 'Proof of work', url: URLS.daProof, ownerOnly: true }, // only shown behind the lock
+        proof: { label: 'Proof of work', locked: 'proof' }, // URL lives on the server, behind the passcode
         metrics: [['C++', 'LLM engine'], ['0', 'API breaks'], ['JS', 'graph evals']],
         points: [
             <>Fixed <b>XTC sampling</b> in a <b>llama.cpp</b>-based C++ LLM inference engine to preserve end-of-sequence and special tokens.</>,
@@ -681,6 +681,57 @@ function CPSection({ live }) {
     );
 }
 
+/** A link whose URL is fetched from the server only after the owner's passcode (or directly when signed in). */
+function LockedLink({ label, linkKey, owner }) {
+    const [open, setOpen] = useState(false);
+    const [code, setCode] = useState('');
+    const [err, setErr] = useState('');
+    const [busy, setBusy] = useState(false);
+
+    const go = async (e) => {
+        e?.preventDefault();
+        setErr('');
+        setBusy(true);
+        const win = window.open('', '_blank'); // opened synchronously so popup blockers allow it
+        try {
+            let token = getToken();
+            if (!owner) {
+                const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passcode: code }) });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok || d.status === 'error') throw new Error('Wrong passcode');
+                token = d.token; // used for this request only; this device is not signed in
+            }
+            const r = await fetch(`/api/private/link/${linkKey}`, { headers: { 'X-App-Key': token } });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.url) throw new Error(r.status === 401 ? 'Wrong passcode' : 'Link unavailable');
+            if (win) win.location.href = d.url; else window.location.href = d.url;
+            setOpen(false);
+            setCode('');
+        } catch (ex) {
+            win?.close();
+            setErr(ex.message || 'Something went wrong');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    if (owner) {
+        return <button type="button" onClick={go} disabled={busy} className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline underline-offset-4"><BadgeCheck className="h-4 w-4" /> {label} <ArrowUpRight className="h-3.5 w-3.5" /></button>;
+    }
+    if (!open) {
+        return <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-accent"><Lock className="h-3.5 w-3.5" /> {label}</button>;
+    }
+    return (
+        <form onSubmit={go} className="flex items-center gap-2">
+            <input type="password" autoFocus value={code} onChange={(e) => setCode(e.target.value)} placeholder="Passcode" aria-label={`Passcode for ${label}`}
+                className="input h-8 w-32 text-sm" />
+            <button type="submit" disabled={busy || !code} className="btn btn-primary btn-sm">{busy ? '…' : 'Open'}</button>
+            <button type="button" onClick={() => { setOpen(false); setErr(''); }} className="btn btn-ghost btn-sm" aria-label="Cancel">✕</button>
+            {err && <span role="alert" className="text-xs text-danger">{err}</span>}
+        </form>
+    );
+}
+
 export default function Portfolio({ onUnlock, owner = false }) {
     const live = useLive();
     const taps = useRef([]);
@@ -876,7 +927,9 @@ export default function Portfolio({ onUnlock, owner = false }) {
                                         </ul>
                                         <div className="mt-5 pt-4 border-t border-line flex flex-wrap items-center justify-between gap-3">
                                             <Tags items={x.tags} />
-                                            {(!x.proof.ownerOnly || owner) && <Ext href={x.proof.url} className="text-sm"><BadgeCheck className="h-4 w-4" /> {x.proof.label}</Ext>}
+                                            {x.proof.locked
+                                                ? <LockedLink label={x.proof.label} linkKey={x.proof.locked} owner={owner} />
+                                                : <Ext href={x.proof.url} className="text-sm"><BadgeCheck className="h-4 w-4" /> {x.proof.label}</Ext>}
                                         </div>
                                     </Spot>
                                 </Reveal>

@@ -78,6 +78,21 @@ def _require_passcode():
         return jsonify({"status": "error", "message": "Locked. Enter your passcode.", "auth_required": True}), 401
 
 
+# Links the public portfolio shows only after the passcode (kept out of the public JS bundle).
+PRIVATE_LINKS = {
+    "proof": os.getenv("PROOF_OF_WORK_URL", "https://drive.google.com/file/d/1a4eKYbDAV47isPna7iFTe--GVPPcWMwT/view?usp=sharing"),
+}
+
+
+@app.route('/api/private/link/<key>', methods=['GET'])
+def private_link(key):
+    """Passcode-protected by the before_request check (not in _OPEN_ENDPOINTS)."""
+    url = PRIVATE_LINKS.get(key)
+    if not url:
+        return jsonify({"status": "error", "message": "Not found"}), 404
+    return jsonify({"status": "success", "url": url})
+
+
 @app.route('/api/auth/status', methods=['GET'])
 def auth_status():
     return jsonify({"status": "success", "required": _auth_token() is not None, "ok": _authorized()})
