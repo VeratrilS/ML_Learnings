@@ -41,19 +41,23 @@ from api.domain.habits import habits_bp
 from api.domain.capture import capture_bp
 from api.domain.flashcards import flashcards_bp
 from api.domain.tutor import tutor_bp
+from api.domain.public_stats import public_stats_bp
 
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
 CORS(app)
 for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, weekly_bp, insights_bp, focus_bp, journal_bp, xp_bp, features_bp,
-           pdf_extract_bp, mistakes_bp, placements_bp, oa_bp, interview_bp, gym_bp, brief_bp, habits_bp, capture_bp, flashcards_bp, tutor_bp):
+           pdf_extract_bp, mistakes_bp, placements_bp, oa_bp, interview_bp, gym_bp, brief_bp, habits_bp, capture_bp, flashcards_bp, tutor_bp,
+           public_stats_bp):
     app.register_blueprint(bp)
 
 # ---------------- Passcode login ----------------
 # When APP_PASSCODE is set, every API call needs X-App-Key = sha256("daily:" + passcode).
 # Scheduler endpoints stay open: each is throttled server-side, so they can't be used to spam.
+# /api/public/stats feeds the public portfolio page; it is cached server-side for 6h, so it can't be used to spam either.
 _OPEN_ENDPOINTS = {"/api/health", "/api/auth/status", "/api/auth/login",
-                   "/api/cron", "/api/digest", "/api/syllabus/remind", "/api/weekly/cron"}
+                   "/api/cron", "/api/digest", "/api/syllabus/remind", "/api/weekly/cron",
+                   "/api/public/stats"}
 
 
 def _auth_token():

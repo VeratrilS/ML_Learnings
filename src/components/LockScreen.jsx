@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Flame, Lock, ArrowRight } from 'lucide-react';
+import { Flame, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { api, setToken } from '../lib/api';
 import { Spinner, cx } from './ui';
 
-export default function LockScreen({ onUnlock }) {
+export default function LockScreen({ onUnlock, onBack }) {
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
@@ -60,6 +60,9 @@ export default function LockScreen({ onUnlock }) {
                     {busy ? <Spinner /> : <>Unlock <ArrowRight className="h-4 w-4" /></>}
                 </button>
                 <p className="mt-4 text-xs text-subtle">Remembered on this device until you lock it.</p>
+                {onBack && (
+                    <button type="button" onClick={onBack} className="btn btn-ghost btn-sm mt-3 mx-auto"><ArrowLeft className="h-4 w-4" /> Back</button>
+                )}
             </form>
         </div>
     );
