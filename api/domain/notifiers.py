@@ -73,6 +73,9 @@ class IncidentNotifier(BaseNotifier):
         return {"status": status, "title": title, "category": category, "type": incident_type}
 
 
+# Relative odds of each difficulty when several are allowed: Medium and Hard come up more often than Easy.
+DIFFICULTY_WEIGHTS = {"Easy": 1, "Medium": 3, "Hard": 2}
+
 DIFFICULTY_PREFS = {
     "mixed": ["Easy", "Medium", "Hard"],
     "easy": ["Easy"],
@@ -143,25 +146,41 @@ def problem_links(slug: str, title: str) -> dict:
 # POLYMORPHISM: LeetcodeNotifier provides a completely different implementation of `run()`
 class LeetcodeNotifier(BaseNotifier):
     def pick_problem(self, difficulty_pref: str = "mixed", skip: set = frozenset()):
-        """Deterministically picks the next never-sent problem from the curated bank.
-        Topics rotate (never the same topic twice in a row) and each topic progresses easy -> hard."""
+        """Picks the next never-sent problem from the Striver A2Z bank only (never from outside it).
+        Difficulty is weighted toward Medium/Hard (DIFFICULTY_WEIGHTS); topics rotate (never the same topic twice
+        in a row) and within a topic the A2Z order is kept. Once every problem was sent, unsolved ones come back."""
         sent = self.repo.get_sent_keys("leetcode") | set(skip)  # skip = already solved on LeetCode
         allowed = DIFFICULTY_PREFS.get(difficulty_pref, DIFFICULTY_PREFS["mixed"])
         unsent = [p for p in PROBLEMS if p[1] not in sent and normalize_title(p[0]) not in sent]
         candidates = [p for p in unsent if p[2] in allowed] or unsent
 
         if not candidates:
-            from api.domain.integrations import leetcode_random_unsent
-            q = leetcode_random_unsent(sent, allowed) or leetcode_random_unsent(sent)
-            if not q:
-                raise RuntimeError("No unsent problems left.")
-            return q
+            return self._resend_unsolved(allowed, skip)
+
+        by_difficulty = {}
+        for p in candidates:
+            by_difficulty.setdefault(p[2], []).append(p)
+        levels = sorted(by_difficulty)
+        difficulty = random.choices(levels, weights=[DIFFICULTY_WEIGHTS.get(d, 1) for d in levels])[0]
+        pool = by_difficulty[difficulty]
 
         recent_topics = [l.topic for l in self.repo.get_recent_logs(limit=10) if l.task_type == "leetcode" and l.topic][:2]
-        topics = sorted({p[3] for p in candidates})
+        topics = sorted({p[3] for p in pool})
         fresh_topics = [t for t in topics if t not in recent_topics] or topics
         topic = random.choice(fresh_topics)
-        title, slug, difficulty, topic, lc_id = next(p for p in candidates if p[3] == topic)
+        title, slug, difficulty, topic, lc_id = next(p for p in pool if p[3] == topic)
+        return {"title": title, "slug": slug, "difficulty": difficulty, "topic": topic, "id": lc_id}
+
+    def _resend_unsolved(self, allowed, skip=frozenset()):
+        """Bank exhausted: bring back the oldest sent-but-unsolved A2Z problem instead of leaving the sheet."""
+        bank = {p[1]: p for p in PROBLEMS}
+        logs = self.repo.get_logs("leetcode")  # newest first
+        solved = set(skip) | {l.slug for l in logs if l.is_completed}
+        unsolved = [bank[l.slug] for l in reversed(logs) if l.slug in bank and l.slug not in solved]
+        pick = next((p for p in unsolved if p[2] in allowed), None) or (unsolved[0] if unsolved else None)
+        if not pick:
+            raise RuntimeError("Every Striver A2Z problem has been sent and solved.")
+        title, slug, difficulty, topic, lc_id = pick
         return {"title": title, "slug": slug, "difficulty": difficulty, "topic": topic, "id": lc_id}
 
     def run(self, skip: set = frozenset()) -> dict:

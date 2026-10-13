@@ -104,3 +104,19 @@ def test_hidden_rows_still_block_repeats(repo):
     repo.hide_log(log.id)
     assert "two-sum" in repo.get_sent_keys("leetcode")
     assert repo.get_logs("leetcode") == []
+
+
+def test_mixed_favours_medium_and_hard(repo):
+    from collections import Counter
+    counts = Counter(_notifier(repo).pick_problem("mixed")["difficulty"] for _ in range(600))
+    assert counts["Medium"] > counts["Easy"] and counts["Hard"] > counts["Easy"]
+    assert counts["Easy"] < 600 * 0.3  # weights 1:3:2 -> about 1 in 6 is Easy
+
+
+def test_only_striver_problems_when_bank_exhausted(repo, monkeypatch):
+    import api.domain.integrations as integrations
+    monkeypatch.setattr(integrations, "leetcode_random_unsent", lambda *a, **k: pytest.fail("must not leave the A2Z bank"))
+    for title, slug, *_ in PROBLEMS:
+        repo.log_notification("leetcode", title, "q", slug=slug)
+    slugs = {p[1] for p in PROBLEMS}
+    assert _notifier(repo).pick_problem()["slug"] in slugs  # an unsolved A2Z problem comes back
