@@ -6,6 +6,9 @@ import { ThemeProvider } from './themes/ThemeContext.jsx'
 import { ToastProvider } from './components/ui.jsx'
 import AuthGate from './components/AuthGate.jsx'
 import { FeaturesProvider } from './lib/features.jsx'
+import { startAutoUpdate } from './lib/autoUpdate.js'
+
+startAutoUpdate()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
