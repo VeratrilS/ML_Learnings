@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import {
     GraduationCap, BookOpen, CalendarClock, Plus, ClipboardPaste, Trash2, Pencil, Mail, Flame, ChevronDown,
-    FlaskConical, ListChecks, Sparkles, Check, Target,
+    FlaskConical, ListChecks, Sparkles, Check, Target, Copy, RefreshCw, Loader2, FolderArchive, FileText,
+    Link2, BookMarked, Code2, ExternalLink, ChevronUp, FileDown,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApi, useLocalStorage } from '../lib/hooks';
+import Markdown from '../components/Markdown';
 import {
     Button, Card, Checkbox, Empty, ProgressBar, ProgressRing, Segmented, Sheet, Skeleton, useToast, cx,
 } from '../components/ui';
@@ -21,6 +23,15 @@ const tint = (hex, alpha = '1f') => (hex.startsWith('#') && hex.length === 7 ? `
 const KINDS = [{ value: 'theory', label: 'Theory' }, { value: 'lab', label: 'Lab' }, { value: 'other', label: 'Other' }];
 const CONF_LABEL = { 1: 'Shaky', 2: 'Okay', 3: 'Solid' };
 const CONF_BG = { 1: 'bg-danger', 2: 'bg-accent', 3: 'bg-ok' };
+
+const MATERIAL_CATEGORIES = [
+    { value: 'lecture_notes', label: 'Lecture Notes', icon: FileText, color: 'text-blue-500 bg-blue-500/10 border-blue-500/20' },
+    { value: 'cheatsheet', label: 'Cheatsheet', icon: Sparkles, color: 'text-amber-500 bg-amber-500/10 border-amber-500/20' },
+    { value: 'reference', label: 'Reference Link', icon: Link2, color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20' },
+    { value: 'exam_paper', label: 'Exam Paper', icon: BookMarked, color: 'text-purple-500 bg-purple-500/10 border-purple-500/20' },
+    { value: 'code', label: 'Code & Labs', icon: Code2, color: 'text-rose-500 bg-rose-500/10 border-rose-500/20' },
+    { value: 'other', label: 'Other', icon: FileDown, color: 'text-subtle bg-surface-2 border-line' },
+];
 
 const istDay = (d) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 const studiedToday = (iso) => !!iso && istDay(new Date(iso)) === istDay(new Date());
@@ -101,6 +112,43 @@ export default function Study() {
         }
     };
 
+    const onTopicGenerated = (topic, updatedTopic) => {
+        setSubjects((list) => list.map((s) => (s.id !== topic.subject_id ? s
+            : withTopics(s, (ts) => ts.map((t) => (t.id === topic.id ? { ...t, ...updatedTopic } : t))))));
+    };
+
+    const addMaterial = async (subjectId, materialData) => {
+        try {
+            const res = await api(`/syllabus/subjects/${subjectId}/materials`, { method: 'POST', body: materialData });
+            if (res?.data) {
+                setSubjects((list) => list.map((s) => {
+                    if (s.id !== subjectId) return s;
+                    const mats = [res.data, ...(s.materials || [])];
+                    return { ...s, materials: mats, materials_count: mats.length };
+                }));
+                toast(`Added material "${materialData.title}"`, 'success');
+                return true;
+            }
+        } catch (e) {
+            toast(e.message || 'Failed to add material', 'error');
+            return false;
+        }
+    };
+
+    const deleteMaterial = async (subjectId, materialId) => {
+        try {
+            await api(`/syllabus/materials/${materialId}`, { method: 'DELETE' });
+            setSubjects((list) => list.map((s) => {
+                if (s.id !== subjectId) return s;
+                const mats = (s.materials || []).filter((m) => m.id !== materialId);
+                return { ...s, materials: mats, materials_count: mats.length };
+            }));
+            toast('Material removed', 'info');
+        } catch (e) {
+            toast(e.message || 'Failed to delete material', 'error');
+        }
+    };
+
     const remind = async () => {
         setReminding(true);
         try {
@@ -144,6 +192,8 @@ export default function Study() {
                         {theory.map((s, i) => (
                             <SubjectCard key={s.id} subject={s} index={i}
                                 onUpdateTopic={updateTopic} onDeleteTopic={deleteTopic}
+                                onTopicGenerated={onTopicGenerated}
+                                onAddMaterial={addMaterial} onDeleteMaterial={deleteMaterial}
                                 onEdit={() => setSheet({ type: 'subject', subject: s })}
                                 onAddTopics={() => setSheet({ type: 'topics', subject: s })} />
                         ))}
@@ -160,6 +210,8 @@ export default function Study() {
 
             {res.data && others.length > 0 && (
                 <OtherCourses courses={others} onUpdateTopic={updateTopic} onDeleteTopic={deleteTopic}
+                    onTopicGenerated={onTopicGenerated}
+                    onAddMaterial={addMaterial} onDeleteMaterial={deleteMaterial}
                     onEdit={(s) => setSheet({ type: 'subject', subject: s })}
                     onAddTopics={(s) => setSheet({ type: 'topics', subject: s })} />
             )}
@@ -273,9 +325,14 @@ function HeroStat({ icon: Icon, label, value, tone }) {
 }
 
 // ---------------- Subject card ----------------
-function SubjectCard({ subject: s, index, onUpdateTopic, onDeleteTopic, onEdit, onAddTopics }) {
+function SubjectCard({
+    subject: s, index, onUpdateTopic, onDeleteTopic, onTopicGenerated,
+    onAddMaterial, onDeleteMaterial, onEdit, onAddTopics,
+}) {
     const hex = hexOf(s);
+    const [tab, setTab] = useState('topics');
     const [managing, setManaging] = useState(false);
+    const [showMaterialSheet, setShowMaterialSheet] = useState(false);
     const shaky = s.units.reduce((n, u) => n + u.topics.filter((t) => !t.done && t.confidence === 1).length, 0);
 
     return (
@@ -313,35 +370,94 @@ function SubjectCard({ subject: s, index, onUpdateTopic, onDeleteTopic, onEdit, 
                     {s.exam_date && <DaysBadge days={s.days_left} />}
                 </div>
 
-                {s.total > 0 ? (
-                    <>
-                        <div className="mt-4 flex items-end justify-between gap-3">
-                            <div className="flex items-baseline gap-1.5">
-                                <span className="text-3xl font-extrabold tracking-tight tabular-nums leading-none">{s.progress}</span>
-                                <span className="text-sm font-bold text-subtle">%</span>
-                            </div>
-                            <div className="text-xs text-subtle text-right">
-                                {s.done} of {s.total} topics
-                                {shaky > 0 && <span className="text-danger font-medium"> · {shaky} shaky</span>}
-                            </div>
-                        </div>
-                        <ProgressBar value={s.progress} color={s.progress >= 100 ? 'var(--ok)' : hex} className="mt-2.5 h-2" />
+                {/* Tab Switcher: Topics vs Materials Vault */}
+                <div className="mt-4 flex items-center justify-between border-b border-line pb-1.5">
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => setTab('topics')}
+                            className={cx(
+                                'px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5',
+                                tab === 'topics' ? 'bg-surface-2 text-fg shadow-xs border border-line' : 'text-subtle hover:text-fg'
+                            )}
+                        >
+                            <ListChecks className="h-3.5 w-3.5" />
+                            <span>Topics ({s.total})</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setTab('materials')}
+                            className={cx(
+                                'px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5',
+                                tab === 'materials' ? 'bg-surface-2 text-fg shadow-xs border border-line' : 'text-subtle hover:text-fg'
+                            )}
+                        >
+                            <FolderArchive className="h-3.5 w-3.5" />
+                            <span>Materials Vault</span>
+                            <span className={cx(
+                                'text-[10px] px-1.5 py-0.2 rounded-full font-bold',
+                                (s.materials?.length || 0) > 0 ? 'bg-accent/15 text-accent' : 'text-muted'
+                            )}>
+                                {s.materials?.length || 0}
+                            </span>
+                        </button>
+                    </div>
+                    {tab === 'materials' && (
+                        <Button size="xs" variant="primary" icon={Plus} onClick={() => setShowMaterialSheet(true)}>
+                            Add
+                        </Button>
+                    )}
+                </div>
 
-                        <div className="mt-4 -mx-1.5">
-                            <UnitList subject={s} hex={hex} managing={managing} onUpdateTopic={onUpdateTopic} onDeleteTopic={onDeleteTopic} />
-                        </div>
+                {tab === 'topics' ? (
+                    s.total > 0 ? (
+                        <>
+                            <div className="mt-3 flex items-end justify-between gap-3">
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-3xl font-extrabold tracking-tight tabular-nums leading-none">{s.progress}</span>
+                                    <span className="text-sm font-bold text-subtle">%</span>
+                                </div>
+                                <div className="text-xs text-subtle text-right">
+                                    {s.done} of {s.total} topics
+                                    {shaky > 0 && <span className="text-danger font-medium"> · {shaky} shaky</span>}
+                                </div>
+                            </div>
+                            <ProgressBar value={s.progress} color={s.progress >= 100 ? 'var(--ok)' : hex} className="mt-2.5 h-2" />
 
-                        <div className="mt-3 pt-3 border-t border-line flex items-center gap-1.5">
-                            <Button size="sm" icon={ClipboardPaste} onClick={onAddTopics}>Add topics</Button>
-                            <Button size="sm" variant="ghost" icon={managing ? Check : Pencil} onClick={() => setManaging((m) => !m)}>
-                                {managing ? 'Done' : 'Manage'}
-                            </Button>
-                        </div>
-                    </>
+                            <div className="mt-4 -mx-1.5">
+                                <UnitList subject={s} hex={hex} managing={managing}
+                                    onUpdateTopic={onUpdateTopic} onDeleteTopic={onDeleteTopic}
+                                    onTopicGenerated={onTopicGenerated} />
+                            </div>
+
+                            <div className="mt-3 pt-3 border-t border-line flex items-center gap-1.5">
+                                <Button size="sm" icon={ClipboardPaste} onClick={onAddTopics}>Add topics</Button>
+                                <Button size="sm" variant="ghost" icon={managing ? Check : Pencil} onClick={() => setManaging((m) => !m)}>
+                                    {managing ? 'Done' : 'Manage'}
+                                </Button>
+                            </div>
+                        </>
+                    ) : (
+                        <PasteInvite hex={hex} onClick={onAddTopics} />
+                    )
                 ) : (
-                    <PasteInvite hex={hex} onClick={onAddTopics} />
+                    <div className="mt-3">
+                        <CourseMaterialsList subject={s}
+                            onAdd={() => setShowMaterialSheet(true)}
+                            onDelete={(m) => onDeleteMaterial?.(s.id, m.id)} />
+                    </div>
                 )}
             </div>
+
+            <AddMaterialSheet
+                open={showMaterialSheet}
+                subject={s}
+                onClose={() => setShowMaterialSheet(false)}
+                onSave={async (data) => {
+                    const ok = await onAddMaterial?.(s.id, data);
+                    if (ok) setShowMaterialSheet(false);
+                }}
+            />
         </Card>
     );
 }
@@ -362,7 +478,7 @@ function PasteInvite({ hex, onClick }) {
     );
 }
 
-function UnitList({ subject: s, hex, managing, onUpdateTopic, onDeleteTopic, compact }) {
+function UnitList({ subject: s, hex, managing, onUpdateTopic, onDeleteTopic, onTopicGenerated, compact }) {
     const firstOpen = s.units.find((u) => u.topics.some((t) => !t.done))?.unit ?? s.units[0]?.unit ?? null;
     const [openMap, setOpenMap] = useLocalStorage(`study:units:${s.id}`, {});
     const key = (u) => u ?? '__none__';
@@ -396,7 +512,8 @@ function UnitList({ subject: s, hex, managing, onUpdateTopic, onDeleteTopic, com
                             <ul className={cx('pb-1', !single && 'pl-1.5')}>
                                 {u.topics.map((t) => (
                                     <TopicRow key={t.id} topic={t} managing={managing} compact={compact}
-                                        onUpdate={(body) => onUpdateTopic(t, body)} onDelete={() => onDeleteTopic(t)} />
+                                        onUpdate={(body) => onUpdateTopic(t, body)} onDelete={() => onDeleteTopic(t)}
+                                        onTopicGenerated={onTopicGenerated} />
                                 ))}
                             </ul>
                         )}
@@ -407,28 +524,211 @@ function UnitList({ subject: s, hex, managing, onUpdateTopic, onDeleteTopic, com
     );
 }
 
-function TopicRow({ topic: t, managing, onUpdate, onDelete }) {
+function TopicRow({ topic: t, managing, onUpdate, onDelete, onTopicGenerated }) {
     const today = studiedToday(t.last_studied_at);
+    const [openNotes, setOpenNotes] = useState(false);
+    const [generating, setGenerating] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(t.notes || '');
+    const [copied, setCopied] = useState(false);
+    const toast = useToast();
+
+    const handleToggleNotes = async (e) => {
+        e?.stopPropagation?.();
+        if (t.notes) {
+            setOpenNotes((prev) => !prev);
+            return;
+        }
+        setOpenNotes(true);
+        setGenerating(true);
+        try {
+            const res = await api(`/syllabus/topics/${t.id}/generate`, { method: 'POST' });
+            if (res?.data) {
+                onTopicGenerated?.(t, res.data);
+                setEditText(res.data.notes || '');
+                toast(`Generated study notes for "${t.title}"`, 'success');
+            }
+        } catch (err) {
+            toast(err.message || 'Generation failed', 'error');
+        } finally {
+            setGenerating(false);
+        }
+    };
+
+    const handleRegen = async (e) => {
+        e?.stopPropagation?.();
+        setGenerating(true);
+        try {
+            const res = await api(`/syllabus/topics/${t.id}/generate`, { method: 'POST' });
+            if (res?.data) {
+                onTopicGenerated?.(t, res.data);
+                setEditText(res.data.notes || '');
+                toast(`Refreshed notes for "${t.title}"`, 'success');
+            }
+        } catch (err) {
+            toast(err.message || 'Generation failed', 'error');
+        } finally {
+            setGenerating(false);
+        }
+    };
+
+    const handleSaveEdit = async () => {
+        try {
+            const res = await api(`/syllabus/topics/${t.id}/notes`, { method: 'PUT', body: { notes: editText } });
+            if (res?.data) {
+                onTopicGenerated?.(t, res.data);
+                setIsEditing(false);
+                toast('Notes saved', 'success');
+            }
+        } catch (err) {
+            toast(err.message || 'Failed to save notes', 'error');
+        }
+    };
+
+    const handleCopy = () => {
+        if (!t.notes) return;
+        navigator.clipboard.writeText(t.notes);
+        setCopied(true);
+        toast('Notes copied to clipboard!', 'info');
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     return (
-        <li className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 row-hover">
-            <Checkbox checked={t.done} onChange={(v) => onUpdate({ done: v })} label={`Mark ${t.title} ${t.done ? 'not done' : 'done'}`} />
-            <span className={cx('min-w-0 flex-1 text-[13.5px] leading-snug break-words', t.done ? 'text-subtle line-through decoration-line-strong' : 'text-fg')}>
-                {t.title}
-            </span>
-            {managing ? (
-                <button className="btn btn-danger btn-icon btn-sm h-7 w-7 shrink-0" onClick={onDelete} aria-label={`Delete ${t.title}`} title="Delete topic">
-                    <Trash2 className="h-3.5 w-3.5" />
-                </button>
-            ) : (
-                <div className="flex items-center gap-0.5 shrink-0">
-                    <ConfidenceDots value={t.confidence} onChange={(c) => onUpdate({ confidence: c })} />
-                    <button onClick={() => onUpdate({ studied: !today })}
-                        className={cx('grid place-items-center h-7 w-7 rounded-lg transition-colors',
-                            today ? 'text-accent bg-accent-soft' : 'text-subtle/70 hover:text-accent hover:bg-surface-2')}
-                        aria-pressed={today} aria-label={today ? 'Studied today (tap to undo)' : 'Mark studied today'}
-                        title={today ? 'Studied today' : 'Studied today?'}>
-                        <Flame className={cx('h-3.5 w-3.5', today && 'fill-current')} />
+        <li className="rounded-lg transition-colors">
+            <div className="group flex items-center gap-2 rounded-lg px-2 py-1.5 row-hover">
+                <Checkbox checked={t.done} onChange={(v) => onUpdate({ done: v })} label={`Mark ${t.title} ${t.done ? 'not done' : 'done'}`} />
+                <span className={cx('min-w-0 flex-1 text-[13.5px] leading-snug break-words', t.done ? 'text-subtle line-through decoration-line-strong' : 'text-fg')}>
+                    {t.title}
+                </span>
+                {managing ? (
+                    <button className="btn btn-danger btn-icon btn-sm h-7 w-7 shrink-0" onClick={onDelete} aria-label={`Delete ${t.title}`} title="Delete topic">
+                        <Trash2 className="h-3.5 w-3.5" />
                     </button>
+                ) : (
+                    <div className="flex items-center gap-0.5 shrink-0">
+                        {/* Topic AI Generator Symbol */}
+                        <button
+                            type="button"
+                            onClick={handleToggleNotes}
+                            disabled={generating}
+                            className={cx(
+                                'grid place-items-center h-7 w-7 rounded-lg transition-all relative',
+                                generating && 'text-accent',
+                                t.notes
+                                    ? 'text-accent bg-accent/15 hover:bg-accent/25'
+                                    : 'text-subtle/80 hover:text-accent hover:bg-surface-2'
+                            )}
+                            title={t.notes ? (openNotes ? 'Hide AI Notes' : 'View AI Notes (Ready)') : 'Generate AI study notes'}
+                            aria-label="Generate AI notes"
+                        >
+                            {generating ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                            ) : (
+                                <Sparkles className={cx('h-3.5 w-3.5', t.notes && 'fill-accent/40 text-accent')} />
+                            )}
+                            {t.notes && !generating && (
+                                <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent ring-1 ring-surface" />
+                            )}
+                        </button>
+
+                        <ConfidenceDots value={t.confidence} onChange={(c) => onUpdate({ confidence: c })} />
+                        <button onClick={() => onUpdate({ studied: !today })}
+                            className={cx('grid place-items-center h-7 w-7 rounded-lg transition-colors',
+                                today ? 'text-accent bg-accent-soft' : 'text-subtle/70 hover:text-accent hover:bg-surface-2')}
+                            aria-pressed={today} aria-label={today ? 'Studied today (tap to undo)' : 'Mark studied today'}
+                            title={today ? 'Studied today' : 'Studied today?'}>
+                            <Flame className={cx('h-3.5 w-3.5', today && 'fill-current')} />
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Expandable Topic Notes Panel */}
+            {openNotes && (
+                <div className="mx-2 mb-2 p-3.5 rounded-xl bg-surface border border-line-strong shadow-sm space-y-2.5 animate-rise">
+                    <div className="flex items-center justify-between gap-2 border-b border-line pb-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="grid place-items-center h-5 w-5 rounded-md bg-accent/15 text-accent shrink-0">
+                                <Sparkles className="h-3 w-3" />
+                            </span>
+                            <span className="text-[12px] font-semibold text-fg tracking-tight truncate">AI Exam Blueprint</span>
+                            {t.notes_generated_at && (
+                                <span className="text-[10px] text-subtle shrink-0 hidden sm:inline">
+                                    · {new Date(t.notes_generated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                            <button
+                                type="button"
+                                onClick={handleRegen}
+                                disabled={generating}
+                                className="btn btn-ghost btn-xs text-subtle hover:text-fg gap-1"
+                                title="Regenerate notes"
+                            >
+                                <RefreshCw className={cx('h-3 w-3', generating && 'animate-spin')} />
+                                <span className="text-[11px] hidden sm:inline">Regen</span>
+                            </button>
+                            {t.notes && (
+                                <button
+                                    type="button"
+                                    onClick={handleCopy}
+                                    className="btn btn-ghost btn-xs text-subtle hover:text-fg gap-1"
+                                    title="Copy Markdown"
+                                >
+                                    {copied ? <Check className="h-3 w-3 text-ok" /> : <Copy className="h-3 w-3" />}
+                                    <span className="text-[11px] hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (isEditing) handleSaveEdit();
+                                    else {
+                                        setEditText(t.notes || '');
+                                        setIsEditing(true);
+                                    }
+                                }}
+                                className={cx('btn btn-xs gap-1', isEditing ? 'btn-primary' : 'btn-ghost text-subtle hover:text-fg')}
+                            >
+                                {isEditing ? <Check className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
+                                <span className="text-[11px]">{isEditing ? 'Save' : 'Edit'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setOpenNotes(false)}
+                                className="btn btn-ghost btn-icon btn-xs text-subtle hover:text-fg"
+                                title="Collapse"
+                            >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {generating && !t.notes ? (
+                        <div className="py-6 flex flex-col items-center justify-center text-center gap-2">
+                            <Loader2 className="h-5 w-5 animate-spin text-accent" />
+                            <p className="text-xs text-subtle">Generating high-yield exam blueprint for <span className="font-semibold text-fg">{t.title}</span>...</p>
+                        </div>
+                    ) : isEditing ? (
+                        <div className="space-y-2">
+                            <textarea
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                rows={8}
+                                className="w-full text-xs font-mono p-2.5 rounded-lg bg-surface-2 border border-line focus:border-accent focus:outline-none resize-y"
+                                placeholder="Write markdown revision notes..."
+                            />
+                            <div className="flex justify-end gap-1.5">
+                                <Button size="xs" variant="ghost" onClick={() => setIsEditing(false)}>Cancel</Button>
+                                <Button size="xs" variant="primary" onClick={handleSaveEdit}>Save Changes</Button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-xs leading-relaxed text-fg max-h-96 overflow-y-auto pr-1">
+                            <Markdown>{t.notes}</Markdown>
+                        </div>
+                    )}
                 </div>
             )}
         </li>
@@ -451,8 +751,248 @@ function ConfidenceDots({ value, onChange }) {
     );
 }
 
+// ---------------- Course Materials List ----------------
+function CourseMaterialsList({ subject: s, onAdd, onDelete }) {
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [expandedMat, setExpandedMat] = useState(null);
+    const materials = s.materials || [];
+    const filtered = materials.filter((m) => categoryFilter === 'all' || m.category === categoryFilter);
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1 overflow-x-auto py-1 max-w-full text-xs">
+                    <button
+                        type="button"
+                        onClick={() => setCategoryFilter('all')}
+                        className={cx(
+                            'px-2 py-1 rounded-lg font-medium transition-colors shrink-0',
+                            categoryFilter === 'all' ? 'bg-surface-2 text-fg font-semibold border border-line' : 'text-subtle hover:text-fg'
+                        )}
+                    >
+                        All ({materials.length})
+                    </button>
+                    {MATERIAL_CATEGORIES.map((cat) => {
+                        const count = materials.filter((m) => m.category === cat.value).length;
+                        if (count === 0 && materials.length > 0) return null;
+                        return (
+                            <button
+                                key={cat.value}
+                                type="button"
+                                onClick={() => setCategoryFilter(cat.value)}
+                                className={cx(
+                                    'px-2 py-1 rounded-lg font-medium transition-colors flex items-center gap-1 shrink-0',
+                                    categoryFilter === cat.value ? 'bg-surface-2 text-fg font-semibold border border-line' : 'text-subtle hover:text-fg'
+                                )}
+                            >
+                                <cat.icon className="h-3 w-3" />
+                                <span>{cat.label}</span>
+                                {count > 0 && <span className="text-[10px] text-muted">({count})</span>}
+                            </button>
+                        );
+                    })}
+                </div>
+                <Button size="xs" variant="primary" icon={Plus} onClick={onAdd} className="shrink-0">
+                    Add Material
+                </Button>
+            </div>
+
+            {filtered.length === 0 ? (
+                <div className="py-8 text-center rounded-2xl border-2 border-dashed border-line bg-surface-2/30 p-4">
+                    <FolderArchive className="h-8 w-8 mx-auto text-subtle mb-2" />
+                    <p className="text-sm font-semibold">No materials {categoryFilter !== 'all' ? 'in this category' : 'added yet'}</p>
+                    <p className="text-xs text-subtle mt-1 max-w-xs mx-auto">
+                        Insert lecture notes, cheatsheets, Drive links, and exam papers to keep this course organized for future reference.
+                    </p>
+                    <Button size="xs" variant="primary" icon={Plus} onClick={onAdd} className="mt-3">
+                        Insert Material
+                    </Button>
+                </div>
+            ) : (
+                <ul className="space-y-2">
+                    {filtered.map((m) => {
+                        const cat = MATERIAL_CATEGORIES.find((c) => c.value === m.category) || MATERIAL_CATEGORIES[0];
+                        const isExp = expandedMat === m.id;
+                        return (
+                            <li key={m.id} className="p-3 rounded-xl bg-surface-2/60 border border-line hover:border-line-strong transition-all">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className={cx('badge text-[10px] px-1.5 py-0.5 border', cat.color)}>
+                                                <cat.icon className="h-2.5 w-2.5 inline mr-1" />
+                                                {cat.label}
+                                            </span>
+                                            {m.created_at && (
+                                                <span className="text-[11px] text-subtle">
+                                                    {new Date(m.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <h4 className="text-[13.5px] font-semibold text-fg mt-1 leading-snug break-words">
+                                            {m.title}
+                                        </h4>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        {m.url && (
+                                            <a
+                                                href={m.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="btn btn-ghost btn-xs text-accent gap-1 hover:bg-accent/10"
+                                                title="Open resource"
+                                            >
+                                                <ExternalLink className="h-3 w-3" />
+                                                <span className="hidden sm:inline text-[11px]">Open</span>
+                                            </a>
+                                        )}
+                                        {m.content && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setExpandedMat(isExp ? null : m.id)}
+                                                className="btn btn-ghost btn-icon btn-xs text-subtle hover:text-fg"
+                                                title={isExp ? 'Collapse notes' : 'View notes'}
+                                            >
+                                                <ChevronDown className={cx('h-3.5 w-3.5 transition-transform', isExp && 'rotate-180')} />
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => onDelete(m)}
+                                            className="btn btn-ghost btn-icon btn-xs text-subtle hover:text-danger"
+                                            title="Delete material"
+                                        >
+                                            <Trash2 className="h-3 w-3" />
+                                        </button>
+                                    </div>
+                                </div>
+                                {m.content && isExp && (
+                                    <div className="mt-2.5 pt-2.5 border-t border-line text-xs leading-relaxed text-fg max-h-64 overflow-y-auto pr-1 animate-rise">
+                                        <Markdown>{m.content}</Markdown>
+                                    </div>
+                                )}
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+        </div>
+    );
+}
+
+// ---------------- Add Material Sheet ----------------
+function AddMaterialSheet({ open, subject, onClose, onSave }) {
+    const [title, setTitle] = useState('');
+    const [category, setCategory] = useState('lecture_notes');
+    const [url, setUrl] = useState('');
+    const [content, setContent] = useState('');
+    const [busy, setBusy] = useState(false);
+    const toast = useToast();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!title.trim()) {
+            toast('Please enter a title for the material', 'error');
+            return;
+        }
+        setBusy(true);
+        try {
+            await onSave({ title: title.trim(), category, url: url.trim(), content: content.trim() });
+            setTitle('');
+            setUrl('');
+            setContent('');
+            setCategory('lecture_notes');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    if (!open) return null;
+
+    return (
+        <Sheet open={open} onClose={onClose}>
+            <form onSubmit={handleSubmit} className="card-pad space-y-4">
+                <div className="flex items-start justify-between gap-3 border-b border-line pb-3">
+                    <div className="min-w-0">
+                        <div className="eyebrow">Insert Material</div>
+                        <h2 className="text-lg font-bold tracking-tight leading-snug mt-0.5">{subject?.name}</h2>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="label" htmlFor="mat-title">Title *</label>
+                    <input
+                        id="mat-title"
+                        className="input"
+                        required
+                        maxLength={200}
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="e.g. Unit 3 Complete Slide Deck or Midterm Solved Paper"
+                        autoFocus
+                    />
+                </div>
+
+                <div>
+                    <label className="label">Category</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {MATERIAL_CATEGORIES.map((cat) => (
+                            <button
+                                key={cat.value}
+                                type="button"
+                                onClick={() => setCategory(cat.value)}
+                                className={cx(
+                                    'p-2 rounded-xl border text-left flex items-center gap-2 transition-all text-xs font-medium',
+                                    category === cat.value
+                                        ? 'border-accent bg-accent/10 text-fg shadow-xs'
+                                        : 'border-line hover:border-line-strong bg-surface text-subtle hover:text-fg'
+                                )}
+                            >
+                                <cat.icon className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{cat.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div>
+                    <label className="label" htmlFor="mat-url">Resource URL <span className="text-subtle font-normal">(optional)</span></label>
+                    <input
+                        id="mat-url"
+                        className="input font-mono text-xs"
+                        type="url"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        placeholder="https://drive.google.com/... or https://github.com/..."
+                    />
+                </div>
+
+                <div>
+                    <label className="label" htmlFor="mat-content">Notes &amp; Content <span className="text-subtle font-normal">(optional markdown)</span></label>
+                    <textarea
+                        id="mat-content"
+                        className="input h-auto min-h-[7rem] py-2.5 font-mono text-xs leading-relaxed resize-y"
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                        placeholder="Key formulas, lecture summaries, key exam topics, or quick takeaways..."
+                    />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-line">
+                    <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+                    <Button type="submit" variant="primary" icon={Plus} loading={busy} disabled={!title.trim()}>
+                        Save Material
+                    </Button>
+                </div>
+            </form>
+        </Sheet>
+    );
+}
+
 // ---------------- Labs & other ----------------
-function OtherCourses({ courses, onUpdateTopic, onDeleteTopic, onEdit, onAddTopics }) {
+function OtherCourses({
+    courses, onUpdateTopic, onDeleteTopic, onTopicGenerated,
+    _onAddMaterial, _onDeleteMaterial, onEdit, onAddTopics,
+}) {
     const [open, setOpen] = useLocalStorage('study:others-open', false);
     const [expanded, setExpanded] = useState(null);
     const labs = courses.filter((c) => c.kind === 'lab').length;
@@ -509,7 +1049,9 @@ function OtherCourses({ courses, onUpdateTopic, onDeleteTopic, onEdit, onAddTopi
                                 </div>
                                 {isExpanded && (
                                     <div className="px-2.5 sm:px-4 pb-3 animate-rise">
-                                        <UnitList subject={c} hex={hex} onUpdateTopic={onUpdateTopic} onDeleteTopic={onDeleteTopic} compact />
+                                        <UnitList subject={c} hex={hex}
+                                            onUpdateTopic={onUpdateTopic} onDeleteTopic={onDeleteTopic}
+                                            onTopicGenerated={onTopicGenerated} compact />
                                     </div>
                                 )}
                             </li>

@@ -11,7 +11,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, func, inspect, text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, func, inspect, text
 from sqlalchemy.orm import relationship, selectinload
 
 from api.core.clients import EmailClient
@@ -65,6 +65,8 @@ class Subject(Base):
 
     topics = relationship("SyllabusTopic", back_populates="subject", cascade="all, delete-orphan",
                           order_by="(SyllabusTopic.position, SyllabusTopic.id)")
+    materials = relationship("CourseMaterial", back_populates="subject", cascade="all, delete-orphan",
+                             order_by="desc(CourseMaterial.created_at)")
 
     def __repr__(self):
         return f"<Subject(id={self.id}, name={self.name!r}, exam_date={self.exam_date})>"
@@ -82,11 +84,30 @@ class SyllabusTopic(Base):
     confidence = Column(Integer, nullable=True)  # 1 (shaky) .. 3 (solid)
     position = Column(Integer, default=0, nullable=False)
     last_studied_at = Column(DateTime, nullable=True)  # naive UTC
+    notes = Column(Text, nullable=True)
+    notes_generated_at = Column(DateTime, nullable=True)  # naive UTC
 
     subject = relationship("Subject", back_populates="topics")
 
     def __repr__(self):
         return f"<SyllabusTopic(id={self.id}, unit={self.unit!r}, title={self.title!r}, done={self.done})>"
+
+
+class CourseMaterial(Base):
+    __tablename__ = "course_materials"
+
+    id = Column(Integer, primary_key=True, index=True)
+    subject_id = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    category = Column(String(50), default="lecture_notes", nullable=False)  # 'lecture_notes', 'cheatsheet', 'reference', 'exam_paper', 'code', 'other'
+    url = Column(String(500), nullable=True)
+    content = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)  # naive UTC
+
+    subject = relationship("Subject", back_populates="materials")
+
+    def __repr__(self):
+        return f"<CourseMaterial(id={self.id}, title={self.title!r}, category={self.category!r})>"
 
 
 syllabus_bp = Blueprint("syllabus", __name__, url_prefix="/api/syllabus")
@@ -96,7 +117,7 @@ syllabus_bp = Blueprint("syllabus", __name__, url_prefix="/api/syllabus")
 def _ensure_tables(state):
     """Create the tables when the blueprint is registered, so wiring it in needs no extra step."""
     try:
-        Base.metadata.create_all(bind=engine, tables=[Subject.__table__, SyllabusTopic.__table__])
+        Base.metadata.create_all(bind=engine, tables=[Subject.__table__, SyllabusTopic.__table__, CourseMaterial.__table__])
     except Exception as e:  # e.g. a concurrent cold start created them first
         print(f"syllabus table check skipped: {e}")
     # Columns added after the first version of this table (create_all never alters tables)
@@ -108,6 +129,16 @@ def _ensure_tables(state):
                     conn.execute(text(f"ALTER TABLE subjects ADD COLUMN {name} {ddl}"))
     except Exception as e:
         print(f"syllabus column migration skipped: {e}")
+    try:
+        existing_topics = {c["name"] for c in inspect(engine).get_columns("syllabus_topics")}
+        if "notes" not in existing_topics:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE syllabus_topics ADD COLUMN notes TEXT"))
+        if "notes_generated_at" not in existing_topics:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE syllabus_topics ADD COLUMN notes_generated_at TIMESTAMP"))
+    except Exception as e:
+        print(f"syllabus topic column migration skipped: {e}")
 
 
 # ---------------- bulk syllabus parser ----------------
@@ -263,11 +294,25 @@ def _days_left(subject, today=None):
     return (subject.exam_date - (today or _today())).days
 
 
+def _serialize_material(m):
+    return {
+        "id": m.id,
+        "subject_id": m.subject_id,
+        "title": m.title,
+        "category": m.category,
+        "url": m.url,
+        "content": m.content,
+        "created_at": _iso(m.created_at),
+    }
+
+
 def _serialize_topic(t):
     return {
         "id": t.id, "subject_id": t.subject_id, "unit": t.unit, "title": t.title, "done": bool(t.done),
         "done_at": _iso(t.done_at), "confidence": t.confidence, "position": t.position or 0,
         "last_studied_at": _iso(t.last_studied_at),
+        "notes": t.notes,
+        "notes_generated_at": _iso(t.notes_generated_at),
     }
 
 
@@ -295,6 +340,7 @@ def _serialize_subject(s, today=None):
     topics = list(s.topics)
     total = len(topics)
     done = sum(1 for t in topics if t.done)
+    materials = [_serialize_material(m) for m in (getattr(s, "materials", None) or [])]
     return {
         "id": s.id, "name": s.name, "short": short_name(s.name), "code": s.code, "faculty": s.faculty,
         "kind": s.kind or "theory", "color": s.color, "position": s.position or 0,
@@ -303,6 +349,8 @@ def _serialize_subject(s, today=None):
         "progress": round(100 * done / total) if total else 0,
         "total": total, "done": done,
         "units": _group_units(topics),
+        "materials": materials,
+        "materials_count": len(materials),
     }
 
 
@@ -315,7 +363,7 @@ def _sort_key(s, today):
 
 def _all_subjects(db):
     today = _today()
-    subjects = db.query(Subject).options(selectinload(Subject.topics)).all()
+    subjects = db.query(Subject).options(selectinload(Subject.topics), selectinload(Subject.materials)).all()
     return sorted(subjects, key=lambda s: _sort_key(s, today)), today
 
 
@@ -523,6 +571,168 @@ def topic_detail(topic_id):
         db.commit()
         db.refresh(t)
         return jsonify({"status": "success", "data": _serialize_topic(t)})
+    finally:
+        db.close()
+
+
+def _generate_topic_notes(subject_name, unit, topic_title):
+    """Generates comprehensive, high-yield exam revision notes using LLM with deterministic fallback."""
+    try:
+        from api.core.clients import LLMClient
+        prompt = f"""Generate crisp, high-yield university exam revision notes for this syllabus topic:
+Subject: {subject_name}
+Unit / Module: {unit or 'General'}
+Topic: {topic_title}
+
+Return clean Markdown following this exact structure:
+### 🎯 Core Concept & Intuition
+[Crisp definition and practical intuition in 2-3 sentences]
+
+### 🔑 Key Principles & Mechanisms
+- [Key technical principle 1]
+- [Key technical principle 2]
+- [Formula, architectural workflow, or algorithm steps if applicable]
+
+### ⚡ High-Yield Exam Questions & Pitfalls
+- **Expected Exam Question**: [Typical 5-10 mark question]
+- **Key Terms to Mention**: [Essential terminology]
+- **Common Pitfall**: [What students often confuse]
+
+### 💡 Memory Anchor / Cheat Sheet
+[A memorable memory anchor, formula summary, or short code/pseudocode example]
+"""
+        system = "You are a university exam topper and distinguished professor. You write crisp, comprehensive, accurate, high-yield study notes with zero fluff."
+        client = LLMClient(budget=15)
+        out = client.generate(prompt, temperature=0.3, system=system, thinking="low")
+        if out and len(out.strip()) > 80:
+            return out.strip()
+    except Exception as e:
+        print(f"LLM topic notes generation fallback used: {e}")
+
+    return f"""### 🎯 Core Concept & Intuition
+**{topic_title}** is a core syllabus topic under **{subject_name}** ({unit or 'Coursework'}). It covers fundamental mechanisms, formal definitions, and applied problem-solving techniques.
+
+### 🔑 Key Principles & Mechanisms
+- **Foundational Theory**: Core mechanics and invariants governing *{topic_title}*.
+- **Workflow / Architecture**: Input conditions, intermediate transformations, and invariant checks.
+- **Complexity & Optimization**: Theoretical bounds, runtime trade-offs, and design considerations.
+
+### ⚡ High-Yield Exam Questions & Pitfalls
+- **Expected Exam Question**: "Explain the principles, architecture, and trade-offs of {topic_title} with a suitable example." (7–10 Marks)
+- **Key Terms to Mention**: *Invariants, Asymptotic Bounds, Robustness, System Architecture*.
+- **Common Pitfall**: Skipping intermediate derivation steps or failing to state underlying assumptions.
+
+### 💡 Memory Anchor / Cheat Sheet
+*Revision Anchor*: Frame answer around **Input ➔ Transformation Rule ➔ Verification Rule** for full credit.
+"""
+
+
+@syllabus_bp.route("/topics/<int:topic_id>/generate", methods=["POST"])
+def generate_topic_notes(topic_id):
+    db = SessionLocal()
+    try:
+        t = db.get(SyllabusTopic, topic_id)
+        if not t:
+            return _err("Topic not found", 404)
+        s = db.get(Subject, t.subject_id)
+        subject_name = s.name if s else "Subject"
+
+        notes = _generate_topic_notes(subject_name, t.unit, t.title)
+        t.notes = notes
+        t.notes_generated_at = _utcnow()
+        db.commit()
+        db.refresh(t)
+        return jsonify({
+            "status": "success",
+            "data": _serialize_topic(t),
+            "message": f"Generated notes for '{t.title}'",
+        })
+    finally:
+        db.close()
+
+
+@syllabus_bp.route("/topics/<int:topic_id>/notes", methods=["PUT"])
+def update_topic_notes(topic_id):
+    db = SessionLocal()
+    try:
+        t = db.get(SyllabusTopic, topic_id)
+        if not t:
+            return _err("Topic not found", 404)
+        data = _body()
+        t.notes = data.get("notes") or ""
+        t.notes_generated_at = _utcnow()
+        db.commit()
+        db.refresh(t)
+        return jsonify({"status": "success", "data": _serialize_topic(t)})
+    finally:
+        db.close()
+
+
+# ---------------- routes: course materials ----------------
+@syllabus_bp.route("/subjects/<int:subject_id>/materials", methods=["GET", "POST"])
+def subject_materials(subject_id):
+    db = SessionLocal()
+    try:
+        s = db.get(Subject, subject_id)
+        if not s:
+            return _err("Subject not found", 404)
+
+        if request.method == "GET":
+            materials = db.query(CourseMaterial).filter(CourseMaterial.subject_id == subject_id).order_by(CourseMaterial.created_at.desc()).all()
+            return jsonify({"status": "success", "data": [_serialize_material(m) for m in materials]})
+
+        data = _body()
+        title = (data.get("title") or "").strip()
+        if not title:
+            return _err("Material title can't be empty.")
+        if len(title) > 200:
+            return _err("Material title must be at most 200 characters.")
+        category = (data.get("category") or "lecture_notes").strip()
+        url = (data.get("url") or "").strip()[:500] or None
+        content = (data.get("content") or "").strip() or None
+
+        mat = CourseMaterial(
+            subject_id=subject_id,
+            title=title,
+            category=category,
+            url=url,
+            content=content,
+        )
+        db.add(mat)
+        db.commit()
+        db.refresh(mat)
+        return jsonify({"status": "success", "data": _serialize_material(mat)}), 201
+    finally:
+        db.close()
+
+
+@syllabus_bp.route("/materials/<int:material_id>", methods=["DELETE", "PUT"])
+def material_detail(material_id):
+    db = SessionLocal()
+    try:
+        m = db.get(CourseMaterial, material_id)
+        if not m:
+            return _err("Material not found", 404)
+        if request.method == "DELETE":
+            db.delete(m)
+            db.commit()
+            return jsonify({"status": "success", "message": "Material removed"})
+
+        data = _body()
+        if "title" in data:
+            title = (data.get("title") or "").strip()
+            if not title:
+                return _err("Material title can't be empty.")
+            m.title = title[:200]
+        if "category" in data:
+            m.category = (data.get("category") or "lecture_notes").strip()
+        if "url" in data:
+            m.url = (data.get("url") or "").strip()[:500] or None
+        if "content" in data:
+            m.content = (data.get("content") or "").strip() or None
+        db.commit()
+        db.refresh(m)
+        return jsonify({"status": "success", "data": _serialize_material(m)})
     finally:
         db.close()
 

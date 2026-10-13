@@ -9,7 +9,7 @@ from api.core.config import now_ist
 from api.core.db import Base, SessionLocal, engine
 from api.domain.models import Settings
 from api.domain.repositories import NotificationRepository
-from api.domain.syllabus import (REMIND_SETTING, SEED_SUBJECTS, Subject, SyllabusTopic, parse_syllabus,
+from api.domain.syllabus import (CourseMaterial, REMIND_SETTING, SEED_SUBJECTS, Subject, SyllabusTopic, parse_syllabus,
                                  short_name, syllabus_bp)
 
 
@@ -28,6 +28,7 @@ def clean_db(client):
     def wipe():
         db = SessionLocal()
         try:
+            db.query(CourseMaterial).delete()
             db.query(SyllabusTopic).delete()
             db.query(Subject).delete()
             db.query(Settings).filter(Settings.key.in_(["syllabus_seeded", REMIND_SETTING])).delete(synchronize_session=False)
@@ -60,6 +61,17 @@ def _paste(client, sid, text):
     r = client.post(f"/api/syllabus/subjects/{sid}/topics", json={"text": text})
     assert r.status_code == 201, r.get_json()
     return r.get_json()["data"]
+
+
+def _add_topic(client, sid, title, unit="Unit 1"):
+    r = client.post(f"/api/syllabus/subjects/{sid}/topics", json={"unit": unit, "title": title})
+    assert r.status_code == 201, r.get_json()
+    subj = r.get_json()["data"]
+    for u in subj["units"]:
+        for t in u["topics"]:
+            if t["title"] == title:
+                return t
+    raise ValueError(f"Topic {title} not found in response")
 
 
 def _topic_ids(subject):
@@ -366,3 +378,97 @@ def test_remind_failure_does_not_mark_sent(client, email_env):
 def test_exam_date_round_trip(client):
     s = _subject(client, exam_date="2031-01-15")
     assert date.fromisoformat(s["exam_date"]) == date(2031, 1, 15)
+
+
+def test_topic_generate_notes(client):
+    s = _subject(client, name="Deep Learning")
+    t = _add_topic(client, s["id"], title="Backpropagation and Gradient Descent", unit="Unit 2")
+    assert t.get("notes") is None
+
+    # Call AI generation endpoint
+    r = client.post(f"/api/syllabus/topics/{t['id']}/generate")
+    assert r.status_code == 200
+    data = r.get_json()["data"]
+    assert data["notes"] is not None
+    assert "Backpropagation" in data["notes"] or "Core Concept" in data["notes"]
+    assert data["notes_generated_at"] is not None
+
+    # Verify 404 for unknown topic
+    assert client.post("/api/syllabus/topics/999999/generate").status_code == 404
+
+
+def test_topic_update_notes(client):
+    s = _subject(client, name="Operating Systems")
+    t = _add_topic(client, s["id"], title="Semaphores", unit="Unit 1")
+    r = client.put(f"/api/syllabus/topics/{t['id']}/notes", json={"notes": "Custom revision summary for semaphores."})
+    assert r.status_code == 200
+    data = r.get_json()["data"]
+    assert data["notes"] == "Custom revision summary for semaphores."
+    assert data["notes_generated_at"] is not None
+
+
+def test_course_materials_crud_and_cascade(client):
+    s = _subject(client, name="Software Testing")
+
+    # Add materials
+    r1 = client.post(f"/api/syllabus/subjects/{s['id']}/materials", json={
+        "title": "Unit 1 Lecture Slides",
+        "category": "lecture_notes",
+        "url": "https://example.com/slides1.pdf",
+        "content": "Comprehensive slides covering black box testing and boundaries.",
+    })
+    assert r1.status_code == 201
+    mat1 = r1.get_json()["data"]
+    assert mat1["title"] == "Unit 1 Lecture Slides"
+    assert mat1["category"] == "lecture_notes"
+    assert mat1["url"] == "https://example.com/slides1.pdf"
+
+    r2 = client.post(f"/api/syllabus/subjects/{s['id']}/materials", json={
+        "title": "Boundary Value Analysis Cheatsheet",
+        "category": "cheatsheet",
+        "url": "",
+        "content": "Formula: 4n + 1 test cases for robust testing.",
+    })
+    assert r2.status_code == 201
+    mat2 = r2.get_json()["data"]
+
+    # Validation: empty title
+    assert client.post(f"/api/syllabus/subjects/{s['id']}/materials", json={"title": "  "}).status_code == 400
+
+    # List materials
+    r_list = client.get(f"/api/syllabus/subjects/{s['id']}/materials")
+    assert r_list.status_code == 200
+    items = r_list.get_json()["data"]
+    assert len(items) == 2
+    assert items[0]["id"] == mat2["id"]  # newest first
+
+    # Subject summary includes materials
+    subj_list = client.get("/api/syllabus").get_json()["data"]
+    found_s = next(x for x in subj_list if x["id"] == s["id"])
+    assert found_s["materials_count"] == 2
+    assert len(found_s["materials"]) == 2
+
+    # Update material
+    r_edit = client.put(f"/api/syllabus/materials/{mat1['id']}", json={
+        "title": "Unit 1 Updated Slides",
+        "category": "lecture_notes",
+    })
+    assert r_edit.status_code == 200
+    assert r_edit.get_json()["data"]["title"] == "Unit 1 Updated Slides"
+
+    # Delete one material
+    assert client.delete(f"/api/syllabus/materials/{mat1['id']}").status_code == 200
+    assert client.delete(f"/api/syllabus/materials/{mat1['id']}").status_code == 404
+
+    # Subject cascade delete removes remaining materials
+    db = SessionLocal()
+    try:
+        assert db.query(CourseMaterial).count() == 1
+    finally:
+        db.close()
+    client.delete(f"/api/syllabus/subjects/{s['id']}")
+    db = SessionLocal()
+    try:
+        assert db.query(CourseMaterial).count() == 0
+    finally:
+        db.close()

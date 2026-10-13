@@ -12,3 +12,10 @@ skills-lock.json
 scratch/
 uploads/
 notifications.db
+tests/
+.pytest_cache/
+*.sqlite
+*.db
+*.xlsx
+*.pdf
+README.md

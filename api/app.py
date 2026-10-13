@@ -43,13 +43,24 @@ from api.domain.flashcards import flashcards_bp
 from api.domain.tutor import tutor_bp
 from api.domain.public_stats import public_stats_bp
 from api.domain.studio import studio_bp
+from api.domain.agents import agents_bp
+from api.domain.speedrun import speedrun_bp
+from api.domain.bounties import bounties_bp
+from api.domain.arena import arena_bp
+from api.domain.drillmaster import drillmaster_bp
+from api.domain.dempsey import dempsey_bp
+from api.domain.radar import radar_bp
+from api.domain.ghost import ghost_bp
+from api.domain.forge import forge_bp
+from api.domain.hotseat import hotseat_bp
 
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
 CORS(app)
 for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, weekly_bp, insights_bp, focus_bp, journal_bp, xp_bp, features_bp,
            pdf_extract_bp, mistakes_bp, placements_bp, oa_bp, interview_bp, gym_bp, brief_bp, habits_bp, capture_bp, flashcards_bp, tutor_bp,
-           public_stats_bp, studio_bp):
+           public_stats_bp, studio_bp, agents_bp, speedrun_bp, bounties_bp, arena_bp, drillmaster_bp, dempsey_bp, radar_bp,
+           ghost_bp, forge_bp, hotseat_bp):
     app.register_blueprint(bp)
 
 # ---------------- Passcode login ----------------

@@ -186,6 +186,42 @@ def _focus(db, start, end):
     return total, total // FOCUS_MINUTES_PER_XP, today, today // FOCUS_MINUTES_PER_XP
 
 
+def _speedruns(db, start, end):
+    from api.domain.speedrun import SpeedrunSession
+    rows = db.query(SpeedrunSession.xp_earned, SpeedrunSession.created_at).all()
+    count = len(rows)
+    xp = sum(r[0] or 0 for r in rows)
+    today_rows = [r for r in rows if _in_today(r[1], start, end)]
+    return count, xp, len(today_rows), sum(r[0] or 0 for r in today_rows)
+
+
+def _duels(db, start, end):
+    from api.domain.arena import DuelMatch
+    rows = db.query(DuelMatch.xp_awarded, DuelMatch.created_at).all()
+    count = len(rows)
+    xp = sum(r[0] or 0 for r in rows)
+    today_rows = [r for r in rows if _in_today(r[1], start, end)]
+    return count, xp, len(today_rows), sum(r[0] or 0 for r in today_rows)
+
+
+def _bounties(db, start, end):
+    from api.domain.bounties import BountyClaim
+    rows = db.query(BountyClaim.xp_awarded, BountyClaim.created_at).all()
+    count = len(rows)
+    xp = sum(r[0] or 0 for r in rows)
+    today_rows = [r for r in rows if _in_today(r[1], start, end)]
+    return count, xp, len(today_rows), sum(r[0] or 0 for r in today_rows)
+
+
+def _hotseats(db, start, end):
+    from api.domain.hotseat import HotSeatSession
+    rows = db.query(HotSeatSession.xp_awarded, HotSeatSession.created_at).all()
+    count = len(rows)
+    xp = sum(r[0] or 0 for r in rows)
+    today_rows = [r for r in rows if _in_today(r[1], start, end)]
+    return count, xp, len(today_rows), sum(r[0] or 0 for r in today_rows)
+
+
 SOURCES = [
     ("leetcode", "LeetCode solved", _leetcode),
     ("codeforces", "Codeforces solved", _codeforces),
@@ -195,6 +231,10 @@ SOURCES = [
     ("episodes", "Episodes watched", _episodes),
     ("lessons", "Lessons done", _lessons),
     ("focus", "Focus minutes", _focus),
+    ("speedrun", "Focus speedruns", _speedruns),
+    ("duels", "Arena duels", _duels),
+    ("bounties", "Daily bounties", _bounties),
+    ("hotseat", "Hot Seat defenses", _hotseats),
 ]
 
 
