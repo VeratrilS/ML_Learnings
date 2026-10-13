@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
     Sun, Moon, Code2, Swords, FileText, Settings as SettingsIcon, House, Flame, GraduationCap, Search, RotateCcw,
-    MonitorPlay, Ellipsis, ChevronRight, FlaskConical,
+    MonitorPlay, Ellipsis, ChevronRight, FlaskConical, FolderCog,
 } from 'lucide-react';
 import { FEATURES, useFeatures } from './lib/features';
 import { useTheme } from './themes/ThemeContext';
@@ -18,6 +18,7 @@ const PdfStudio = lazy(() => import('./pages/PdfStudio'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Learn = lazy(() => import('./pages/Learn'));
 const Lab = lazy(() => import('./pages/Lab'));
+const Studio = lazy(() => import('./pages/Studio'));
 
 // `tab`: shown in the mobile bottom bar; everything else lives under "More" on mobile.
 const NAV = [
@@ -27,6 +28,7 @@ const NAV = [
     { id: 'learn', label: 'Learn', icon: MonitorPlay, tab: true },
     { id: 'cf', label: 'Codeforces', short: 'CF', icon: Swords },
     { id: 'pdf', label: 'PDF Studio', short: 'PDF', icon: FileText },
+    { id: 'studio', label: 'Task Studio', short: 'Studio', icon: FolderCog },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 const LAB = { id: 'lab', label: 'Beta Lab', icon: FlaskConical };
@@ -186,6 +188,7 @@ export default function App() {
                             {current === 'pdf' && <PdfStudio />}
                             {current === 'learn' && <Learn />}
                             {current === 'lab' && <Lab />}
+                            {current === 'studio' && <Studio />}
                             {featurePage && current === featurePage.id && (
                                 <>
                                     {!features.isOn(featurePage.id) && (

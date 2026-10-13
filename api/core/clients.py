@@ -35,6 +35,7 @@ class LLMClient:
         self.openrouter_key = openrouter_key if openrouter_key is not None else os.getenv("OPENROUTER_API_KEY", "")
         self.models = [m.strip() for m in (models or os.getenv("GEMINI_MODELS") or DEFAULT_GEMINI_MODELS).split(",") if m.strip()]
         self.budget = budget  # total seconds we may spend across the whole fallback chain
+        self.last_model = None  # which model produced the last successful generate() result
         self._gemini = None
 
     @property
@@ -80,6 +81,7 @@ class LLMClient:
                     resp = self.gemini.models.generate_content(
                         model=model, contents=contents, config=self._config(json_mode, temperature, system, timeout_s, thinking if "gemini-3" in model else None))
                     if resp.text:
+                        self.last_model = model
                         return resp.text
                     errors.append(f"{model}: empty response")
                 except Exception as e:
@@ -87,7 +89,9 @@ class LLMClient:
         text_prompt = contents if isinstance(contents, str) else "\n\n".join(c for c in contents if isinstance(c, str))
         if self.openrouter_key and text_prompt:
             try:
-                return self._openrouter(text_prompt, json_mode, temperature, system)
+                text = self._openrouter(text_prompt, json_mode, temperature, system)
+                self.last_model = "openrouter/free"
+                return text
             except Exception as e:
                 errors.append(f"openrouter: {str(e)[:160]}")
         raise RuntimeError("All LLM providers failed. " + " | ".join(errors or ["No API key configured (set GEMINI_API_KEY)."]))
