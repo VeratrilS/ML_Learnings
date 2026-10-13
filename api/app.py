@@ -77,6 +77,43 @@ def _require_passcode():
         return None
     if not _authorized():
         return jsonify({"status": "error", "message": "Locked. Enter your passcode.", "auth_required": True}), 401
+    _touch_activity()
+
+
+# ---------------- Activity (for the inactivity nudge) ----------------
+INACTIVITY_MINUTES = 150          # no app use for 2.5h -> the scheduler emails a DSA question
+_ACTIVITY_WRITE_EVERY = 300       # seconds; at most one DB write per 5 min per instance
+_last_activity_write = 0.0
+
+
+def _touch_activity():
+    """Records that the owner used the app (any passcode-checked API call). Throttled; never breaks a request."""
+    global _last_activity_write
+    if time.time() - _last_activity_write < _ACTIVITY_WRITE_EVERY:
+        return
+    _last_activity_write = time.time()
+    try:
+        with _Repo() as repo:
+            repo.set_setting("last_active", datetime.now(timezone.utc).isoformat())
+    except Exception as e:
+        print(f"activity write skipped: {e}")
+
+
+def _inactive_minutes(repo):
+    """Minutes since the owner last used the app or solved a problem; None until activity was ever seen."""
+    seen = []
+    raw = repo.get_setting("last_active")
+    if raw:
+        try:
+            seen.append(datetime.fromisoformat(raw))
+        except ValueError:
+            pass
+    solved = [l.completed_at for l in repo.get_completed_logs() if l.completed_at]
+    if solved:
+        seen.append(max(solved).replace(tzinfo=timezone.utc))
+    if not seen:
+        return None
+    return (datetime.now(timezone.utc) - max(seen)).total_seconds() / 60.0
 
 
 # Links the public portfolio shows only after the passcode (kept out of the public JS bundle).
@@ -237,13 +274,21 @@ def cron_trigger():
         if _in_quiet_hours(int(repo.get_setting("quiet_start", "23")), int(repo.get_setting("quiet_end", "7")), hour):
             return jsonify({"status": "skipped", "message": f"Quiet hours ({hour}:00 IST)."})
 
+        # Inactivity nudge: away for 2.5h+ -> send a question now (at most once per INACTIVITY_MINUTES)
+        idle = _inactive_minutes(repo)
+        if idle is None:
+            repo.set_setting("last_active", datetime.now(timezone.utc).isoformat())
+        last_nudge = repo.get_setting("inactivity_last_sent")
+        nudge_due = idle is not None and idle >= INACTIVITY_MINUTES and (
+            not last_nudge or (datetime.now(timezone.utc) - datetime.fromisoformat(last_nudge)).total_seconds() / 60.0 >= INACTIVITY_MINUTES)
+
         interval_minutes = int(repo.get_setting("leetcode_interval_minutes", "60"))
 
         # Only check successful sends, so a failed email doesn't reset the timer
         last_successful = repo.get_latest_successful_leetcode_log()
         if last_successful:
             elapsed = (datetime.now(timezone.utc) - last_successful.timestamp.replace(tzinfo=timezone.utc)).total_seconds() / 60.0
-            if elapsed < interval_minutes:
+            if elapsed < interval_minutes and not nudge_due:
                 return jsonify({"status": "skipped", "message": f"Only {elapsed:.1f} mins elapsed."})
 
         # Best effort: auto-complete problems already solved on LeetCode so reminders stay accurate
@@ -257,7 +302,9 @@ def cron_trigger():
 
         notifier = NotifierFactory.get_notifier("leetcode", db)
         result = notifier.run(skip=solved_keys)
-        return jsonify({"status": "success", "data": result})
+        if nudge_due and result.get("status") == "success":
+            repo.set_setting("inactivity_last_sent", datetime.now(timezone.utc).isoformat())
+        return jsonify({"status": "success", "reason": "inactivity" if nudge_due else "interval", "data": result})
     finally:
         db.close()
 
