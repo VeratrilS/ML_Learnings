@@ -157,6 +157,9 @@ def build_context(project: Project, max_chars: int = MAX_CONTEXT_CHARS) -> Proje
         listing.append(f"- ... and {len(paths) - MAX_LISTING} more files")
 
     head = [f"PROJECT FILES ({len(paths)} files):", *listing]
+    root = root_prefix(paths)
+    if root:
+        head.append(f"\nAll files are inside the folder '{root}'. Put new files inside it too, unless the task says otherwise.")
     binary = sum(1 for r in ctx.omitted.values() if r.startswith("binary"))
     too_big = len(ctx.omitted) - binary
     if binary or too_big or ctx.previews:
@@ -325,8 +328,8 @@ def build_pdf(plan: Plan, prompt: str, author: str = None, when: datetime = None
 def build_outputs(project: Project, plan: Plan, prompt: str, author: str = None, when: datetime = None) -> StudioResult:
     when = when or datetime.now()
     notes = list(plan.notes)
-    root = root_prefix(project.files)
     zb = ZipBuilder(project.files, when).apply(plan.changes)
+    root = root_prefix(zb.files)  # after the changes: new files outside the top folder move README/REPORT up
 
     readme = plan.readme_md or fallback_readme(plan)
     readme_path = _free_name(zb, root + "README.md", root + "README_STUDIO.md")

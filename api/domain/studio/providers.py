@@ -8,13 +8,23 @@ another backend (e.g. OpenRouter) is one class plus one registry entry; STUDIO_P
 """
 import json
 import os
+import re
+import time
 from abc import ABC, abstractmethod
 
 from api.core.clients import LLMClient, _strip_fences
 
-DEFAULT_STUDIO_MODELS = "gemini-3.8-pro,gemini-3.5-pro,gemini-2.5-pro,gemini-3.8-flash,gemini-2.5-flash"
-LLM_BUDGET = 230      # seconds across the whole fallback chain (Vercel allows 300 per request)
+# Pro first, then Flash. LLMClient moves to the next model as soon as one fails; 404 (unknown / retired)
+# and 429 (no quota) come back in about a second. As of Oct 2026 a free key gets 429 for both Pro models
+# (no Pro quota on the free tier) and 404 for gemini-2.5-*, so in practice a Flash model answers.
+DEFAULT_STUDIO_MODELS = "gemini-3.1-pro-preview,gemini-pro-latest,gemini-3.8-flash,gemini-3.7-flash,gemini-3.5-flash"
+LLM_BUDGET = 150      # seconds across the whole fallback chain, so a run finishes well inside 2.5 minutes
 TEMPERATURE = 0.3
+THINKING = "low"      # Gemini 3 thinking level: "low" keeps Flash fast enough to write whole files in time
+MAX_PASSES = 3        # re-run the chain only when a model was busy (503) or the JSON came back broken ...
+RETRY_PAUSE = 5       # ... after this many seconds
+MIN_PASS_SECONDS = 25
+_BUSY = re.compile(r"\b503\b|UNAVAILABLE|high demand", re.I)  # 404 / 429 are not worth a retry
 
 BANNED_PHRASES = ("delve", "leverage", "seamless", "robust", "cutting-edge", "comprehensive", "tapestry",
                   "in today's world", "it's important to note")
@@ -72,18 +82,34 @@ class ProviderError(RuntimeError):
     """The model failed or returned unusable output. Maps to HTTP 502."""
 
 
+_ESCAPE = re.compile(r"\\(.)", re.S)
+
+
+def _fix_escapes(text):
+    """Double every backslash whose escape JSON doesn't know (pairs are consumed, so "\\\\d" stays valid)."""
+    return _ESCAPE.sub(lambda m: m.group(0) if m.group(1) in '"\\/bfnrtu' else "\\\\" + m.group(1), text)
+
+
 def parse_json_object(text):
     """Parse the model's reply into a dict, tolerating fences or stray text around the object."""
     text = _strip_fences(text or "")
     try:
-        data = json.loads(text)
+        data = json.loads(text, strict=False)  # tolerate raw newlines/tabs inside strings
     except ValueError:
         start, end = text.find("{"), text.rfind("}")
         if start < 0 or end <= start:
             raise ProviderError("The model did not return JSON.")
+        candidate = text[start:end + 1]
         try:
-            data = json.loads(text[start:end + 1])
+            data = json.loads(candidate, strict=False)
         except ValueError:
+            data = None
+        if data is None:  # code in file contents often carries invalid escapes such as \d or \' -> keep them literal
+            try:
+                data = json.loads(_fix_escapes(candidate), strict=False)
+            except ValueError:
+                data = None
+        if data is None:
             raise ProviderError("The model returned malformed JSON (the answer may have been cut off). Try a smaller project or a narrower prompt.")
     if not isinstance(data, dict):
         raise ProviderError("The model returned JSON, but not an object.")
@@ -95,6 +121,18 @@ def build_user_message(prompt, project_context, title=None):
     if title:
         head += f"\nREPORT TITLE CHOSEN BY THE USER: {title.strip()}\n"
     return head + "\n" + project_context + "\n\nReturn the JSON object now."
+
+
+def condense_errors(message):
+    """'All LLM providers failed. m1: 404 NOT_FOUND. {...} | m2: ...' -> 'm1: 404 NOT_FOUND; m2: ...'."""
+    parts = []
+    for segment in str(message).split("All LLM providers failed.", 1)[-1].split(" | "):
+        model, _, rest = segment.strip().partition(":")
+        if not model:
+            continue
+        code = re.search(r"\b(\d{3})\s+([A-Z_]{4,})", rest)
+        parts.append(f"{model.strip()}: {code.group(1)} {code.group(2)}" if code else segment.strip()[:100])
+    return "; ".join(parts)[:600] or str(message)[:300]
 
 
 class TaskProvider(ABC):
@@ -113,18 +151,43 @@ def studio_models():
 class GeminiProvider(TaskProvider):
     name = "gemini"
 
-    def __init__(self, client: LLMClient = None, budget: float = LLM_BUDGET):
-        self.client = client or LLMClient(models=",".join(studio_models()), budget=budget)
+    def __init__(self, client: LLMClient = None, budget: float = LLM_BUDGET, sleep=time.sleep):
+        # openrouter_key="" turns off LLMClient's OpenRouter fallback: it ignores the time budget (a run could
+        # pass Vercel's 300 s limit) and its free model can't take a 600k-char project. OpenRouter would be
+        # its own provider in PROVIDERS instead.
+        self.client = client or LLMClient(openrouter_key="", models=",".join(studio_models()), budget=budget)
+        self.budget = budget
+        self.sleep = sleep
 
     def run(self, prompt, project_context, title=None):
-        try:
-            text = self.client.generate(build_user_message(prompt, project_context, title), json_mode=True,
-                                        temperature=TEMPERATURE, system=SYSTEM_PROMPT)
-        except Exception as e:
-            raise ProviderError(f"The model could not complete the task: {str(e)[:400]}")
-        data = parse_json_object(text)
-        data["model"] = getattr(self.client, "last_model", None) or "gemini"
-        return data
+        message = build_user_message(prompt, project_context, title)
+        deadline = time.monotonic() + self.budget
+        error = "No model was tried."
+        for _ in range(MAX_PASSES):
+            remaining = deadline - time.monotonic()
+            if remaining < MIN_PASS_SECONDS:
+                break
+            self.client.budget = remaining
+            try:
+                text = self.client.generate(message, json_mode=True, temperature=TEMPERATURE, system=SYSTEM_PROMPT,
+                                            thinking=THINKING)
+            except Exception as e:
+                error = str(e)
+                if not _BUSY.search(error):
+                    break
+                self.sleep(min(RETRY_PAUSE, max(0.0, deadline - time.monotonic() - MIN_PASS_SECONDS)))
+                continue
+            try:
+                data = parse_json_object(text)
+            except ProviderError as e:  # one broken answer: ask again while there is time
+                error = f"{getattr(self.client, 'last_model', None) or 'model'}: {e}"
+                continue
+            data["model"] = getattr(self.client, "last_model", None) or "gemini"
+            return data
+        if "JSON" in error:
+            raise ProviderError(error.split(": ", 1)[-1])
+        raise ProviderError(f"No model could complete the task ({condense_errors(error)}). "
+                            "503 means the model is busy and 429 means its quota is used up; try again in a few minutes.")
 
 
 # Registry: name -> zero-argument factory. A new backend is one class + one line here.

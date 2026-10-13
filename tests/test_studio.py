@@ -105,6 +105,13 @@ def test_zip_upload_round_trip(client, use_provider):
     assert "=== FILE: proj/app.py ===" in ctx and "proj/logo.png" in ctx and "binary, not shown" in ctx
     assert "node_modules" not in ctx and "=== FILE: proj/logo.png" not in ctx
     assert FakeProvider.calls[0]["title"] == "Lab 3"
+    assert "All files are inside the folder 'proj/'" in ctx
+
+
+def test_readme_goes_to_zip_root_when_changes_leave_the_top_folder(client, use_provider):
+    use_provider(answer([{"path": "tests/test_app.py", "action": "create", "why": "Test.", "content": "x = 1\n"}]))
+    data = post(client, [("proj/app.py", b"print(1)\n")]).get_json()["data"]
+    assert sorted(unzip(data)) == ["README.md", "REPORT.pdf", "proj/app.py", "tests/test_app.py"]
 
 
 def test_folder_upload_keeps_relative_paths_and_existing_readme(client, use_provider):
@@ -211,9 +218,67 @@ def test_provider_garbage_is_502(client, use_provider):
     assert res.status_code == 502 and "All LLM providers failed" in res.get_json()["message"]
 
 
+def test_gemini_provider_uses_studio_models_without_openrouter(monkeypatch):
+    monkeypatch.setenv("STUDIO_MODELS", "gemini-x-pro,gemini-y-flash")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "set-but-ignored")
+    provider = providers_mod.get_provider()
+    assert provider.client.models == ["gemini-x-pro", "gemini-y-flash"] and provider.client.openrouter_key == ""
+    with pytest.raises(ProviderError):
+        providers_mod.get_provider("nope")
+
+
+class ScriptedClient:
+    """Stands in for LLMClient: each generate() pops the next outcome (an exception or a reply)."""
+    def __init__(self, *outcomes):
+        self.outcomes, self.calls, self.budget, self.last_model = list(outcomes), 0, None, None
+
+    def generate(self, *args, **kwargs):
+        self.calls += 1
+        out = self.outcomes.pop(0)
+        if isinstance(out, Exception):
+            raise out
+        self.last_model = "gemini-3.8-flash"
+        return out
+
+
+BUSY = RuntimeError("All LLM providers failed. gemini-3.1-pro-preview: 429 RESOURCE_EXHAUSTED. {'error': 1} | "
+                    "gemini-3.8-flash: 503 UNAVAILABLE. {'error': {'message': 'high demand'}}")
+
+
+def test_gemini_provider_retries_when_models_are_busy():
+    client = ScriptedClient(BUSY, '{"summary": "ok", "changes": []}')
+    out = providers_mod.GeminiProvider(client=client, sleep=lambda s: None).run("p", "ctx")
+    assert client.calls == 2 and out["model"] == "gemini-3.8-flash" and out["summary"] == "ok"
+
+
+def test_gemini_provider_gives_up_with_a_short_message():
+    client = ScriptedClient(BUSY, BUSY, BUSY, BUSY)
+    with pytest.raises(ProviderError) as e:
+        providers_mod.GeminiProvider(client=client, sleep=lambda s: None).run("p", "ctx")
+    assert client.calls == providers_mod.MAX_PASSES
+    assert "gemini-3.1-pro-preview: 429 RESOURCE_EXHAUSTED; gemini-3.8-flash: 503 UNAVAILABLE" in str(e.value)
+    assert "{" not in str(e.value)
+    quota = ScriptedClient(RuntimeError("All LLM providers failed. m: 429 RESOURCE_EXHAUSTED. quota"))
+    with pytest.raises(ProviderError):
+        providers_mod.GeminiProvider(client=quota, sleep=lambda s: None).run("p", "ctx")
+    assert quota.calls == 1  # quota errors are not retried
+
+
+def test_gemini_provider_asks_again_after_broken_json():
+    client = ScriptedClient('{"summary": "cut', '{"summary": "ok\nwith a raw newline"}')
+    out = providers_mod.GeminiProvider(client=client, sleep=lambda s: None).run("p", "ctx")
+    assert client.calls == 2 and out["summary"].startswith("ok")
+    bad = ScriptedClient("nope", "nope", "nope")
+    with pytest.raises(ProviderError) as e:
+        providers_mod.GeminiProvider(client=bad, sleep=lambda s: None).run("p", "ctx")
+    assert "JSON" in str(e.value) and bad.calls == providers_mod.MAX_PASSES
+
+
 def test_parse_json_object():
     assert parse_json_object('```json\n{"a": 1}\n```') == {"a": 1}
     assert parse_json_object('Here you go: {"a": 2} thanks') == {"a": 2}
+    assert parse_json_object(r'{"content": "re.compile(\"\d+\")\nprint(\'x\')"}') == {"content": "re.compile(\"\\d+\")\nprint(\\'x\\')"}
+    assert parse_json_object(r'{"a": "C:\\dir \d"}') == {"a": "C:\\dir \\d"}
     for bad in ("nope", "[1, 2]", '{"a": '):
         with pytest.raises(ProviderError):
             parse_json_object(bad)
