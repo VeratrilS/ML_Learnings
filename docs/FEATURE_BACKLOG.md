@@ -62,3 +62,24 @@ Each line: what it does, why it sticks, rough size (S/M/L), and what existing da
 - Register new pages in `src/lib/features.jsx` (beta), not in the core nav.
 - Prefer features that need no Gemini quota (the free tier runs out); LLM-based ones should degrade gracefully.
 - Keep each one testable like `tests/test_weekly.py` / `tests/test_sheets.py`.
+
+## More ideas (round 2)
+
+13. **Compound Curve deadline alerts** — S. Email when your Apple-sheet pace drops below what your deadline needs.
+14. **Coverage Gap Map** — S. Heatmap of placement/exam topics you have never touched; one tap starts a problem there.
+15. **Cold-Start Probe** — S. Weekly surprise quiz on a topic you marked "known" but haven't practised in 30 days.
+16. **Interleaved Mix** — S. Next problem always from a different topic than the last (DP → graphs → OS → SQL).
+17. **Whiteboard Mode** — M. Timed solve with no autocomplete or run button; self-grade, track first-try correctness.
+18. **Dry-Run Trainer** — M. Predict variable values line by line on a small input before seeing the real trace.
+19. **Complexity Coach** — S. Paste a solution → it asks you for Big-O first, then shows the right answer and why.
+20. **Speak-back Drill** — M. Record a 90 s spoken answer; filler words, pace and STAR structure get scored.
+21. **Stress Ladder** — M. Practice under rising pressure (timer → camera on → cold-call voice) with a panic score.
+22. **Prime Time Finder** — S. Finds the hours you solve best (from solve timestamps) and puts hard problems there.
+23. **Overbook Guard** — S. Warns when today's plan is longer than your free time, using past focus-timer data.
+24. **Pattern Mirror** — S. Weekly scan of journal blockers that shows repeating ones with one reflective question.
+25. **Attendance Guard** — S. Per-subject attendance and how many classes you can still skip before 75%.
+26. **Marks Maximizer** — M. Enter internals/lab marks → end-sem score needed per subject for your target grade.
+27. **Interview Day Kit** — S. Per-interview checklist: documents, travel buffer, camera/mic/internet test.
+28. **Sleep Guard** — S. Protected bedtime and screen-off reminder two nights before each exam or interview.
+29. **Unified Solve Heatmap** — M. One calendar merging LeetCode, Codeforces, CodeChef and AtCoder solves.
+30. **Telegram/WhatsApp nudges** — M. The inactivity nudge and daily problem also as a chat message, not only email.
