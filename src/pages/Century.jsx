@@ -6,14 +6,38 @@ import {
 import { Button, Card, ProgressBar, Skeleton, useToast, cx } from '../components/ui';
 import { api } from '../lib/api';
 import { useApi, navigate } from '../lib/hooks';
+import { CENTURY_FEATURES } from '../lib/centuryCatalog';
 
 export default function Century() {
     const toast = useToast();
     const catalogRes = useApi('/century/catalog');
 
-    const catalog = catalogRes.data?.catalog || [];
-    const domains = catalogRes.data?.domains || [];
-    const stats = catalogRes.data?.stats || { total_features: 100, used_features: 0, mastered_features: 0, completion_pct: 0 };
+    const rawCatalog = catalogRes.data?.catalog;
+    const catalog = useMemo(() => {
+        if (rawCatalog && rawCatalog.length > 0) return rawCatalog;
+        return CENTURY_FEATURES.map((f) => ({
+            id: f.id,
+            title: f.label,
+            domain: f.domain,
+            desc: f.desc,
+            xp: f.xp || 75,
+            route: `#/${f.id}`,
+            status: 'unlocked',
+            usage_count: 0,
+        }));
+    }, [rawCatalog]);
+
+    const domains = useMemo(() => {
+        if (catalogRes.data?.domains && catalogRes.data.domains.length > 0) return catalogRes.data.domains;
+        return Array.from(new Set(CENTURY_FEATURES.map((f) => f.domain)));
+    }, [catalogRes.data?.domains]);
+
+    const stats = catalogRes.data?.stats || {
+        total_features: catalog.length,
+        used_features: 0,
+        mastered_features: 0,
+        completion_pct: 0
+    };
 
     const [activeDomain, setActiveDomain] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
@@ -22,27 +46,31 @@ export default function Century() {
     const filteredFeatures = useMemo(() => {
         return catalog.filter((f) => {
             const matchesDomain = activeDomain === 'All' || f.domain === activeDomain;
-            const matchesQuery = !searchQuery.trim() ||
-                f.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                f.desc.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                f.domain.toLowerCase().includes(searchQuery.toLowerCase());
+            const q = searchQuery.toLowerCase().trim();
+            const matchesQuery = !q ||
+                (f.title || f.label || '').toLowerCase().includes(q) ||
+                (f.desc || '').toLowerCase().includes(q) ||
+                (f.domain || '').toLowerCase().includes(q) ||
+                (f.id || '').toLowerCase().includes(q);
             return matchesDomain && matchesQuery;
         });
     }, [catalog, activeDomain, searchQuery]);
 
     const handleActivate = async (feature) => {
+        const targetRoute = feature.route || `#/${feature.id}`;
+        
+        // If it's a navigable feature, jump immediately for instant responsiveness
+        if (targetRoute && targetRoute !== '#/century') {
+            window.location.hash = targetRoute;
+        }
+
         setActivatingId(feature.id);
         try {
             const res = await api(`/century/action/${feature.id}`, { method: 'POST' });
-            toast.success('Feature Activated!', res.data.message);
+            toast(res?.message || `Activated ${feature.title || feature.label}! +${feature.xp} XP`, 'success');
             catalogRes.reload();
-            if (feature.route && feature.route !== '#/century') {
-                setTimeout(() => {
-                    window.location.hash = feature.route;
-                }, 400);
-            }
         } catch (err) {
-            toast.error('Activation failed', err.message);
+            toast(err.message || 'Activation failed', 'danger');
         } finally {
             setActivatingId(null);
         }
@@ -138,6 +166,7 @@ export default function Century() {
                 {filteredFeatures.map((f) => {
                     const isMastered = f.status === 'mastered';
                     const hasUsed = f.usage_count > 0;
+                    const titleText = f.title || f.label;
 
                     return (
                         <Card
@@ -157,7 +186,7 @@ export default function Century() {
                                 </div>
 
                                 <h3 className="font-bold text-fg text-sm flex items-center gap-1.5">
-                                    {f.title}
+                                    {titleText}
                                     {isMastered && <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />}
                                 </h3>
                                 <p className="text-xs text-subtle mt-1 line-clamp-2 leading-relaxed">{f.desc}</p>

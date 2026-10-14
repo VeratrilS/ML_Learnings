@@ -57,3 +57,33 @@ def test_century_mastery_progression(client):
     hotseat_feat = next((f for f in cat if f["id"] == "hotseat"), None)
     assert hotseat_feat is not None
     assert hotseat_feat["status"] == "mastered"
+
+
+def test_ats_analyze(client):
+    res = client.post("/api/century/ats/analyze", json={
+        "bullet": "Worked on backend REST API to make it faster and helped team fix bugs.",
+        "target_role": "Backend Engineer"
+    })
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["success"] is True
+    assert "score" in data
+    assert len(data["ai_rewrites"]) == 3
+    assert len(data["weak_verbs_found"]) >= 1
+
+
+def test_archsim_simulate(client):
+    res = client.post("/api/century/archsim/simulate", json={
+        "rps": 20000,
+        "instances": 4,
+        "cdn_enabled": True,
+        "cache_enabled": True,
+        "db_replicas": 2,
+        "scenario": "none"
+    })
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["success"] is True
+    assert "metrics" in data
+    assert data["metrics"]["p99_latency_ms"] > 0
+    assert "bottlenecks" in data

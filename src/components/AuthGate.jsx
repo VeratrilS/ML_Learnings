@@ -40,11 +40,18 @@ export default function AuthGate({ children }) {
     const unlocked = () => {
         setLogin(false);
         setState('open');
-        if (hash() === '#/login' || hash() === '#/portfolio') window.location.hash = '#/today';
+        const h = hash();
+        if (h === '#/login' || h === '#/portfolio' || !h || h === '#/') {
+            window.location.hash = '#/today';
+        }
     };
 
+    const isAppRoute = route && route !== '#/' && route !== '#' && route !== '#/portfolio';
+
     if (state === 'checking') return spinner;
-    if (state === 'locked' && login) return <LockScreen onUnlock={unlocked} onBack={closeLogin} />;
+    if (state === 'locked' && (login || isAppRoute)) {
+        return <LockScreen onUnlock={unlocked} onBack={closeLogin} />;
+    }
     if (state === 'locked' || route === '#/portfolio') {
         return (
             <Suspense fallback={spinner}>

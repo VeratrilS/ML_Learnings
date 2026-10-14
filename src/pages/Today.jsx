@@ -17,6 +17,7 @@ import RevisionCard from '../components/RevisionCard';
 import ContestsCard from '../components/ContestsCard';
 import LeetCodeCard from '../components/LeetCodeCard';
 import StudyCard from '../components/StudyCard';
+import CenturyCard from '../components/CenturyCard';
 
 const QUOTES = [
     ['Not everyone who works hard is rewarded. But all those who succeed have worked hard.', 'Kamogawa Genji'],
@@ -236,6 +237,7 @@ export default function Today({ stats, xp }) {
                         <EpisodeCard onChange={progressChanged} />
                         <LearnCard onChange={progressChanged} />
                     </div>
+                    <div id="century-spotlight" className={cx(SECTION, 'order-5')}><CenturyCard /></div>
                     <div id="revisions" className={cx(SECTION, 'order-6')}><RevisionCard /></div>
                     {/* Cards of approved Beta Lab features */}
                     <Suspense fallback={null}>

@@ -821,8 +821,16 @@ export default function Portfolio({ onUnlock, owner = false }) {
                             );
                         })}
                     </nav>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                         <ThemeToggle />
+                        <button
+                            type="button"
+                            onClick={onUnlock}
+                            className="btn btn-secondary btn-sm shrink-0 flex items-center gap-1.5 text-accent hover:border-accent font-semibold"
+                            title="Open Daily Engineering Suite & 100 Beta Tools"
+                        >
+                            <Lock className="h-3.5 w-3.5" /> {owner ? 'Open App' : 'Owner Login'}
+                        </button>
                         <a href={`mailto:${EMAIL}`} className="btn btn-primary btn-sm shrink-0"><Mail className="h-4 w-4" /> Hire me</a>
                     </div>
                 </div>

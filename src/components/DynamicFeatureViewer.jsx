@@ -17,15 +17,15 @@ export default function DynamicFeatureViewer({ featureId, title, domain, desc, d
         setExecuting(true);
         try {
             const res = await api(`/century/action/${featureId}`, { method: 'POST' });
-            const data = res.data;
+            const xp = res?.xp_awarded || defaultXp;
             setResult({
-                xp: data.xp_awarded || defaultXp,
+                xp,
                 timestamp: new Date().toLocaleTimeString(),
-                message: `Successfully executed ${title}! All state invariants, assertions, and pipelines verified.`,
+                message: res?.message || `Successfully executed ${title}! All state invariants, assertions, and pipelines verified.`,
             });
-            toast.success('Simulation Complete', `+${data.xp_awarded || defaultXp} XP awarded for mastering ${title}.`);
+            toast(`Simulation complete! +${xp} XP awarded for ${title}.`, 'success');
         } catch (err) {
-            toast.error('Execution Failed', err.message);
+            toast(err.message || 'Execution failed', 'danger');
         } finally {
             setExecuting(false);
         }

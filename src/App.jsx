@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
     Sun, Moon, Code2, Swords, FileText, Settings as SettingsIcon, House, Flame, GraduationCap, Search, RotateCcw,
-    MonitorPlay, Ellipsis, ChevronRight, FlaskConical, FolderCog,
+    MonitorPlay, Ellipsis, ChevronRight, FlaskConical, FolderCog, Trophy,
 } from 'lucide-react';
 import { FEATURES, useFeatures } from './lib/features';
 import { useTheme } from './themes/ThemeContext';
@@ -19,6 +19,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Learn = lazy(() => import('./pages/Learn'));
 const Lab = lazy(() => import('./pages/Lab'));
 const Studio = lazy(() => import('./pages/Studio'));
+const Century = lazy(() => import('./pages/Century'));
 
 // `tab`: shown in the mobile bottom bar; everything else lives under "More" on mobile.
 const NAV = [
@@ -26,6 +27,7 @@ const NAV = [
     { id: 'problems', label: 'DSA', long: 'DSA Problems', icon: Code2, tab: true },
     { id: 'study', label: 'Study', long: 'End-sem Prep', icon: GraduationCap, tab: true },
     { id: 'learn', label: 'Learn', icon: MonitorPlay, tab: true },
+    { id: 'century', label: '100 Beta Suite', long: 'Century 100 Beta Suite', icon: Trophy },
     { id: 'cf', label: 'Codeforces', short: 'CF', icon: Swords },
     { id: 'pdf', label: 'PDF Studio', short: 'PDF', icon: FileText },
     { id: 'studio', label: 'Task Studio', short: 'Studio', icon: FolderCog },
@@ -188,8 +190,9 @@ export default function App() {
                             {current === 'pdf' && <PdfStudio />}
                             {current === 'learn' && <Learn />}
                             {current === 'lab' && <Lab />}
+                            {current === 'century' && <Century />}
                             {current === 'studio' && <Studio />}
-                            {featurePage && current === featurePage.id && (
+                            {featurePage && current === featurePage.id && current !== 'century' && (
                                 <>
                                     {!features.isOn(featurePage.id) && (
                                         <div className="mb-4 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent-soft px-3 py-2 text-[13px]">
