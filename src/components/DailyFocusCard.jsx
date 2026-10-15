@@ -548,7 +548,7 @@ export default function DailyFocusCard({
                             <div className="rounded-xl border border-line/70 overflow-hidden bg-surface-2/20">
                                 {/* Table Header */}
                                 <div className="hidden md:flex items-center justify-between px-4 py-2 bg-surface-2/60 border-b border-line/60 text-[10px] font-bold tracking-wider uppercase text-subtle">
-                                    <div className="flex-1 max-w-[50%] pl-8">Problem &amp; Rotating Subtopic</div>
+                                    <div className="flex-1 max-w-[50%] pl-8">Problem</div>
                                     <div className="flex items-center gap-4 shrink-0">
                                         <div className="w-20 text-center">Difficulty</div>
                                         <div className="w-32 text-center">Practice (LeetCode)</div>
@@ -616,16 +616,6 @@ export default function DailyFocusCard({
                                                                 >
                                                                     <Bookmark className={cx('h-3 w-3', revisions.includes(p.id) && 'fill-accent')} />
                                                                 </button>
-                                                            )}
-                                                        </div>
-
-                                                        <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-subtle truncate">
-                                                            <span className="font-semibold text-fg/80">{modLabel}</span>
-                                                            {subLabel && (
-                                                                <>
-                                                                    <span>·</span>
-                                                                    <span className="truncate text-accent font-medium">{subLabel}</span>
-                                                                </>
                                                             )}
                                                         </div>
                                                     </div>
