@@ -62,6 +62,7 @@ from api.domain.job_sources import job_sources_bp
 from api.domain.job_pack import job_pack_bp
 from api.domain.job_approvals import job_approvals_bp
 from api.domain.job_telegram import job_telegram_bp
+from api.domain.job_resume_file import job_resume_file_bp
 
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
@@ -69,7 +70,7 @@ CORS(app)
 for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, weekly_bp, insights_bp, focus_bp, journal_bp, xp_bp, features_bp,
            pdf_extract_bp, mistakes_bp, placements_bp, oa_bp, interview_bp, gym_bp, brief_bp, habits_bp, capture_bp, flashcards_bp, tutor_bp,
            public_stats_bp, studio_bp, agents_bp, speedrun_bp, bounties_bp, arena_bp, drillmaster_bp, dempsey_bp, radar_bp,
-           ghost_bp, forge_bp, hotseat_bp, bughunt_bp, complexity_bp, lofi_bp, century_bp, job_radar_bp, job_sources_bp, job_pack_bp, job_approvals_bp, job_telegram_bp):
+           ghost_bp, forge_bp, hotseat_bp, bughunt_bp, complexity_bp, lofi_bp, century_bp, job_radar_bp, job_sources_bp, job_pack_bp, job_approvals_bp, job_telegram_bp, job_resume_file_bp):
     app.register_blueprint(bp)
 
 # ---------------- Passcode login ----------------
@@ -78,7 +79,7 @@ for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, weekly_bp
 # /api/public/stats feeds the public portfolio page; it is cached server-side for 6h, so it can't be used to spam either.
 _OPEN_ENDPOINTS = {"/api/health", "/api/auth/status", "/api/auth/login",
                    "/api/cron", "/api/digest", "/api/syllabus/remind", "/api/weekly/cron",
-                   "/api/public/stats", "/api/jobs/scan", "/api/jobs/decide", "/api/jobs/approval-digest", "/api/jobs/telegram/webhook", "/api/jobs/followups"}
+                   "/api/public/stats", "/api/jobs/scan", "/api/jobs/decide", "/api/jobs/approval-digest", "/api/jobs/telegram/webhook", "/api/jobs/resume-file", "/api/jobs/followups"}
 
 
 def _auth_token():

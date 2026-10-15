@@ -22,6 +22,8 @@ export function autofillProfile(p = {}) {
         gradYear: String(p.grad_year || p.gradYear || ''),
         cgpa: p.cgpa != null ? String(p.cgpa) : '',
         location: p.location || (p.location_pref || '').split(',')[0].trim(),
+        resumeUrl: p.resume_url || p.resumeUrl || '',
+        resumeName: p.resume_name || p.resumeName || 'Resume.pdf',
     };
 }
 
@@ -73,6 +75,7 @@ function filler(P) {
 
     let filled = 0;
     const todo = [];
+    const resumeJobs = [];
     const inputs = [...document.querySelectorAll('input, textarea, select')].filter((el) => {
         const t = (el.type || '').toLowerCase();
         return !el.disabled && el.offsetParent !== null && !['hidden', 'submit', 'button', 'reset', 'image'].includes(t);
@@ -82,8 +85,24 @@ function filler(P) {
         const t = (el.type || '').toLowerCase();
         const label = labelOf(el);
         if (t === 'file') {
-            mark(el, '#f59e0b');
-            todo.push(`Upload: ${label.slice(0, 50) || 'resume'}`);
+            const isResume = /resume|cv|curriculum/i.test(label) || inputs.filter((x) => x.type === 'file').length === 1;
+            if (isResume && P.resumeUrl && !(el.files && el.files.length)) {
+                resumeJobs.push(fetch(P.resumeUrl).then((r) => {
+                    if (!r.ok) throw new Error(`resume ${r.status}`);
+                    return r.blob();
+                }).then((blob) => {
+                    const dt = new DataTransfer();
+                    dt.items.add(new File([blob], P.resumeName, { type: 'application/pdf' }));
+                    el.files = dt.files;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    mark(el, '#16a34a');
+                    filled++;
+                }).catch(() => { mark(el, '#f59e0b'); todo.push('Upload your resume (automatic attach failed)'); }));
+            } else {
+                mark(el, '#f59e0b');
+                todo.push(`Upload: ${label.slice(0, 50) || 'resume'}`);
+            }
             continue;
         }
         if (t === 'radio' || t === 'checkbox') {
@@ -107,6 +126,8 @@ function filler(P) {
         else if (el.required || el.getAttribute('aria-required') === 'true') { mark(el, '#f59e0b'); todo.push(label.slice(0, 50) || 'a required field'); }
     }
 
+    Promise.allSettled(resumeJobs).then(() => showBox());
+    function showBox() {
     const box = document.createElement('div');
     box.style.cssText = 'position:fixed;z-index:2147483647;right:16px;bottom:16px;max-width:340px;background:#111827;color:#fff;'
         + 'font:14px/1.45 system-ui,sans-serif;padding:14px 16px;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.35)';
@@ -117,6 +138,7 @@ function filler(P) {
         + '<button style="margin-top:10px;background:#f97316;color:#fff;border:0;border-radius:8px;padding:6px 12px;font-weight:600;cursor:pointer">OK</button>';
     box.querySelector('button').onclick = () => box.remove();
     document.body.appendChild(box);
+    }
 }
 
 /** A javascript: URL that runs the filler with this profile baked in (drag it to the bookmarks bar). */
