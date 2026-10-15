@@ -80,6 +80,31 @@ def _ensure_tables(state):
             table.create(bind=engine, checkfirst=True)
         except Exception as e:  # e.g. a concurrent cold start created it first
             print(f"{table.name} table check skipped: {e}")
+    _widen_columns()
+
+
+# create(checkfirst=True) never alters an existing table. The first production table was created with
+# VARCHAR(10) difficulty/last_asked and VARCHAR(200) slug; newer sheets need more, and Postgres (unlike the
+# local SQLite) rejects longer values. Widening is idempotent and only ever grows a column.
+_WIDTHS = {"slug": 500, "difficulty": 20, "last_asked": 40, "topics": 500, "title": 300}
+
+
+def _widen_columns():
+    if engine.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+    try:
+        with engine.begin() as conn:
+            rows = conn.execute(text(
+                "SELECT column_name, character_maximum_length FROM information_schema.columns "
+                "WHERE table_name = 'sheet_problems'")).all()
+            for name, length in rows:
+                want = _WIDTHS.get(name)
+                if want and length is not None and length < want:
+                    conn.execute(text(f"ALTER TABLE sheet_problems ALTER COLUMN {name} TYPE VARCHAR({want})"))
+                    print(f"sheet_problems.{name} widened {length} -> {want}")
+    except Exception as e:
+        print(f"sheet_problems widen skipped: {e}")
 
 
 # ---------------- seeding ----------------
