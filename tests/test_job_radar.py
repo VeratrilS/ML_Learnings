@@ -153,3 +153,12 @@ def test_toggle_auto_apply_and_settings(client):
         assert prof.location_pref == "Bengaluru"
     finally:
         db.close()
+
+
+def test_followups_endpoint(client):
+    """Verifies followups scheduler endpoint."""
+    res = client.post("/api/jobs/followups")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] in ("success", "skipped")
+

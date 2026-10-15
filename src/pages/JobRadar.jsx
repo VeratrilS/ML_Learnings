@@ -11,6 +11,7 @@ import { api } from '../lib/api';
 import { useApi, navigate } from '../lib/hooks';
 import { Button, Card, CardHeader, Empty, Segmented, Sheet, Skeleton, useToast, cx } from '../components/ui';
 import { play } from '../lib/sfx';
+import { buildBookmarklet, autofillSnippet } from '../lib/autofill';
 
 function fmtCtc(val) {
     if (!val) return '';
@@ -47,6 +48,7 @@ function useCountdown(targetIso) {
 export default function JobRadar() {
     const { data, loading, reload } = useApi('/jobs/radar');
     const blueprintsApi = useApi('/jobs/blueprints');
+    const liveApi = useApi('/jobs/live?min_score=50');
     const toast = useToast();
 
     // Tab state: 'openings' | 'portals' | 'confirmed' | 'blueprints'
@@ -78,7 +80,19 @@ export default function JobRadar() {
     const jobs = useMemo(() => data?.jobs || [], [data]);
     const recentLogs = useMemo(() => data?.recent_logs || [], [data]);
     const blueprints = useMemo(() => blueprintsApi.data?.blueprints || [], [blueprintsApi.data]);
+    const liveJobs = useMemo(() => liveApi.data?.data || [], [liveApi.data]);
     const countdown = useCountdown(summary?.next_hourly_scan);
+
+    const bookmarkletHref = useMemo(() => profile ? buildBookmarklet(profile) : '#', [profile]);
+    const bookmarkletSnippet = useMemo(() => profile ? autofillSnippet(profile) : '', [profile]);
+
+    const handleCopyBookmarklet = () => {
+        if (navigator.clipboard && bookmarkletSnippet) {
+            navigator.clipboard.writeText(bookmarkletSnippet);
+            play('pop', { force: true });
+            toast('Autofill code copied! Paste into developer console on any application page.', 'success');
+        }
+    };
 
     // Filtered jobs list
     const filteredJobs = useMemo(() => {
@@ -214,24 +228,26 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
         }
     };
 
-    const handleConfirmSubmit = async () => {
-        if (!confirmModalJob) return;
+    const handleConfirmSubmit = async (overrideJob = null) => {
+        const target = overrideJob || confirmModalJob;
+        if (!target) return;
         setConfirming(true);
         try {
-            const res = await api('/jobs/confirm-applied', {
+            const res = await api('/jobs/manual-applied', {
                 method: 'POST',
                 body: {
-                    job_id: confirmModalJob.id,
-                    confirmation_ref: confirmRefInput.trim(),
-                    notes: confirmNotesInput.trim(),
+                    job_id: target.id,
+                    confirmation_ref: overrideJob ? '' : confirmRefInput.trim(),
+                    notes: overrideJob ? 'Confirmed via 1-click assist' : confirmNotesInput.trim(),
                 },
             });
             play('combo', { force: true });
-            toast(res.message || `Confirmed application to ${confirmModalJob.company}!`, 'success');
+            toast(res.message || `Recorded: Applied to ${target.company}! 7d and 14d follow-ups scheduled.`, 'success');
             setConfirmModalJob(null);
             setConfirmRefInput('');
             setConfirmNotesInput('');
             reload({ silent: true });
+            if (liveApi?.reload) liveApi.reload({ silent: true });
         } catch (e) {
             toast(e.message || 'Failed to record application', 'error');
         } finally {
@@ -340,6 +356,60 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             icon={Briefcase}
                         >
                             Placements Board
+                        </Button>
+                    </div>
+                </div>
+            </Card>
+
+            {/* Form Autofill Bookmarklet Banner */}
+            <Card className="card-pad border-amber-500/30 bg-gradient-to-r from-amber-950/20 via-surface to-surface">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                        <div className="grid place-items-center h-10 w-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 shrink-0">
+                            <Zap className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-bold text-sm text-fg">1-Click Job Form Autofill Bookmarklet</h3>
+                                <span className="badge text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                                    Greenhouse · Lever · Ashby
+                                </span>
+                            </div>
+                            <p className="text-xs text-subtle mt-0.5 max-w-xl">
+                                Automatically fills your candidate information (NIT Rourkela, 8.99 CGPA, LeetCode, GitHub, Work Auth) in 1 tap on any external job portal. Never submits automatically — you review and click submit.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted mt-2">
+                                <span><b>1.</b> Drag button to Bookmarks Bar (Ctrl+Shift+B)</span>
+                                <span>→</span>
+                                <span><b>2.</b> Open any career portal</span>
+                                <span>→</span>
+                                <span><b>3.</b> Tap it to autofill</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 shrink-0">
+                        <a
+                            href={bookmarkletHref}
+                            onClick={(e) => {
+                                if (e.target.tagName === 'A') {
+                                    toast('Drag this button directly to your browser Bookmarks Bar (Ctrl+Shift+B)!', 'info');
+                                }
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs shadow-md transition-all cursor-grab active:cursor-grabbing"
+                            title="Drag to bookmarks bar"
+                        >
+                            <Zap className="h-4 w-4 fill-black" />
+                            <span>⚡ Autofill (Drag to Bookmarks)</span>
+                        </a>
+                        <Button
+                            size="sm"
+                            variant="secondary"
+                            icon={Copy}
+                            onClick={handleCopyBookmarklet}
+                            title="Copy JavaScript console code for mobile or strict browsers"
+                        >
+                            Copy Code
                         </Button>
                     </div>
                 </div>
@@ -544,6 +614,106 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                 ))}
                             </div>
                         </div>
+                    </div>
+
+                    {/* Live Career Board Feeds (Greenhouse, Lever, Ashby, SmartRecruiters) */}
+                    {liveJobs.length > 0 && (
+                        <div className="space-y-3 p-4 rounded-2xl bg-surface border border-emerald-500/30">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="relative flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                    </span>
+                                    <h3 className="font-bold text-sm text-fg">Live Career Page Feed ({liveJobs.length} active roles)</h3>
+                                    <span className="badge text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        Greenhouse · Lever · Ashby · SmartRecruiters
+                                    </span>
+                                </div>
+                                <span className="text-xs text-subtle font-mono">
+                                    Deterministic skill match ≥ 50
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {liveJobs.slice(0, 8).map((lj) => {
+                                    const isNew = lj.discovered_at && (Date.now() - new Date(lj.discovered_at).getTime()) < 86400000;
+                                    const isApplied = lj.status === 'manual_applied' || lj.status === 'applied_confirmed';
+
+                                    return (
+                                        <div key={lj.id} className="p-3 rounded-xl bg-surface-2 border border-line flex flex-col justify-between gap-2.5">
+                                            <div>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-bold text-sm text-fg truncate">{lj.company}</span>
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        {isNew && (
+                                                            <span className="badge text-[9px] font-bold bg-emerald-500 text-black px-1.5 py-0.2">
+                                                                NEW
+                                                            </span>
+                                                        )}
+                                                        <span className="badge text-[10px] font-mono bg-surface border border-line text-emerald-400 font-bold">
+                                                            {lj.match_score}% Match
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-xs text-muted font-medium mt-0.5 truncate">{lj.role}</p>
+                                                <div className="flex items-center gap-2 text-[11px] text-subtle mt-1">
+                                                    <span className="badge text-[10px] uppercase font-mono bg-surface border border-line">{lj.source}</span>
+                                                    <span>·</span>
+                                                    <span>{lj.location}</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1 mt-2">
+                                                    {(lj.skills || []).slice(0, 4).map((s, idx) => (
+                                                        <span key={idx} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface border border-line text-subtle">
+                                                            {s}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 pt-2 border-t border-line/60">
+                                                <a
+                                                    href={lj.url}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-3 border border-line text-xs font-semibold text-fg transition-all"
+                                                >
+                                                    <span>Open Portal</span>
+                                                    <ExternalLink className="h-3 w-3" />
+                                                </a>
+                                                <Button
+                                                    size="sm"
+                                                    variant={isApplied ? 'ghost' : 'primary'}
+                                                    onClick={() => handleConfirmSubmit(lj)}
+                                                    className="text-xs py-1.5 px-3 shrink-0"
+                                                >
+                                                    {isApplied ? (
+                                                        <>
+                                                            <CheckCheck className="h-3 w-3 mr-1 text-emerald-400" />
+                                                            Applied
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Check className="h-3 w-3 mr-1" />
+                                                            I Applied
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-2">
+                        <h3 className="font-bold text-sm text-fg flex items-center gap-2">
+                            <span>Saved 2027 CSE Roster</span>
+                            <span className="badge text-[10px] font-mono bg-surface-2 border border-line text-subtle">
+                                {filteredJobs.length} verified openings (≥{minCtcFilter} LPA)
+                            </span>
+                        </h3>
                     </div>
 
                     {/* Job Opportunities Grid */}

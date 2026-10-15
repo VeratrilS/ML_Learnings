@@ -75,7 +75,7 @@ for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, weekly_bp
 # /api/public/stats feeds the public portfolio page; it is cached server-side for 6h, so it can't be used to spam either.
 _OPEN_ENDPOINTS = {"/api/health", "/api/auth/status", "/api/auth/login",
                    "/api/cron", "/api/digest", "/api/syllabus/remind", "/api/weekly/cron",
-                   "/api/public/stats", "/api/jobs/scan"}
+                   "/api/public/stats", "/api/jobs/scan", "/api/jobs/followups"}
 
 
 def _auth_token():

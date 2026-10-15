@@ -67,6 +67,7 @@ class JobOpportunity(Base):
     application_ref = Column(String(100), nullable=True)
     follow_up_7d_at = Column(DateTime, nullable=True)
     follow_up_14d_at = Column(DateTime, nullable=True)
+    board = Column(String(40), nullable=True)  # greenhouse | lever | ashby | smartrecruiters | direct
     ml_tailored_answers = Column(Text, nullable=True)  # Candidate application snippets
     notes = Column(Text, nullable=True)
     discovered_at = Column(DateTime, default=_utcnow)
@@ -1024,5 +1025,60 @@ def dispatch_live_alert():
             return jsonify({"status": "error", "message": "Failed to send email. Check SMTP."}), 500
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        db.close()
+
+
+LAST_FOLLOWUP_KEY = "job_radar:last_followup_email"
+FOLLOWUP_GAP = timedelta(hours=20)
+
+
+@job_radar_bp.route("/followups", methods=["POST"])
+def send_followup_reminders():
+    """
+    Sends email reminders for applications whose 7-day or 14-day follow-up is due.
+    Open scheduler endpoint, throttled to once every 20 hours.
+    """
+    from api.domain.repositories import NotificationRepository
+    db = SessionLocal()
+    try:
+        repo = NotificationRepository(db)
+        last = repo.get_setting(LAST_FOLLOWUP_KEY)
+        now = _utcnow()
+        if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < FOLLOWUP_GAP:
+            return jsonify({"status": "skipped", "message": "Follow-ups checked recently."})
+
+        due_7d = db.query(JobOpportunity).filter(
+            JobOpportunity.status.in_(["manual_applied", "applied_confirmed"]),
+            JobOpportunity.follow_up_7d_at <= now,
+        ).all()
+        due_14d = db.query(JobOpportunity).filter(
+            JobOpportunity.status.in_(["manual_applied", "applied_confirmed"]),
+            JobOpportunity.follow_up_14d_at <= now,
+        ).all()
+
+        sender, password = os.getenv("SENDER_EMAIL"), os.getenv("SENDER_PASSWORD")
+        emailed = False
+        if (due_7d or due_14d) and sender and password:
+            from api.core.clients import EmailClient
+            subject = f"📬 Job Radar: Follow-ups due for {len(due_7d) + len(due_14d)} applications"
+            items_html = "".join([f"<li><b>{j.company}</b> ({j.role}) - Applied {j.applied_at.strftime('%d %b') if j.applied_at else 'recently'}. 7-day check-in due.</li>" for j in due_7d])
+            items_html += "".join([f"<li><b>{j.company}</b> ({j.role}) - Applied {j.applied_at.strftime('%d %b') if j.applied_at else 'recently'}. 14-day follow-up due.</li>" for j in due_14d])
+            body = f"<h2>Applications due for follow-up:</h2><ul>{items_html}</ul><p><a href='{os.getenv('APP_URL', 'http://localhost:5173')}#/job-radar'>Open Job Radar</a></p>"
+            EmailClient(sender, password).send_email(
+                os.getenv("RECEIVER_EMAIL", "sairaghava1318@gmail.com"),
+                subject,
+                "Follow-ups due for your applications",
+                html=body
+            )
+            emailed = True
+
+        repo.set_setting(LAST_FOLLOWUP_KEY, datetime.now(timezone.utc).isoformat())
+        return jsonify({
+            "status": "success",
+            "due_7d_count": len(due_7d),
+            "due_14d_count": len(due_14d),
+            "emailed": emailed,
+        })
     finally:
         db.close()
