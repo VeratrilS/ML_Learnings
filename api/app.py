@@ -59,6 +59,7 @@ from api.domain.lofi import lofi_bp
 from api.domain.century import century_bp
 from api.domain.job_radar import job_radar_bp, execute_hourly_scan
 from api.domain.job_sources import job_sources_bp
+from api.domain.job_pack import job_pack_bp
 
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
@@ -66,7 +67,7 @@ CORS(app)
 for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, weekly_bp, insights_bp, focus_bp, journal_bp, xp_bp, features_bp,
            pdf_extract_bp, mistakes_bp, placements_bp, oa_bp, interview_bp, gym_bp, brief_bp, habits_bp, capture_bp, flashcards_bp, tutor_bp,
            public_stats_bp, studio_bp, agents_bp, speedrun_bp, bounties_bp, arena_bp, drillmaster_bp, dempsey_bp, radar_bp,
-           ghost_bp, forge_bp, hotseat_bp, bughunt_bp, complexity_bp, lofi_bp, century_bp, job_radar_bp, job_sources_bp):
+           ghost_bp, forge_bp, hotseat_bp, bughunt_bp, complexity_bp, lofi_bp, century_bp, job_radar_bp, job_sources_bp, job_pack_bp):
     app.register_blueprint(bp)
 
 # ---------------- Passcode login ----------------
