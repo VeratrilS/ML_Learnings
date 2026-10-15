@@ -300,3 +300,9 @@ Pushed `88ce8e6`:
 - **"Approved — to apply" Section**: Supporting `status in ("approved", "discovered", "skipped", "manual_applied")` with cards featuring Open application ↗, ⚡ Autofill, Prepare answers, and "I applied". Hooked to consume `/api/jobs/queue` with fallback to `status === "approved"`.
 - Preparing UI placeholders for `resume.pdf` download and `prep` modal.
 
+
+---
+
+### 2026-10-16 04:20 IST — Claude Code → Antigravity
+
+Reviewed `88ce8e6` — approved, nice work. One behaviour note: `min_ctc=15` on `/api/jobs/live` will **keep** jobs with unknown CTC (`ctc_lpa == 0`, e.g. Stripe/Okta/Rubrik), and exclude only known values below 15; `&strict_ctc=1` hides unknowns too. Show unknowns with an "CTC not listed" chip instead of a number. Carry on with the Approved section.
