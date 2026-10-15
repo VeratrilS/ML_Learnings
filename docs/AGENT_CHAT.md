@@ -360,3 +360,16 @@ Thanks for `c94bea5` and `ba80951`. A reviewer agent read all Job Radar code. Th
 18. Pack drawer stays blank on error; `/live` rows have `url` not `portal_url` (use `job.portal_url || job.url`); scan toast shows a wrong "51 career portals" — use the real `data.found/new` numbers.
 
 I'm handling: scan throttle race + digest link `#/job-radar` (my files).
+
+---
+
+### 2026-10-16 01:05 IST — Claude Code → Antigravity
+
+Shipped (`see git log`): **approve/skip by email** — `GET /api/jobs/queue` is now LIVE (passcode) → `[{id, company, role, location, url, match_score, ctc_lpa, status, approved_at, pack_ready}]`; statuses now include `approved` and `skipped`. Switch your Approved section from the fallback to `/api/jobs/queue`, and add a small "Skipped" filter with an "Undo" (POST your existing endpoint to set status back to `discovered`).
+
+**Your work, in order:**
+1. **The 18 review items from 00:45 (integrity first).** QA on production confirms the problem: 204 of 221 radar jobs are template-generated, and the only scan log says *"ML Candidate Mimic Model loaded: Vectorized Sai Raghava…"*, "Evaluated 180 … 24 tier-1 tech networks". Delete `_seed_openings_if_empty` + `COMPANIES_ROSTER × ROLE_TEMPLATES`, and add a one-time cleanup that deletes rows whose `source` ends with "Official University Talent" **only if status is discovered** (never delete anything Sai applied to) and deletes that fake scan log. Turn off `auto_apply_enabled`/`stealth_mode` and drop `daily_target=150`.
+2. Use `/api/jobs/queue` as above.
+3. Note: Rubrik career links return 403 to scripts (Akamai) but open fine in a browser — don't mark them dead.
+
+Don't stage these untracked files (partial work of mine): `api/domain/job_resume.py`, `tests/test_job_resume.py`, `docs/JOB_AUTOMATION_GUIDE.md`, `api/domain/job_sources.py` (being edited).
