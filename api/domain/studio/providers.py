@@ -191,13 +191,70 @@ class GeminiProvider(TaskProvider):
 
 
 # Registry: name -> zero-argument factory. A new backend is one class + one line here.
+OPENROUTER_MODEL = os.getenv("STUDIO_OPENROUTER_MODEL", "openrouter/free")
+OPENROUTER_TIMEOUT = 100      # seconds; with Gemini's 150 s the worst case stays under Vercel's 300 s
+OPENROUTER_MAX_CONTEXT = 120_000  # chars; free OpenRouter models have far smaller windows than Gemini
+TRUNCATION_NOTE = "\n\n[... project truncated for the backup model ...]"
+JSON_ONLY_NOTE = "\nOutput only valid JSON, no markdown fences."
+
+
+class OpenRouterProvider(TaskProvider):
+    """Adapter for OpenRouter's OpenAI-compatible API (used as the backup when Gemini can't answer)."""
+    name = "openrouter"
+
+    def __init__(self, api_key: str = None, model: str = None, timeout: float = OPENROUTER_TIMEOUT):
+        self.api_key = api_key if api_key is not None else os.getenv("OPENROUTER_API_KEY", "")
+        self.model = model or OPENROUTER_MODEL
+        self.timeout = timeout
+
+    def run(self, prompt, project_context, title=None):
+        if not self.api_key:
+            raise ProviderError("OpenRouter backup is not configured (set OPENROUTER_API_KEY).")
+        context = project_context
+        if len(context) > OPENROUTER_MAX_CONTEXT:
+            context = context[:OPENROUTER_MAX_CONTEXT] + TRUNCATION_NOTE
+        import openai
+        client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=self.api_key, timeout=self.timeout, max_retries=0)
+        try:
+            resp = client.chat.completions.create(
+                model=self.model, temperature=TEMPERATURE,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT + JSON_ONLY_NOTE},
+                          {"role": "user", "content": build_user_message(prompt, context, title)}])
+            text = resp.choices[0].message.content or ""
+        except Exception as e:
+            raise ProviderError(f"OpenRouter backup failed: {str(e)[:160]}")
+        data = parse_json_object(text)
+        data["model"] = f"openrouter:{getattr(resp, 'model', None) or self.model}"
+        return data
+
+
+class FallbackProvider(TaskProvider):
+    """Chain of responsibility: try each provider in order and return the first answer."""
+    name = "fallback"
+
+    def __init__(self, providers):
+        self.providers = providers
+
+    def run(self, prompt, project_context, title=None):
+        errors = []
+        for provider in self.providers:
+            try:
+                return provider.run(prompt, project_context, title)
+            except ProviderError as e:
+                errors.append(f"{provider.name}: {e}")
+        raise ProviderError(" | ".join(errors) or "No provider configured.")
+
+
 PROVIDERS = {
     "gemini": GeminiProvider,
+    "openrouter": OpenRouterProvider,
+    # Default: Gemini first (Pro, then Flash), OpenRouter as the backup.
+    "auto": lambda: FallbackProvider([PROVIDERS["gemini"](), PROVIDERS["openrouter"]()]),
 }
 
 
 def get_provider(name: str = None) -> TaskProvider:
-    name = (name or os.getenv("STUDIO_PROVIDER") or "gemini").strip().lower()
+    name = (name or os.getenv("STUDIO_PROVIDER") or "auto").strip().lower()
     if name not in PROVIDERS:
         raise ProviderError(f"Unknown studio provider '{name}'.")
     return PROVIDERS[name]()

@@ -221,7 +221,7 @@ def test_provider_garbage_is_502(client, use_provider):
 def test_gemini_provider_uses_studio_models_without_openrouter(monkeypatch):
     monkeypatch.setenv("STUDIO_MODELS", "gemini-x-pro,gemini-y-flash")
     monkeypatch.setenv("OPENROUTER_API_KEY", "set-but-ignored")
-    provider = providers_mod.get_provider()
+    provider = providers_mod.get_provider("gemini")
     assert provider.client.models == ["gemini-x-pro", "gemini-y-flash"] and provider.client.openrouter_key == ""
     with pytest.raises(ProviderError):
         providers_mod.get_provider("nope")
@@ -355,3 +355,33 @@ def test_studio_requires_passcode(monkeypatch, use_provider):
     res = c.post("/api/studio/run", headers={"X-App-Key": token}, content_type="multipart/form-data",
                  data={"prompt": "x", "files": [(io.BytesIO(b"print(1)\n"), "a.py")]})
     assert res.status_code == 200 and res.get_json()["data"]["pdf_b64"]
+
+
+def test_fallback_uses_openrouter_when_gemini_fails():
+    from api.domain.studio.providers import FallbackProvider, ProviderError, TaskProvider
+
+    class Down(TaskProvider):
+        name = "gemini"
+        def run(self, *a, **k):
+            raise ProviderError("429 quota")
+
+    class Up(TaskProvider):
+        name = "openrouter"
+        def run(self, *a, **k):
+            return {"model": "openrouter:x", "summary": "ok"}
+
+    assert FallbackProvider([Down(), Up()]).run("p", "ctx")["model"] == "openrouter:x"
+    try:
+        FallbackProvider([Down(), Down()]).run("p", "ctx")
+        raise AssertionError("expected ProviderError")
+    except ProviderError as e:
+        assert "gemini" in str(e)
+
+
+def test_openrouter_without_key_is_a_clear_error():
+    from api.domain.studio.providers import OpenRouterProvider, ProviderError
+    try:
+        OpenRouterProvider(api_key="").run("p", "ctx")
+        raise AssertionError("expected ProviderError")
+    except ProviderError as e:
+        assert "OPENROUTER_API_KEY" in str(e)
