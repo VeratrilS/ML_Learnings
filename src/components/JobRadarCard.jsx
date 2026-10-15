@@ -191,7 +191,7 @@ export default function JobRadarCard() {
                     <div className="flex items-center gap-2 min-w-48">
                         <div className="flex-1">
                             <div className="flex justify-between text-[11px] font-medium text-subtle mb-1">
-                                <span>Daily Target (100-200)</span>
+                                <span>Applied Target</span>
                                 <span className="text-fg font-mono font-bold tabular-nums">
                                     {autoAppliedCount}/{dailyTarget}
                                 </span>
@@ -206,30 +206,38 @@ export default function JobRadarCard() {
                         <Button
                             size="sm"
                             variant="ghost"
-                            onClick={handleBatchApplyNext}
+                            onClick={handleDispatchNextAlert}
                             loading={applying}
                             className="text-xs h-7 px-2 shrink-0 border border-line hover:border-emerald-500/40"
-                            title="Silently auto-apply to next batch of 12 queued roles"
+                            title="Dispatch alert packet for top role"
                         >
-                            +12 Auto-Apply
+                            <Send className="h-3 w-3 mr-1" />
+                            Dispatch
                         </Button>
                     </div>
                 </div>
             </div>
 
-            {/* Quick Metrics Bar */}
-            <div className="grid grid-cols-3 border-b border-line divide-x divide-line bg-surface-2/30 text-center py-2 text-xs">
+            {/* Quick Metrics Bar: Applied This Week & Streak */}
+            <div className="grid grid-cols-4 border-b border-line divide-x divide-line bg-surface-2/30 text-center py-2 text-xs">
                 <div>
-                    <div className="font-mono text-base font-bold tabular-nums text-fg">{summary?.eligible_2027_count || 156}</div>
+                    <div className="font-mono text-base font-bold tabular-nums text-fg">{summary?.applied_this_week ?? 0}</div>
+                    <div className="text-[10px] text-subtle uppercase tracking-wider">Applied This Week</div>
+                </div>
+                <div>
+                    <div className="font-mono text-base font-bold tabular-nums text-amber-400 flex items-center justify-center gap-1">
+                        <Flame className="h-3.5 w-3.5 fill-amber-400/20" />
+                        <span>{summary?.applied_streak_days ?? 0}d</span>
+                    </div>
+                    <div className="text-[10px] text-subtle uppercase tracking-wider">Confirmed Streak</div>
+                </div>
+                <div>
+                    <div className="font-mono text-base font-bold tabular-nums text-emerald-400">{summary?.confirmed_applied_count ?? 0}</div>
+                    <div className="text-[10px] text-subtle uppercase tracking-wider">Total Confirmed</div>
+                </div>
+                <div>
+                    <div className="font-mono text-base font-bold tabular-nums text-cyan-400">{summary?.eligible_2027_count || 0}</div>
                     <div className="text-[10px] text-subtle uppercase tracking-wider">Eligible 2027</div>
-                </div>
-                <div>
-                    <div className="font-mono text-base font-bold tabular-nums text-emerald-400">₹{summary?.highest_ctc || 55.0} LPA</div>
-                    <div className="text-[10px] text-subtle uppercase tracking-wider">Peak Package</div>
-                </div>
-                <div>
-                    <div className="font-mono text-base font-bold tabular-nums text-cyan-400">96.8%</div>
-                    <div className="text-[10px] text-subtle uppercase tracking-wider">ML Resume Match</div>
                 </div>
             </div>
 

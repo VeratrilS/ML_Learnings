@@ -648,6 +648,25 @@ def get_job_radar():
         queued = [j for j in eligible_2027 if j["status"] == "discovered"]
         highest_ctc = max((j["ctc_lpa"] for j in eligible_2027), default=0.0)
 
+        week_cutoff = now - timedelta(days=7)
+        applied_this_week = 0
+        applied_days = set()
+        for j in jobs:
+            if j.status in ("manual_applied", "applied_confirmed") and j.applied_at:
+                if j.applied_at >= week_cutoff:
+                    applied_this_week += 1
+                ist_date = (j.applied_at + timedelta(hours=5, minutes=30)).date()
+                applied_days.add(ist_date)
+
+        today_ist = (now + timedelta(hours=5, minutes=30)).date()
+        applied_streak = 0
+        cur_d = today_ist
+        if cur_d not in applied_days:
+            cur_d = cur_d - timedelta(days=1)
+        while cur_d in applied_days:
+            applied_streak += 1
+            cur_d = cur_d - timedelta(days=1)
+
         logs_data = []
         for l in logs:
             logs_data.append({
@@ -671,6 +690,9 @@ def get_job_radar():
                 "confirmed_applied_count": len(applied_confirmed),
                 "applications_confirmed": len(applied_confirmed),
                 "auto_applied_count": len(applied_confirmed),
+                "applied_this_week": applied_this_week,
+                "applied_streak_days": applied_streak,
+                "streak": applied_streak,
                 "packets_ready_count": len(eligible_2027),
                 "queued_count": len(queued),
                 "daily_target": prof.daily_target_applications or 150,

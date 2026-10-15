@@ -5,7 +5,7 @@ import {
     Sparkles, ArrowRight, Building2, Flame, Award, Sliders, Check, Terminal,
     FileText, User, GraduationCap, Code2, Globe, Send, Play, Pause,
     Mail, Copy, BellRing, Target, BookOpen, Layers, Trophy, CheckCheck,
-    AlertCircle, Undo2, Share2, Compass, Cpu,
+    AlertCircle, Undo2, Share2, Compass, Cpu, X,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApi, navigate } from '../lib/hooks';
@@ -16,6 +16,25 @@ import { buildBookmarklet, autofillSnippet } from '../lib/autofill';
 function fmtCtc(val) {
     if (!val) return '';
     return `₹${Number(val).toFixed(1)} LPA`;
+}
+
+function fmtEstCtc(job) {
+    if (!job) return '';
+    if (job.notes && typeof job.notes === 'string') {
+        const estMatch = job.notes.match(/est\.?\s*CTC\s*([0-9]+(?:\.[0-9]+)?(?:[–-][0-9]+(?:\.[0-9]+)?)?\s*LPA)/i);
+        if (estMatch) {
+            return `~${estMatch[1]} (est.)`;
+        }
+    }
+    if (job.source?.includes('(live)') || job.notes?.toLowerCase().includes('est')) {
+        return `~₹${Number(job.ctc_lpa || 15).toFixed(0)}+ LPA (est.)`;
+    }
+    return fmtCtc(job.ctc_lpa);
+}
+
+function countWords(str) {
+    if (!str || typeof str !== 'string') return 0;
+    return str.trim().split(/\s+/).filter(Boolean).length;
 }
 
 function useCountdown(targetIso) {
@@ -48,7 +67,8 @@ function useCountdown(targetIso) {
 export default function JobRadar() {
     const { data, loading, reload } = useApi('/jobs/radar');
     const blueprintsApi = useApi('/jobs/blueprints');
-    const liveApi = useApi('/jobs/live?min_score=50');
+    const [liveMinCtc15, setLiveMinCtc15] = useState(true);
+    const liveApi = useApi(`/jobs/live?min_score=50${liveMinCtc15 ? '&min_ctc=15' : ''}`);
     const toast = useToast();
 
     // Tab state: 'openings' | 'portals' | 'confirmed' | 'blueprints'
@@ -63,6 +83,12 @@ export default function JobRadar() {
     const [expandedJobId, setExpandedJobId] = useState(null);
     const [terminalOpen, setTerminalOpen] = useState(false);
     const [mlDrawerOpen, setMlDrawerOpen] = useState(false);
+
+    // Application Pack Drawer state
+    const [packDrawerJob, setPackDrawerJob] = useState(null);
+    const [packData, setPackData] = useState(null);
+    const [packLoading, setPackLoading] = useState(false);
+    const [copiedField, setCopiedField] = useState(null);
 
     // Confirm Application Modal state
     const [confirmModalJob, setConfirmModalJob] = useState(null);
@@ -91,6 +117,66 @@ export default function JobRadar() {
             navigator.clipboard.writeText(bookmarkletSnippet);
             play('pop', { force: true });
             toast('Autofill code copied! Paste into developer console on any application page.', 'success');
+        }
+    };
+
+    const handleOpenPack = async (job, refresh = false) => {
+        setPackDrawerJob(job);
+        setPackLoading(true);
+        try {
+            const queryParam = refresh ? '?refresh=1' : '';
+            const res = await api(`/jobs/${job.id}/pack${queryParam}`);
+            if (res?.data) {
+                setPackData(res.data);
+                if (refresh) {
+                    toast('Application pack regenerated!', 'success');
+                    play('bell', { force: true });
+                }
+            }
+        } catch (e) {
+            toast(e.message || 'Failed to load application pack', 'error');
+        } finally {
+            setPackLoading(false);
+        }
+    };
+
+    const handleCopyField = (fieldName, text) => {
+        if (!text) return;
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text);
+            setCopiedField(fieldName);
+            setTimeout(() => setCopiedField(null), 2000);
+            play('pop', { force: true });
+            toast(`Copied ${fieldName} to clipboard!`, 'success');
+        }
+    };
+
+    const handleCopyFullPack = () => {
+        if (!packData) return;
+        const bullets = (packData.resume_highlights || []).map((b) => `• ${b}`).join('\n');
+        const answersText = (packData.answers || []).map((a) => `Q: ${a.question}\nA: ${a.answer}`).join('\n\n');
+        const fullText = `=== APPLICATION PACK FOR ${packData.company.toUpperCase()} ===
+Role: ${packData.role}
+Portal: ${packData.url}
+
+--- COVER NOTE ---
+${packData.cover_note || ''}
+
+--- WHY ${packData.company.toUpperCase()} ---
+${packData.why_company || ''}
+
+--- SCREENING Q&A ---
+${answersText}
+
+--- RESUME HIGHLIGHTS ---
+${bullets}
+`.trim();
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(fullText);
+            setCopiedField('full_pack');
+            setTimeout(() => setCopiedField(null), 2000);
+            play('combo', { force: true });
+            toast('Copied full application pack to clipboard!', 'success');
         }
     };
 
@@ -630,9 +716,25 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                         Greenhouse · Lever · Ashby · SmartRecruiters
                                     </span>
                                 </div>
-                                <span className="text-xs text-subtle font-mono">
-                                    Deterministic skill match ≥ 50
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setLiveMinCtc15((prev) => !prev)}
+                                        className={cx(
+                                            'px-2.5 py-1 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5',
+                                            liveMinCtc15
+                                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                                                : 'bg-surface-2 border-line text-subtle hover:text-fg'
+                                        )}
+                                        title="Toggle minimum CTC threshold >= 15 LPA for freshers"
+                                    >
+                                        <span>≥ 15 LPA</span>
+                                        {liveMinCtc15 && <Check className="h-3 w-3" />}
+                                    </button>
+                                    <span className="text-xs text-subtle font-mono hidden sm:inline">
+                                        Deterministic match ≥ 50
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -657,8 +759,9 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                     </div>
                                                 </div>
                                                 <p className="text-xs text-muted font-medium mt-0.5 truncate">{lj.role}</p>
-                                                <div className="flex items-center gap-2 text-[11px] text-subtle mt-1">
+                                                <div className="flex items-center gap-2 text-[11px] text-subtle mt-1 flex-wrap">
                                                     <span className="badge text-[10px] uppercase font-mono bg-surface border border-line">{lj.source}</span>
+                                                    <span className="badge text-[10px] font-mono text-cyan-400 bg-surface border border-cyan-500/30 font-semibold">{fmtEstCtc(lj)}</span>
                                                     <span>·</span>
                                                     <span>{lj.location}</span>
                                                 </div>
@@ -671,21 +774,31 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-2 pt-2 border-t border-line/60">
+                                            <div className="flex items-center gap-1.5 pt-2 border-t border-line/60">
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => handleOpenPack(lj)}
+                                                    className="text-xs py-1.5 px-2.5 shrink-0 border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+                                                    title="Prepare customized screening answers grounded in verified facts"
+                                                >
+                                                    <Sparkles className="h-3 w-3 mr-1" />
+                                                    Pack
+                                                </Button>
                                                 <a
                                                     href={lj.url}
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-3 border border-line text-xs font-semibold text-fg transition-all"
+                                                    className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-surface hover:bg-surface-3 border border-line text-xs font-semibold text-fg transition-all truncate"
                                                 >
                                                     <span>Open Portal</span>
-                                                    <ExternalLink className="h-3 w-3" />
+                                                    <ExternalLink className="h-3 w-3 shrink-0" />
                                                 </a>
                                                 <Button
                                                     size="sm"
                                                     variant={isApplied ? 'ghost' : 'primary'}
                                                     onClick={() => handleConfirmSubmit(lj)}
-                                                    className="text-xs py-1.5 px-3 shrink-0"
+                                                    className="text-xs py-1.5 px-2.5 shrink-0"
                                                 >
                                                     {isApplied ? (
                                                         <>
@@ -749,7 +862,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <h3 className="font-bold text-base text-fg tracking-tight">{job.company}</h3>
                                                             <span className="badge font-mono font-bold text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                                                {fmtCtc(job.ctc_lpa)}
+                                                                {fmtEstCtc(job)}
                                                             </span>
                                                             {job.stipend_pm && (
                                                                 <span className="badge text-[11px] font-mono bg-surface-2 border border-line text-subtle">
@@ -832,7 +945,18 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                     </div>
                                                 )}
 
-                                                <div className="flex items-center gap-1.5 mt-1">
+                                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => handleOpenPack(job)}
+                                                        className="text-xs h-7 px-2.5 gap-1 border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+                                                        title="Open application pack with tailored cover note, answers, and highlights"
+                                                    >
+                                                        <Sparkles className="h-3 w-3" />
+                                                        <span>Prepare Answers</span>
+                                                    </Button>
+
                                                     <button
                                                         type="button"
                                                         onClick={() => handleCopyFullPacket(job)}
@@ -1307,6 +1431,258 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                     <Button variant="primary" onClick={() => setMlDrawerOpen(false)} className="w-full">
                         Close Inspector
                     </Button>
+                </div>
+            </Sheet>
+
+            {/* Application Pack Drawer (Grounded in Verified Resume Facts) */}
+            <Sheet
+                open={!!packDrawerJob}
+                onClose={() => { setPackDrawerJob(null); setPackData(null); }}
+                wide={true}
+            >
+                <div className="space-y-5 p-4 sm:p-6 text-xs">
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3 pb-3 border-b border-line">
+                        <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-base text-fg tracking-tight">
+                                    {packDrawerJob?.company}
+                                </span>
+                                <span className="badge text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30">
+                                    {fmtEstCtc(packDrawerJob)}
+                                </span>
+                                {packData?.model === 'template' ? (
+                                    <span className="badge text-[10px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                        ⚡ Deterministic Template (Verified Facts)
+                                    </span>
+                                ) : (
+                                    <span className="badge text-[10px] font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                                        ✨ {packData?.model || 'LLM Tailored'}
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-xs text-muted mt-0.5">
+                                {packDrawerJob?.role} · <span className="text-subtle">{packDrawerJob?.location}</span>
+                            </p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleOpenPack(packDrawerJob, true)}
+                                loading={packLoading}
+                                icon={RefreshCw}
+                                className="text-xs"
+                                title="Regenerate application pack"
+                            >
+                                Regenerate
+                            </Button>
+                            <button
+                                type="button"
+                                onClick={() => { setPackDrawerJob(null); setPackData(null); }}
+                                className="p-1 rounded-lg text-subtle hover:text-fg hover:bg-surface-2 transition-all"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Disclaimer Note to Sai */}
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-amber-300">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+                        <div className="text-[11px] leading-relaxed">
+                            <strong>Candidate Notice:</strong> Every technical claim here comes directly from your verified NIT Rourkela projects (Railway microservices, C++ cache server) and CP rating. <em>Availability and relocation answers are grounded defaults</em> — please review them before submitting on the official portal.
+                        </div>
+                    </div>
+
+                    {/* Action Toolbar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-surface-2 border border-line">
+                        <div className="flex items-center gap-2">
+                            <Button
+                                size="sm"
+                                variant="primary"
+                                onClick={handleCopyFullPack}
+                                icon={copiedField === 'full_pack' ? CheckCheck : Copy}
+                                className="text-xs"
+                            >
+                                {copiedField === 'full_pack' ? 'Copied Full Pack!' : 'Copy Full Pack'}
+                            </Button>
+                            {(packData?.url || packDrawerJob?.portal_url) && (
+                                <a
+                                    href={packData?.url || packDrawerJob?.portal_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-secondary btn-sm text-xs gap-1"
+                                >
+                                    <span>Open Official Portal</span>
+                                    <ExternalLink className="h-3 w-3" />
+                                </a>
+                            )}
+                        </div>
+
+                        <span className="text-[11px] font-mono text-subtle">
+                            {packData?.cached ? 'Cached' : 'Freshly Generated'}
+                        </span>
+                    </div>
+
+                    {packLoading && !packData ? (
+                        <div className="space-y-4 py-8 text-center">
+                            <Skeleton className="h-20 w-full rounded-xl" />
+                            <Skeleton className="h-28 w-full rounded-xl" />
+                            <Skeleton className="h-24 w-full rounded-xl" />
+                        </div>
+                    ) : packData ? (
+                        <div className="space-y-5">
+                            {/* 1. Cover Note */}
+                            <div className="p-3.5 rounded-xl bg-surface-2 border border-line space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <FileText className="h-4 w-4 text-emerald-400" />
+                                        <h4 className="font-bold text-fg text-xs uppercase tracking-wider">Tailored Cover Note</h4>
+                                        <span className="badge text-[10px] font-mono bg-surface border border-line text-subtle">
+                                            {countWords(packData.cover_note)} words
+                                        </span>
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleCopyField('Cover Note', packData.cover_note)}
+                                        icon={copiedField === 'Cover Note' ? Check : Copy}
+                                        className="text-xs h-7 px-2"
+                                    >
+                                        {copiedField === 'Cover Note' ? 'Copied' : 'Copy Note'}
+                                    </Button>
+                                </div>
+                                <div className="p-3 rounded-lg bg-surface border border-line text-fg font-sans leading-relaxed text-xs whitespace-pre-wrap select-all">
+                                    {packData.cover_note}
+                                </div>
+                            </div>
+
+                            {/* 2. Why Company */}
+                            <div className="p-3.5 rounded-xl bg-surface-2 border border-line space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <Building2 className="h-4 w-4 text-cyan-400" />
+                                        <h4 className="font-bold text-fg text-xs uppercase tracking-wider">Why {packData.company}?</h4>
+                                        <span className="badge text-[10px] font-mono bg-surface border border-line text-subtle">
+                                            {countWords(packData.why_company)} words
+                                        </span>
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleCopyField(`Why ${packData.company}`, packData.why_company)}
+                                        icon={copiedField === `Why ${packData.company}` ? Check : Copy}
+                                        className="text-xs h-7 px-2"
+                                    >
+                                        {copiedField === `Why ${packData.company}` ? 'Copied' : 'Copy Answer'}
+                                    </Button>
+                                </div>
+                                <div className="p-3 rounded-lg bg-surface border border-line text-fg font-sans leading-relaxed text-xs whitespace-pre-wrap select-all">
+                                    {packData.why_company}
+                                </div>
+                            </div>
+
+                            {/* 3. Screening Q&A */}
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Target className="h-4 w-4 text-purple-400" />
+                                    <h4 className="font-bold text-fg text-xs uppercase tracking-wider">Screening Answers ({packData.answers?.length || 0})</h4>
+                                </div>
+
+                                {(packData.answers || []).map((item, idx) => (
+                                    <div key={idx} className="p-3 rounded-xl bg-surface-2 border border-line space-y-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="font-semibold text-fg text-xs pr-2">
+                                                {item.question}
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleCopyField(`Answer ${idx + 1}`, item.answer)}
+                                                icon={copiedField === `Answer ${idx + 1}` ? Check : Copy}
+                                                className="text-xs h-6 px-2 shrink-0"
+                                            >
+                                                {copiedField === `Answer ${idx + 1}` ? 'Copied' : 'Copy'}
+                                            </Button>
+                                        </div>
+                                        <div className="p-2.5 rounded-lg bg-surface border border-line text-muted text-xs leading-relaxed select-all">
+                                            {item.answer}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* 4. Resume Highlights */}
+                            <div className="p-3.5 rounded-xl bg-surface-2 border border-line space-y-2.5">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <Award className="h-4 w-4 text-amber-400" />
+                                        <h4 className="font-bold text-fg text-xs uppercase tracking-wider">Matched Resume Highlights</h4>
+                                    </div>
+                                    <p className="text-[10px] text-subtle mt-0.5">
+                                        Selected based on skill overlap with {packData.company}
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    {(packData.resume_highlights || []).map((bullet, idx) => (
+                                        <div key={idx} className="p-2.5 rounded-lg bg-surface border border-line flex items-start justify-between gap-2 text-xs">
+                                            <div className="leading-relaxed text-muted select-all">• {bullet}</div>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleCopyField(`Highlight ${idx + 1}`, bullet)}
+                                                icon={copiedField === `Highlight ${idx + 1}` ? Check : Copy}
+                                                className="text-[11px] h-6 px-2 shrink-0"
+                                            >
+                                                {copiedField === `Highlight ${idx + 1}` ? 'Copied' : 'Copy'}
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* 5. Matched Skills */}
+                            {packData.matched_skills?.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                                    <span className="text-subtle font-medium text-[11px]">Matched Skills:</span>
+                                    {packData.matched_skills.map((s, idx) => (
+                                        <span key={idx} className="badge text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                            {s}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Footer Submit confirmation */}
+                            <div className="pt-3 border-t border-line flex items-center justify-between gap-3">
+                                <a
+                                    href={packData.url || packDrawerJob?.portal_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-secondary text-xs gap-1.5"
+                                >
+                                    <span>Open Portal</span>
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+
+                                <Button
+                                    variant="primary"
+                                    onClick={() => {
+                                        const jobToConfirm = packDrawerJob;
+                                        setPackDrawerJob(null);
+                                        setPackData(null);
+                                        handleConfirmSubmit(jobToConfirm);
+                                    }}
+                                    icon={CheckCheck}
+                                    className="text-xs"
+                                >
+                                    I Submitted On Portal
+                                </Button>
+                            </div>
+                        </div>
+                    ) : null}
                 </div>
             </Sheet>
         </div>
