@@ -6,17 +6,17 @@ import {
 import { Card, ProgressBar, cx } from './ui';
 
 const SPRINT_DAYS = [
-    { day: 15, dateStr: 'Oct 15', label: 'Day 1', targetProbs: 93, cumulative: 93, focus: 'Sorting & 2 Pointers' },
-    { day: 16, dateStr: 'Oct 16', label: 'Day 2', targetProbs: 93, cumulative: 186, focus: 'Prefix Sum & Matrix' },
-    { day: 17, dateStr: 'Oct 17', label: 'Day 3', targetProbs: 93, cumulative: 279, focus: 'Hashing & Sliding Window' },
-    { day: 18, dateStr: 'Oct 18', label: 'Day 4', targetProbs: 93, cumulative: 372, focus: 'Linked List & Stack' },
-    { day: 19, dateStr: 'Oct 19', label: 'Day 5', targetProbs: 93, cumulative: 465, focus: 'Queue & Binary Search' },
-    { day: 20, dateStr: 'Oct 20', label: 'Day 6', targetProbs: 93, cumulative: 558, focus: 'Bit Manipulation & Recursion' },
-    { day: 21, dateStr: 'Oct 21', label: 'Day 7', targetProbs: 93, cumulative: 651, focus: 'Binary Tree & BST' },
-    { day: 22, dateStr: 'Oct 22', label: 'Day 8', targetProbs: 93, cumulative: 744, focus: 'Heap & Tries' },
-    { day: 23, dateStr: 'Oct 23', label: 'Day 9', targetProbs: 93, cumulative: 837, focus: 'Greedy & DP Level 1' },
-    { day: 24, dateStr: 'Oct 24', label: 'Day 10', targetProbs: 93, cumulative: 930, focus: 'Graphs & Combinatorics' },
-    { day: 25, dateStr: 'Oct 25', label: 'Day 11', targetProbs: 89, cumulative: 1019, focus: 'Game Theory & Advance Algos' },
+    { day: 15, dateStr: 'Oct 15', label: 'Day 1', targetProbs: 25, cumulative: 25, focus: 'Sorting & 2 Pointers' },
+    { day: 16, dateStr: 'Oct 16', label: 'Day 2', targetProbs: 25, cumulative: 50, focus: 'Prefix Sum & Matrix' },
+    { day: 17, dateStr: 'Oct 17', label: 'Day 3', targetProbs: 25, cumulative: 75, focus: 'Hashing & Sliding Window' },
+    { day: 18, dateStr: 'Oct 18', label: 'Day 4', targetProbs: 25, cumulative: 100, focus: 'Linked List & Stack' },
+    { day: 19, dateStr: 'Oct 19', label: 'Day 5', targetProbs: 25, cumulative: 125, focus: 'Queue & Binary Search' },
+    { day: 20, dateStr: 'Oct 20', label: 'Day 6', targetProbs: 25, cumulative: 150, focus: 'Bit Manipulation & Recursion' },
+    { day: 21, dateStr: 'Oct 21', label: 'Day 7', targetProbs: 25, cumulative: 175, focus: 'Binary Tree & BST' },
+    { day: 22, dateStr: 'Oct 22', label: 'Day 8', targetProbs: 25, cumulative: 200, focus: 'Heap & Tries' },
+    { day: 23, dateStr: 'Oct 23', label: 'Day 9', targetProbs: 25, cumulative: 225, focus: 'Greedy & DP Level 1' },
+    { day: 24, dateStr: 'Oct 24', label: 'Day 10', targetProbs: 25, cumulative: 250, focus: 'Graphs & Combinatorics' },
+    { day: 25, dateStr: 'Oct 25', label: 'Day 11', targetProbs: 25, cumulative: 275, focus: 'Game Theory & Advance Algos' },
 ];
 
 export default function SprintRunway({ doneToday = 0, totalDone = 0, totalProbs = 1019 }) {
@@ -107,7 +107,7 @@ export default function SprintRunway({ doneToday = 0, totalDone = 0, totalProbs 
                             </h2>
                         </div>
                         <p className="text-xs text-subtle mt-0.5">
-                            11 days non-stop grind · 1,019 Medium &amp; Hard problems · 93/day plan
+                            11 days non-stop grind · 1,019 Medium &amp; Hard problems · 25/day focus plan
                         </p>
                     </div>
                 </div>

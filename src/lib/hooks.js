@@ -4,7 +4,7 @@ import { invalidate as invalidateCache, isCacheable, readSnapshot, selectKey, wr
 
 // Hash routing (#/problems/12) so the app works as a static SPA and as a browser homepage.
 export function useHashRoute() {
-    const read = () => (window.location.hash.replace(/^#\/?/, '') || 'today').split('/');
+    const read = () => (window.location.hash.replace(/^#\/?/, '') || 'learn').split('/');
     const [parts, setParts] = useState(read);
     useEffect(() => {
         const onChange = () => setParts(read());

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
     Bookmark, BookOpen, Check, ChevronDown, ChevronRight, ChevronsDownUp,
     ChevronsUpDown, Code2, ExternalLink, Flame, Layers, ListChecks,
@@ -9,6 +9,7 @@ import { useApi, useLocalStorage } from '../lib/hooks';
 import { Button, Card, Checkbox, Empty, ProgressBar, Segmented, Skeleton, cx, useToast } from './ui';
 import { TodayPill } from './LearnCard';
 import SprintRunway from './SprintRunway';
+import DailyFocusCard from './DailyFocusCard';
 
 // Optimistically flip one problem and recompute totals
 function patchProblem(data, id, done) {
@@ -397,6 +398,7 @@ export default function SheetTracker({ sheet = 'learnyard' }) {
     const [diff, setDiff] = useLocalStorage(`sheet:${activeSheetKey}:diff_v7`, 'all');
     const [revisionOnly, setRevisionOnly] = useState(false);
     const [revisions, setRevisions] = useLocalStorage(`sheet:${activeSheetKey}:revisions`, []);
+    const [dailyIds, setDailyIds] = useLocalStorage(`sheet:${activeSheetKey}:daily25_ids`, []);
     const [q, setQ] = useState('');
     const [busy, setBusy] = useState(false);
     const toast = useToast();
@@ -454,9 +456,11 @@ export default function SheetTracker({ sheet = 'learnyard' }) {
         });
     }, [hasModules, data?.modules, shown, problems]);
 
-    // Auto-expand matching modules & submodules ONLY when actively searching
+    // Auto-expand matching modules & submodules ONLY when actively typing a new search query
+    const prevQRef = useRef(q);
     useEffect(() => {
-        if (q.trim() && moduleGroups) {
+        const query = q.trim();
+        if (query && query !== prevQRef.current && moduleGroups) {
             const matchingModIds = [];
             const matchingSubKeys = [];
             moduleGroups.forEach((m) => {
@@ -469,14 +473,12 @@ export default function SheetTracker({ sheet = 'learnyard' }) {
                 }
             });
             if (matchingModIds.length > 0) {
-                setOpenModulesList(matchingModIds);
-                setOpenSubmodulesList(Array.from(new Set(matchingSubKeys)));
+                setOpenModulesList((prev) => Array.from(new Set([...(prev || []), ...matchingModIds])));
+                setOpenSubmodulesList((prev) => Array.from(new Set([...(prev || []), ...matchingSubKeys])));
             }
-        } else if (!revisionOnly) {
-            // When search is cleared, ensure all submodules start collapsed
-            setOpenSubmodulesList([]);
         }
-    }, [q, revisionOnly, moduleGroups]);
+        prevQRef.current = query;
+    }, [q, moduleGroups]);
 
     // Toggle single module: when opening, ensure its subtopics start collapsed
     const toggleModule = useCallback((modId) => {
@@ -707,6 +709,17 @@ export default function SheetTracker({ sheet = 'learnyard' }) {
                     </div>
                 )}
             </Card>
+
+            {/* Daily 25 Focus Set Card: Algorithmic selection across all 24 topics with 1-Med / 1-Hard focus */}
+            <DailyFocusCard
+                problems={problems}
+                modules={data.modules || []}
+                onProblemToggle={toggle}
+                revisions={revisions}
+                onToggleBookmark={toggleBookmark}
+                activeDailyIds={dailyIds}
+                onUpdateDailyIds={setDailyIds}
+            />
 
             {/* Controls Card: Search + Filters + Expand/Collapse + Revision List */}
             <Card className="p-3 sm:p-4 space-y-3">

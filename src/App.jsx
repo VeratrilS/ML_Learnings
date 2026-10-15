@@ -101,7 +101,14 @@ export default function App() {
     const TABS = NAV_ALL.filter((n) => n.tab);
     const MORE = NAV_ALL.filter((n) => !n.tab);
     const featurePage = FEATURE_PAGES.find((f) => f.id === page);
-    const current = NAV.some((n) => n.id === page) || page === 'lab' || featurePage ? page : 'today';
+    const current = NAV.some((n) => n.id === page) || page === 'lab' || featurePage ? page : 'learn';
+
+    // Direct user straight to Learn on open if no specific page is requested
+    useEffect(() => {
+        if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
+            navigate('learn');
+        }
+    }, []);
     const stats = useApi('/stats', { deps: [current] });
     const streak = stats.data?.streak;
     // XP refetches when solve counts change and on navigation; Today also reloads it after plan/journal changes.
