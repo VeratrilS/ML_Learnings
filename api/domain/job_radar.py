@@ -20,7 +20,6 @@ from datetime import datetime, timedelta, timezone
 import json
 import math
 import os
-import random
 import re
 
 from flask import Blueprint, jsonify, request
@@ -516,10 +515,10 @@ def _sync_into_placements(db, job_op):
 
 def execute_hourly_scan(db, force=False, batch_size=None):
     """
-    Executes the huge hourly check across portals for 2027 CSE openings >= min_ctc_lpa.
-    Evaluates new openings, keeps ATS match scores up to date.
-    NEVER simulates or fakes external job applications.
+    Executes live job discovery using real public job-board feeds (Greenhouse, Lever, Ashby, SmartRecruiters).
+    No random numbers, no simulated mock data.
     """
+    from api.domain.job_sources import collect, upsert
     prof = _get_or_create_profile(db)
     now = _utcnow()
 
@@ -530,49 +529,40 @@ def execute_hourly_scan(db, force=False, batch_size=None):
 
     ist_now_str = now_ist().strftime("%H:%M IST")
     log_items = [
-        {"time": ist_now_str, "event": "Huge Hourly Job Radar Scan started across 24 career portals & engineering job feeds."},
-        {"time": ist_now_str, "event": f"Targeting 2027 CS Grads with CTC >= {prof.min_ctc_lpa} LPA. Strict verification active."},
+        {"time": ist_now_str, "event": "Live Job Radar scanner querying public company job boards (Greenhouse, Lever, Ashby, SmartRecruiters)..."},
     ]
 
-    all_jobs = db.query(JobOpportunity).all()
-    evaluated = len(all_jobs) + random.randint(25, 45)
-    eligible_count = 0
-
-    for job in all_jobs:
-        job.last_checked_at = now
-        if job.ctc_lpa >= prof.min_ctc_lpa and "2027" in job.eligible_batches and job.min_cgpa <= prof.cgpa:
-            eligible_count += 1
+    scored, errors = collect()
+    new = upsert(db, scored)
 
     prof.last_hourly_scan_at = now
     prof.next_hourly_scan_at = now + timedelta(minutes=60)
 
-    confirmed_applied = db.query(JobOpportunity).filter(JobOpportunity.status == "applied_confirmed").count()
+    confirmed_applied = db.query(JobOpportunity).filter(
+        JobOpportunity.status.in_(["manual_applied", "applied_confirmed"])
+    ).count()
 
     log_items.append({
         "time": ist_now_str,
-        "event": f"Hourly check complete. Evaluated {evaluated} postings -> {eligible_count} matched Batch 2027 CSE (>= {prof.min_ctc_lpa} LPA).",
+        "event": f"Real scan complete. Fetched {len(scored)} live postings, upserted {len(new)} new openings. Errors: {len(errors)}.",
     })
     log_items.append({
         "time": ist_now_str,
-        "event": f"Candidate screening packets ready with tailored answers. Confirmed real applications: {confirmed_applied}.",
-    })
-    log_items.append({
-        "time": ist_now_str,
-        "event": f"Next huge hourly check scheduled at {(now_ist() + timedelta(minutes=60)).strftime('%H:%M IST')}.",
+        "event": f"Applications confirmed by Sai: {confirmed_applied}.",
     })
 
     scan_log = JobRadarScanLog(
         scanned_at=now,
-        sources_scanned=24,
-        total_evaluated=evaluated,
-        eligible_2027_found=eligible_count,
-        auto_applied_count=0,
+        sources_scanned=31,
+        total_evaluated=len(scored),
+        eligible_2027_found=len(new),
+        auto_applied_count=confirmed_applied,
         log_details=json.dumps(log_items),
         status="success",
     )
     db.add(scan_log)
     db.commit()
-    return True, f"Huge hourly check completed. {eligible_count} verified 2027 CSE openings evaluated. Packets ready for 1-click apply."
+    return True, f"Live scan completed. Evaluated {len(scored)} live postings, found {len(new)} new roles."
 
 
 # ---------------- API Endpoints ----------------
@@ -679,6 +669,7 @@ def get_job_radar():
                 "total_openings": len(jobs_data),
                 "eligible_2027_count": len(eligible_2027),
                 "confirmed_applied_count": len(applied_confirmed),
+                "applications_confirmed": len(applied_confirmed),
                 "auto_applied_count": len(applied_confirmed),
                 "packets_ready_count": len(eligible_2027),
                 "queued_count": len(queued),

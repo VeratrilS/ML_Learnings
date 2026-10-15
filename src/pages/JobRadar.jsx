@@ -709,9 +709,9 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
 
                     <div className="flex items-center justify-between pt-2">
                         <h3 className="font-bold text-sm text-fg flex items-center gap-2">
-                            <span>Saved 2027 CSE Roster</span>
+                            <span>Curated List (Not Live)</span>
                             <span className="badge text-[10px] font-mono bg-surface-2 border border-line text-subtle">
-                                {filteredJobs.length} verified openings (≥{minCtcFilter} LPA)
+                                {filteredJobs.length} curated portals (≥{minCtcFilter} LPA)
                             </span>
                         </h3>
                     </div>

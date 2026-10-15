@@ -143,7 +143,7 @@ export default function JobRadarCard() {
                                 <span>Next hourly scan:</span>
                                 <span className="font-mono text-emerald-400 font-semibold">{countdown || 'Scanning soon'}</span>
                                 <span className="text-muted">·</span>
-                                <span>{summary?.eligible_2027_count || 156} verified 2027 roles</span>
+                                <span>{summary?.eligible_2027_count || 204} curated 2027 roles</span>
                             </p>
                         </div>
                     </div>
@@ -292,7 +292,7 @@ export default function JobRadarCard() {
                     onClick={openDesk}
                     className="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 ml-auto"
                 >
-                    View all 156 openings <ArrowRight className="h-3.5 w-3.5" />
+                    View all 204 curated openings <ArrowRight className="h-3.5 w-3.5" />
                 </button>
             </div>
         </Card>
