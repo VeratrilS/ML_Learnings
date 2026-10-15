@@ -12,6 +12,8 @@ on:
     - cron: '0 14 * * 0'
     # 01:30 UTC = 7:00 AM IST: live job scan of company career pages + digest email
     - cron: '30 1 * * *'
+    # 03:30 UTC = 9:00 AM IST: application follow-up reminders (7 and 14 days after applying)
+    - cron: '30 3 * * *'
   workflow_dispatch:
 
 env:
@@ -52,3 +54,10 @@ jobs:
     steps:
       - name: Scan company career pages for new openings
         run: curl -sS -X POST "$APP/api/jobs/scan" --max-time 300
+
+  job_followups:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '30 3 * * *'
+    steps:
+      - name: Email due application follow-ups
+        run: curl -sS -X POST "$APP/api/jobs/followups" --max-time 120
