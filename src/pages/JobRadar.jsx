@@ -1,38 +1,35 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
     Radio, Bot, Briefcase, Zap, CheckCircle2, Clock, ShieldCheck,
     RefreshCw, Filter, Search, ExternalLink, ChevronDown, ChevronRight,
     Sparkles, ArrowRight, Building2, Flame, Award, Sliders, Check, Terminal,
     FileText, User, GraduationCap, Code2, Globe, Send, Play, Pause,
     Mail, Copy, BellRing, Target, BookOpen, Layers, Trophy, CheckCheck,
-    AlertCircle, Undo2, Share2, Compass, Cpu, X,
+    AlertCircle, Undo2, Share2, Compass, Cpu, X, Upload,
 } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, getToken } from '../lib/api';
 import { useApi, navigate } from '../lib/hooks';
 import { Button, Card, CardHeader, Empty, Segmented, Sheet, Skeleton, useToast, cx } from '../components/ui';
 import { play } from '../lib/sfx';
 import { buildBookmarklet, autofillSnippet } from '../lib/autofill';
 
 function fmtCtc(val) {
-    if (!val) return '';
-    return `₹${Number(val).toFixed(1)} LPA`;
+    if (!val || Number(val) === 0) return 'CTC not listed';
+    return `₹${Number(val).toFixed(1)} LPA (est.)`;
 }
 
 function fmtEstCtc(job) {
     if (!job) return '';
+    if (!job.ctc_lpa || Number(job.ctc_lpa) === 0) {
+        return 'CTC not listed';
+    }
     if (job.notes && typeof job.notes === 'string') {
         const estMatch = job.notes.match(/est\.?\s*CTC\s*([0-9]+(?:\.[0-9]+)?(?:[–-][0-9]+(?:\.[0-9]+)?)?\s*LPA)/i);
         if (estMatch) {
             return `~${estMatch[1]} (est.)`;
         }
     }
-    if (!job.ctc_lpa || Number(job.ctc_lpa) === 0) {
-        return 'CTC not listed';
-    }
-    if (job.source?.includes('(live)') || job.notes?.toLowerCase().includes('est')) {
-        return `~₹${Number(job.ctc_lpa || 15).toFixed(0)}+ LPA (est.)`;
-    }
-    return fmtCtc(job.ctc_lpa);
+    return `~₹${Number(job.ctc_lpa).toFixed(1)} LPA (est.)`;
 }
 
 function countWords(str) {
@@ -71,6 +68,7 @@ export default function JobRadar() {
     const { data, loading, reload } = useApi('/jobs/radar');
     const blueprintsApi = useApi('/jobs/blueprints');
     const queueApi = useApi('/jobs/queue');
+    const resumeInfoApi = useApi('/jobs/resume-file/info');
     const [liveMinCtc15, setLiveMinCtc15] = useState(true);
     const liveApi = useApi(`/jobs/live?min_score=50${liveMinCtc15 ? '&min_ctc=15' : ''}`);
     const toast = useToast();
@@ -92,6 +90,7 @@ export default function JobRadar() {
     const [packDrawerJob, setPackDrawerJob] = useState(null);
     const [packData, setPackData] = useState(null);
     const [packLoading, setPackLoading] = useState(false);
+    const [packError, setPackError] = useState(null);
     const [copiedField, setCopiedField] = useState(null);
 
     // Confirm Application Modal state
@@ -100,6 +99,10 @@ export default function JobRadar() {
     const [confirmNotesInput, setConfirmNotesInput] = useState('');
     const [confirming, setConfirming] = useState(false);
 
+    // Resume upload state
+    const resumeFileInputRef = useRef(null);
+    const [uploadingResume, setUploadingResume] = useState(false);
+
     // Action states
     const [scanning, setScanning] = useState(false);
     const [emailingJobId, setEmailingJobId] = useState(null);
@@ -107,6 +110,7 @@ export default function JobRadar() {
 
     const profile = data?.profile;
     const summary = data?.summary;
+    const resumeInfo = resumeInfoApi.data?.data;
     const jobs = useMemo(() => data?.jobs || [], [data]);
     const recentLogs = useMemo(() => data?.recent_logs || [], [data]);
     const blueprints = useMemo(() => blueprintsApi.data?.blueprints || [], [blueprintsApi.data]);
@@ -119,20 +123,64 @@ export default function JobRadar() {
     }, [queueApi.data, jobs]);
     const countdown = useCountdown(summary?.next_hourly_scan);
 
-    const bookmarkletHref = useMemo(() => profile ? buildBookmarklet(profile) : '#', [profile]);
-    const bookmarkletSnippet = useMemo(() => profile ? autofillSnippet(profile) : '', [profile]);
+    const profileWithResume = useMemo(() => {
+        if (!profile) return null;
+        return {
+            ...profile,
+            resume_url: resumeInfo?.uploaded ? resumeInfo.url : undefined,
+            resume_name: resumeInfo?.uploaded ? (resumeInfo.filename || 'NandamVenkataSaiRaghava_Resume.pdf') : undefined,
+        };
+    }, [profile, resumeInfo]);
+
+    const bookmarkletSnippet = useMemo(() => profileWithResume ? autofillSnippet(profileWithResume) : '', [profileWithResume]);
 
     const handleCopyBookmarklet = () => {
         if (navigator.clipboard && bookmarkletSnippet) {
             navigator.clipboard.writeText(bookmarkletSnippet);
             play('pop', { force: true });
-            toast('Autofill code copied! Paste into developer console on any application page.', 'success');
+            toast('Autofill code copied! Paste into developer console (F12) or browser bookmark URL.', 'success');
+        }
+    };
+
+    const handleResumeUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            toast('Please select a PDF file.', 'error');
+            return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+            toast('Resume must be 2 MB or smaller.', 'error');
+            return;
+        }
+        setUploadingResume(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await fetch('/api/jobs/resume-upload', {
+                method: 'POST',
+                headers: { 'X-App-Key': getToken() },
+                body: formData,
+            });
+            const json = await res.json().catch(() => null);
+            if (!res.ok || json?.status === 'error') {
+                throw new Error(json?.message || `Upload failed (${res.status})`);
+            }
+            play('bell', { force: true });
+            toast(`Resume uploaded: ${json.data?.filename || file.name}`, 'success');
+            if (resumeInfoApi?.reload) resumeInfoApi.reload({ silent: true });
+        } catch (err) {
+            toast(err.message || 'Resume upload failed', 'error');
+        } finally {
+            setUploadingResume(false);
+            if (resumeFileInputRef.current) resumeFileInputRef.current.value = '';
         }
     };
 
     const handleOpenPack = async (job, refresh = false) => {
         setPackDrawerJob(job);
         setPackLoading(true);
+        setPackError(null);
         try {
             const queryParam = refresh ? '?refresh=1' : '';
             const res = await api(`/jobs/${job.id}/pack${queryParam}`);
@@ -144,6 +192,7 @@ export default function JobRadar() {
                 }
             }
         } catch (e) {
+            setPackError(e.message || 'Failed to load application pack');
             toast(e.message || 'Failed to load application pack', 'error');
         } finally {
             setPackLoading(false);
@@ -193,8 +242,8 @@ ${bullets}
     // Filtered jobs list
     const filteredJobs = useMemo(() => {
         return jobs.filter((job) => {
-            if (!job.eligible_batches?.includes('2027')) return false;
-            if (job.ctc_lpa < minCtcFilter) return false;
+            if (job.eligible_batches && !job.eligible_batches.includes('2027')) return false;
+            if (job.ctc_lpa > 0 && job.ctc_lpa < minCtcFilter) return false;
 
             const isAppliedStatus = job.status === 'applied_confirmed' || job.status === 'manual_applied';
             if (statusFilter === 'applied' && !isAppliedStatus) return false;
@@ -246,8 +295,57 @@ ${bullets}
     }, [jobs]);
 
     const confirmedJobs = useMemo(() => {
-        return jobs.filter((j) => j.status === 'applied_confirmed');
+        return jobs.filter((j) => j.status === 'applied_confirmed' || j.status === 'manual_applied');
     }, [jobs]);
+
+    const skippedJobs = useMemo(() => {
+        return jobs.filter((j) => j.status === 'skipped');
+    }, [jobs]);
+
+    const appliedTodayCount = useMemo(() => {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        return jobs.filter((j) => (j.status === 'manual_applied' || j.status === 'applied_confirmed') && j.applied_at && j.applied_at.startsWith(todayStr)).length;
+    }, [jobs]);
+
+    const todays20Jobs = useMemo(() => {
+        const appliedStatuses = new Set(['manual_applied', 'applied_confirmed', 'skipped']);
+        const pool = [];
+        const seen = new Set();
+        for (const j of approvedJobs) {
+            if (!appliedStatuses.has(j.status) && !seen.has(j.id)) {
+                pool.push({ ...j, isApproved: true });
+                seen.add(j.id);
+            }
+        }
+        for (const j of liveJobs) {
+            if (!appliedStatuses.has(j.status) && !seen.has(j.id)) {
+                pool.push(j);
+                seen.add(j.id);
+            }
+        }
+        for (const j of jobs) {
+            if (!appliedStatuses.has(j.status) && !seen.has(j.id)) {
+                pool.push(j);
+                seen.add(j.id);
+            }
+        }
+        const scoreRole = (r) => {
+            const title = (r || '').toLowerCase();
+            if (title.includes('fte') || title.includes('full time') || title.includes('graduate')) return 3;
+            if (title.includes('6-month') || title.includes('intern')) return 2;
+            return 1;
+        };
+        return pool.sort((a, b) => {
+            const roleDiff = scoreRole(b.role) - scoreRole(a.role);
+            if (roleDiff !== 0) return roleDiff;
+            const scoreA = Number(a.match_score || 0);
+            const scoreB = Number(b.match_score || 0);
+            if (scoreB !== scoreA) return scoreB - scoreA;
+            const dateA = a.discovered_at ? new Date(a.discovered_at).getTime() : 0;
+            const dateB = b.discovered_at ? new Date(b.discovered_at).getTime() : 0;
+            return dateB - dateA;
+        }).slice(0, 20);
+    }, [approvedJobs, liveJobs, jobs]);
 
     // Triggers
     const handleRunScan = async () => {
@@ -255,8 +353,11 @@ ${bullets}
         try {
             const res = await api('/jobs/scan', { method: 'POST', body: { batch_size: 12 } });
             play('bell', { force: true });
-            toast(res.message || 'Huge hourly scan completed across 51 career portals!', 'success');
+            const msg = res?.data ? `Scan complete: found ${res.data.found ?? 0} postings (${res.data.new ?? 0} new).` : (res?.message || 'Scan completed.');
+            toast(msg, 'success');
             reload({ silent: true });
+            if (liveApi?.reload) liveApi.reload({ silent: true });
+            if (queueApi?.reload) queueApi.reload({ silent: true });
         } catch (e) {
             toast(e.message || 'Scan failed', 'error');
         } finally {
@@ -296,17 +397,17 @@ ${bullets}
 === 1-CLICK APPLICATION PACKET ===
 Candidate: ${profile?.full_name || 'Nandam Venkata Sai Raghava'}
 Email: ${profile?.email || 'sairaghava1318@gmail.com'}
-Phone: ${profile?.phone || '+91 9110307856'}
+Phone: ${profile?.phone || ''}
 Institution: National Institute of Technology, Rourkela (NIT Rourkela)
 Degree: B.Tech Computer Science and Engineering (Class of 2027)
-CGPA: ${profile?.cgpa || 8.99} / 10.0 (Intermediate: 97.1%)
-LeetCode: ${profile?.leetcode || 'https://leetcode.com/Veratril'} (Rating 1709, 900+ Solved)
-Codeforces: ${profile?.codeforces || 'https://codeforces.com/profile/Veratril'} (Specialist 1425)
+CGPA: ${profile?.cgpa || 8.99} / 10.0
+LeetCode: ${profile?.leetcode || 'https://leetcode.com/u/Sairaghava1318/'}
+Codeforces: ${profile?.codeforces || 'https://codeforces.com/profile/Raghavan_CP'}
 GitHub: ${profile?.github || 'https://github.com/VeratrilS'}
 
 --- SCREENING ANSWERS FOR ${job.company.toUpperCase()} ---
 Role: ${job.role}
-Portal: ${job.portal_url}
+Portal: ${job.portal_url || job.url || ''}
 
 Q: Why ${job.company}?
 ${answers.why_company || ''}
@@ -327,8 +428,8 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
         }
     };
 
-    const handleConfirmSubmit = async (overrideJob = null) => {
-        const target = overrideJob || confirmModalJob;
+    const handleConfirmSubmit = async () => {
+        const target = confirmModalJob;
         if (!target) return;
         setConfirming(true);
         try {
@@ -336,8 +437,8 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                 method: 'POST',
                 body: {
                     job_id: target.id,
-                    confirmation_ref: overrideJob ? '' : confirmRefInput.trim(),
-                    notes: overrideJob ? 'Confirmed via 1-click assist' : confirmNotesInput.trim(),
+                    confirmation_ref: confirmRefInput.trim().slice(0, 100),
+                    notes: confirmNotesInput.trim().slice(0, 500),
                 },
             });
             play('combo', { force: true });
@@ -347,8 +448,14 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
             setConfirmNotesInput('');
             reload({ silent: true });
             if (liveApi?.reload) liveApi.reload({ silent: true });
+            if (queueApi?.reload) queueApi.reload({ silent: true });
         } catch (e) {
-            toast(e.message || 'Failed to record application', 'error');
+            if (e.message?.includes('Already') || e.status === 409) {
+                toast('Already recorded as applied.', 'info');
+                setConfirmModalJob(null);
+            } else {
+                toast(e.message || 'Failed to record application', 'error');
+            }
         } finally {
             setConfirming(false);
         }
@@ -359,6 +466,8 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
             await api('/jobs/unmark-applied', { method: 'POST', body: { job_id: jobId } });
             toast(`Reset application status for ${company}.`, 'info');
             reload({ silent: true });
+            if (liveApi?.reload) liveApi.reload({ silent: true });
+            if (queueApi?.reload) queueApi.reload({ silent: true });
         } catch (e) {
             toast(e.message || 'Failed to reset status', 'error');
         }
@@ -471,44 +580,60 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-bold text-sm text-fg">1-Click Job Form Autofill Bookmarklet</h3>
                                 <span className="badge text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
-                                    Greenhouse · Lever · Ashby
+                                    Greenhouse · Lever · Ashby · SmartRecruiters
                                 </span>
                             </div>
                             <p className="text-xs text-subtle mt-0.5 max-w-xl">
-                                Automatically fills your candidate information (NIT Rourkela, 8.99 CGPA, LeetCode, GitHub, Work Auth) in 1 tap on any external job portal. Never submits automatically — you review and click submit.
+                                Automatically fills your candidate information (NIT Rourkela, 8.99 CGPA, LeetCode, GitHub, Work Auth) on any external job portal and auto-attaches your resume PDF. Never submits automatically — you review and click submit.
                             </p>
+                            <div className="flex items-center gap-2 flex-wrap mt-2">
+                                {resumeInfo?.uploaded ? (
+                                    <span className="badge text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                        📄 Auto-attach PDF: {resumeInfo.filename} ({(resumeInfo.size / 1024).toFixed(0)} KB)
+                                    </span>
+                                ) : (
+                                    <span className="badge text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                                        ⚠️ No resume uploaded (upload PDF below to auto-attach on ATS forms)
+                                    </span>
+                                )}
+                            </div>
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted mt-2">
-                                <span><b>1.</b> Drag button to Bookmarks Bar (Ctrl+Shift+B)</span>
+                                <span><b>1.</b> Copy Autofill Code</span>
                                 <span>→</span>
-                                <span><b>2.</b> Open any career portal</span>
+                                <span><b>2.</b> Bookmark any page & paste code as URL (or press F12 → Console)</span>
                                 <span>→</span>
-                                <span><b>3.</b> Tap it to autofill</span>
+                                <span><b>3.</b> Click bookmark on job portal</span>
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5 shrink-0">
-                        <a
-                            href={bookmarkletHref}
-                            onClick={(e) => {
-                                if (e.target.tagName === 'A') {
-                                    toast('Drag this button directly to your browser Bookmarks Bar (Ctrl+Shift+B)!', 'info');
-                                }
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs shadow-md transition-all cursor-grab active:cursor-grabbing"
-                            title="Drag to bookmarks bar"
-                        >
-                            <Zap className="h-4 w-4 fill-black" />
-                            <span>⚡ Autofill (Drag to Bookmarks)</span>
-                        </a>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 shrink-0">
+                        <input
+                            type="file"
+                            ref={resumeFileInputRef}
+                            accept=".pdf"
+                            onChange={handleResumeUpload}
+                            style={{ display: 'none' }}
+                        />
                         <Button
                             size="sm"
                             variant="secondary"
+                            icon={Upload}
+                            loading={uploadingResume}
+                            onClick={() => resumeFileInputRef.current?.click()}
+                            title="Upload/replace candidate resume PDF (max 2 MB)"
+                        >
+                            {resumeInfo?.uploaded ? 'Replace Resume' : 'Upload Resume'}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="primary"
                             icon={Copy}
                             onClick={handleCopyBookmarklet}
-                            title="Copy JavaScript console code for mobile or strict browsers"
+                            title="Copy JavaScript code for bookmarklet or console"
+                            className="bg-amber-500 hover:bg-amber-400 text-black font-bold"
                         >
-                            Copy Code
+                            Copy Autofill Code
                         </Button>
                     </div>
                 </div>
@@ -663,6 +788,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                         { value: 'approved', label: `Approved (${approvedJobs.length})` },
                                         { value: 'ready', label: 'Ready to Apply' },
                                         { value: 'applied', label: `Applied (${confirmedJobs.length})` },
+                                        { value: 'skipped', label: `Skipped (${skippedJobs.length})` },
                                     ]}
                                     value={statusFilter}
                                     onChange={setStatusFilter}
@@ -676,7 +802,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                 <span className="text-subtle font-medium shrink-0">Role Type:</span>
                                 {[
                                     { id: 'all', label: 'All Roles' },
-                                    { id: 'intern', label: 'Summer Intern + PPO' },
+                                    { id: 'intern', label: 'Internship' },
                                     { id: 'fte', label: 'Full-Time (FTE)' },
                                 ].map((t) => (
                                     <button
@@ -715,6 +841,102 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             </div>
                         </div>
                     </div>
+
+                    {/* TODAY'S 20: FAST-APPLY VIEW */}
+                    {todays20Jobs.length > 0 && (
+                        <div className="space-y-3 p-4 rounded-2xl bg-gradient-to-r from-surface via-surface to-amber-950/20 border-2 border-amber-500/40 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="grid place-items-center h-6 w-6 rounded-lg bg-amber-500/20 text-amber-400">
+                                        <Flame className="h-4 w-4" />
+                                    </span>
+                                    <h3 className="font-bold text-sm text-fg">Today's 20 Priority Roles</h3>
+                                    <span className="badge text-[10px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                        Applied today: {appliedTodayCount} / 20
+                                    </span>
+                                </div>
+                                <span className="text-xs text-subtle font-mono hidden sm:inline">
+                                    FTE & 6-mo Intern first · 1-click apply assist
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {todays20Jobs.map((job) => (
+                                    <div key={job.id} className="p-3.5 rounded-xl bg-surface-2 border border-line hover:border-amber-500/40 transition-all flex flex-col justify-between gap-3">
+                                        <div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="font-bold text-sm text-fg truncate">{job.company}</span>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <span className="badge text-[10px] font-mono text-cyan-400 bg-surface border border-cyan-500/30 font-bold">
+                                                        {fmtEstCtc(job)}
+                                                    </span>
+                                                    {job.isApproved && (
+                                                        <span className="badge text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                            Approved
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-muted font-medium mt-0.5 truncate">{job.role}</p>
+                                            <div className="flex items-center gap-2 text-[11px] text-subtle mt-1 flex-wrap">
+                                                <span className="badge text-[10px] uppercase font-mono bg-surface border border-line">{job.source || 'Portal'}</span>
+                                                <span>·</span>
+                                                <span>{job.location || 'India'}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 pt-2 border-t border-line/60 flex-wrap">
+                                            <a
+                                                href={job.portal_url || job.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="btn btn-secondary btn-sm text-xs gap-1 flex-1 min-w-[110px] justify-center truncate"
+                                                title="Launch official application portal"
+                                            >
+                                                <span>Open ↗</span>
+                                            </a>
+
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={handleCopyBookmarklet}
+                                                className="text-xs py-1.5 px-2.5 border border-line text-subtle hover:text-fg"
+                                                title="Copy ⚡ Autofill JavaScript snippet"
+                                            >
+                                                <Zap className="h-3 w-3 mr-1 text-amber-400" />
+                                                Autofill
+                                            </Button>
+
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleOpenPack(job)}
+                                                className="text-xs py-1.5 px-2.5 border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+                                                title="Application pack (Answers & Highlights)"
+                                            >
+                                                <Sparkles className="h-3 w-3 mr-1" />
+                                                Answers
+                                            </Button>
+
+                                            <Button
+                                                size="sm"
+                                                variant="primary"
+                                                onClick={() => {
+                                                    setConfirmModalJob(job);
+                                                    setConfirmRefInput('');
+                                                    setConfirmNotesInput('');
+                                                }}
+                                                className="text-xs py-1.5 px-3 shrink-0"
+                                            >
+                                                <Check className="h-3 w-3 mr-1" />
+                                                I Applied
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Approved — to apply (From Email / Queue) */}
                     {approvedJobs.length > 0 && (
@@ -794,7 +1016,11 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                             <Button
                                                 size="sm"
                                                 variant="primary"
-                                                onClick={() => handleConfirmSubmit(job)}
+                                                onClick={() => {
+                                                    setConfirmModalJob(job);
+                                                    setConfirmRefInput('');
+                                                    setConfirmNotesInput('');
+                                                }}
                                                 className="text-xs py-1.5 px-3 shrink-0"
                                             >
                                                 <Check className="h-3 w-3 mr-1" />
@@ -902,7 +1128,11 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                 <Button
                                                     size="sm"
                                                     variant={isApplied ? 'ghost' : 'primary'}
-                                                    onClick={() => handleConfirmSubmit(lj)}
+                                                    onClick={() => {
+                                                        setConfirmModalJob(lj);
+                                                        setConfirmRefInput('');
+                                                        setConfirmNotesInput('');
+                                                    }}
                                                     className="text-xs py-1.5 px-2.5 shrink-0"
                                                 >
                                                     {isApplied ? (
@@ -974,27 +1204,26 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                                     {job.stipend_pm}
                                                                 </span>
                                                             )}
-                                                            <span className="badge text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                                                                Batch {job.eligible_batches}
-                                                            </span>
+                                                            {job.eligible_batches && (
+                                                                <span className="badge text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                                                    Batch {job.eligible_batches}
+                                                                </span>
+                                                            )}
                                                             {job.role.toLowerCase().includes('fte') ? (
                                                                 <span className="badge text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
                                                                     FTE
                                                                 </span>
-                                                            ) : (
+                                                            ) : job.role.toLowerCase().includes('intern') ? (
                                                                 <span className="badge text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                                                    Intern + PPO
+                                                                    Intern
                                                                 </span>
-                                                            )}
+                                                            ) : null}
                                                         </div>
                                                         <p className="text-xs text-muted mt-0.5">{job.role} · <span className="text-subtle">{job.location}</span></p>
                                                     </div>
                                                 </div>
 
                                                 <div className="flex flex-wrap items-center gap-1.5 mt-3">
-                                                    <span className="badge text-[11px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                                                        Shortlist Prob: {Math.round((job.shortlist_prob || 0.9) * 100)}%
-                                                    </span>
                                                     {(job.skills_required || []).map((skill, idx) => (
                                                         <span key={idx} className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-surface-2 border border-line text-subtle">
                                                             {skill}
@@ -1005,15 +1234,31 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
 
                                             {/* Action Column */}
                                             <div className="flex flex-col sm:items-end justify-between sm:justify-start gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-line">
-                                                {isApplied ? (
+                                                {job.status === 'skipped' ? (
+                                                    <div className="flex flex-col sm:items-end gap-1">
+                                                        <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-subtle bg-surface-2 border border-line px-3 py-1 rounded-full">
+                                                            <span>Skipped</span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleUnmarkApplied(job.id, job.company)}
+                                                            className="text-[10px] text-muted hover:text-amber-400 underline"
+                                                            title="Restore opening to discovered"
+                                                        >
+                                                            Undo Skip
+                                                        </button>
+                                                    </div>
+                                                ) : isApplied ? (
                                                     <div className="flex flex-col sm:items-end gap-1">
                                                         <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 rounded-full">
                                                             <CheckCheck className="h-3.5 w-3.5" /> Confirmed Real Application
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <span className="font-mono text-[10px] text-subtle">
-                                                                Ref: #{job.application_ref}
-                                                            </span>
+                                                            {job.application_ref && (
+                                                                <span className="font-mono text-[10px] text-subtle">
+                                                                    Your ref: #{job.application_ref}
+                                                                </span>
+                                                            )}
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleUnmarkApplied(job.id, job.company)}
@@ -1027,7 +1272,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                 ) : (
                                                     <div className="flex items-center gap-1.5 flex-wrap">
                                                         <a
-                                                            href={job.portal_url}
+                                                            href={job.portal_url || job.url}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="btn btn-primary btn-sm text-xs gap-1.5"
@@ -1040,7 +1285,11 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                         <Button
                                                             size="sm"
                                                             variant="secondary"
-                                                            onClick={() => setConfirmModalJob(job)}
+                                                            onClick={() => {
+                                                                setConfirmModalJob(job);
+                                                                setConfirmRefInput('');
+                                                                setConfirmNotesInput('');
+                                                            }}
                                                             icon={Check}
                                                             className="text-xs border-emerald-500/30 hover:border-emerald-500"
                                                             title="Mark as applied after submitting on portal"
@@ -1282,21 +1531,23 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                         </div>
 
                                         <div className="p-2.5 rounded-xl bg-surface-2 border border-line my-2.5">
-                                            <div className="text-[11px] text-subtle font-medium">Official Reference / Confirmation ID:</div>
+                                            <div className="text-[11px] text-subtle font-medium">Your reference:</div>
                                             <div className="font-mono font-bold text-sm text-fg flex items-center justify-between mt-0.5">
-                                                <span>#{cj.application_ref}</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (navigator.clipboard) {
-                                                            navigator.clipboard.writeText(cj.application_ref);
-                                                            toast('Copied reference ID', 'success');
-                                                        }
-                                                    }}
-                                                    className="text-subtle hover:text-fg text-xs flex items-center gap-1"
-                                                >
-                                                    <Copy className="h-3.5 w-3.5" />
-                                                </button>
+                                                <span>{cj.application_ref ? `#${cj.application_ref}` : 'None provided'}</span>
+                                                {cj.application_ref && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (navigator.clipboard) {
+                                                                navigator.clipboard.writeText(cj.application_ref);
+                                                                toast('Copied reference ID', 'success');
+                                                            }
+                                                        }}
+                                                        className="text-subtle hover:text-fg text-xs flex items-center gap-1"
+                                                    >
+                                                        <Copy className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
 
@@ -1307,7 +1558,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
 
                                     <div className="mt-4 pt-3 border-t border-line flex items-center justify-between gap-2">
                                         <a
-                                            href={cj.portal_url}
+                                            href={cj.portal_url || cj.url}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="btn btn-ghost btn-sm text-xs gap-1"
@@ -1450,17 +1701,18 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                         <div className="space-y-3">
                             <div>
                                 <label className="block font-semibold text-fg mb-1">
-                                    Official Confirmation Reference / Application Number:
+                                    Your Confirmation Reference (Optional):
                                 </label>
                                 <input
                                     type="text"
-                                    placeholder="e.g. UBER-104928, or leave blank to auto-generate timestamp ref"
+                                    placeholder="e.g. UBER-104928, or leave blank if none"
                                     value={confirmRefInput}
                                     onChange={(e) => setConfirmRefInput(e.target.value)}
+                                    maxLength={100}
                                     className="input text-xs w-full font-mono"
                                 />
                                 <span className="text-[11px] text-muted mt-1 block">
-                                    Found on the confirmation screen or in the email received from {confirmModalJob.company}.
+                                    Optional reference number from the confirmation screen or email from {confirmModalJob.company}.
                                 </span>
                             </div>
 
@@ -1473,6 +1725,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                     placeholder="e.g. Applied with resume version v2; referral through alumnus..."
                                     value={confirmNotesInput}
                                     onChange={(e) => setConfirmNotesInput(e.target.value)}
+                                    maxLength={500}
                                     className="input text-xs w-full"
                                 />
                             </div>
@@ -1498,17 +1751,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                 )}
             </Sheet>
 
-            {/* ML Mimic Inspector Modal / Sheet */}
+            {/* Candidate Profile Diagnostics Modal */}
             <Sheet
                 open={mlDrawerOpen}
                 onClose={() => setMlDrawerOpen(false)}
-                title="Candidate Vector & ML Mimicry Diagnostics"
+                title="Candidate Profile & Skill Diagnostics"
             >
                 <div className="space-y-4 text-xs">
                     <p className="text-subtle leading-relaxed">
-                        The candidate mimicry engine represents <strong>Nandam Venkata Sai Raghava</strong> as a multi-dimensional
-                        vector based on parsed resume metrics. It evaluates job descriptions, computes shortlist probability,
-                        and answers custom screening questions accurately reflecting Sai's real technical implementations.
+                        Candidate profile representation for <strong>Nandam Venkata Sai Raghava</strong> based on verified
+                        resume metrics, technical project facts, and CP credentials. Used to answer custom screening questions
+                        accurately reflecting Sai's real technical implementations.
                     </p>
 
                     <div className="space-y-2">
@@ -1613,9 +1866,9 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             >
                                 {copiedField === 'full_pack' ? 'Copied Full Pack!' : 'Copy Full Pack'}
                             </Button>
-                            {(packData?.url || packDrawerJob?.portal_url) && (
+                            {(packData?.url || packDrawerJob?.portal_url || packDrawerJob?.url) && (
                                 <a
-                                    href={packData?.url || packDrawerJob?.portal_url}
+                                    href={packData?.url || packDrawerJob?.portal_url || packDrawerJob?.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="btn btn-secondary btn-sm text-xs gap-1"
@@ -1630,6 +1883,25 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             {packData?.cached ? 'Cached' : 'Freshly Generated'}
                         </span>
                     </div>
+
+                    {packError && (
+                        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 space-y-2">
+                            <div className="flex items-center gap-2 font-semibold text-sm">
+                                <AlertCircle className="h-4 w-4 text-red-400" />
+                                <span>Could not load application pack</span>
+                            </div>
+                            <p className="text-xs text-subtle">{packError}</p>
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => handleOpenPack(packDrawerJob, true)}
+                                icon={RefreshCw}
+                                className="text-xs mt-1"
+                            >
+                                Retry
+                            </Button>
+                        </div>
+                    )}
 
                     {packLoading && !packData ? (
                         <div className="space-y-4 py-8 text-center">
@@ -1763,7 +2035,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             {/* Footer Submit confirmation */}
                             <div className="pt-3 border-t border-line flex items-center justify-between gap-3">
                                 <a
-                                    href={packData.url || packDrawerJob?.portal_url}
+                                    href={packData.url || packDrawerJob?.portal_url || packDrawerJob?.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="btn btn-secondary text-xs gap-1.5"
@@ -1778,7 +2050,9 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                         const jobToConfirm = packDrawerJob;
                                         setPackDrawerJob(null);
                                         setPackData(null);
-                                        handleConfirmSubmit(jobToConfirm);
+                                        setConfirmModalJob(jobToConfirm);
+                                        setConfirmRefInput('');
+                                        setConfirmNotesInput('');
                                     }}
                                     icon={CheckCheck}
                                     className="text-xs"

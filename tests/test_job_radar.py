@@ -39,8 +39,36 @@ def client(app):
         db.close()
 
 
+def _make_fixture_job(company="Google", role="Software Engineer Intern", ctc=45.0, batch="2027", external_id="google-swe-1"):
+    db = SessionLocal()
+    try:
+        job = JobOpportunity(
+            external_id=external_id,
+            company=company,
+            role=role,
+            eligible_batches=batch,
+            eligible_branches="CSE, IT",
+            min_cgpa=7.5,
+            ctc_lpa=ctc,
+            location="Bengaluru",
+            source="Direct Careers Portal",
+            portal_url=f"https://careers.{company.lower().replace(' ', '')}.com/jobs/1",
+            skills_required=json.dumps(["C++", "Algorithms", "Kafka"]),
+            match_score=92,
+            status="discovered",
+        )
+        db.add(job)
+        db.commit()
+        return job.id
+    finally:
+        db.close()
+
+
 def test_job_radar_discovery_and_profile(client):
-    """Verifies radar seed, candidate vectors, and 2027 CSE filtering >= 15 LPA."""
+    """Verifies radar profile, candidate vectors, and live/fixture openings."""
+    _make_fixture_job("Google", "Software Engineer Intern", 45.0, "2027", "ext-g-1")
+    _make_fixture_job("Uber", "Backend Engineer", 38.0, "2027", "ext-u-1")
+
     res = client.get("/api/jobs/radar")
     assert res.status_code == 200
     data = res.get_json()
@@ -54,30 +82,44 @@ def test_job_radar_discovery_and_profile(client):
     assert profile["min_ctc_lpa"] >= 15.0
 
     summary = data["summary"]
-    assert summary["total_openings"] >= 100
-    assert summary["eligible_2027_count"] >= 100
+    assert summary["total_openings"] == 2
+    assert summary["eligible_2027_count"] == 2
     assert summary["highest_ctc"] >= 40.0
     # Strict integrity: zero fake applied jobs
     assert summary["confirmed_applied_count"] == 0
 
     jobs = data["jobs"]
-    assert len(jobs) >= 100
-    for j in jobs[:20]:
+    assert len(jobs) == 2
+    for j in jobs:
         assert "2027" in j["eligible_batches"]
         assert j["ctc_lpa"] >= 15.0
         assert j["portal_url"].startswith("http")
 
 
 def test_confirm_applied_and_unmark(client):
-    """Verifies honest confirm-applied flow syncing to placements board and undo."""
+    """Verifies honest confirm-applied flow syncing to placements board, 409 conflict, and safe undo."""
+    job_id = _make_fixture_job("Google", "SWE", 45.0, "2027", "ext-conf-1")
+
+    # Also add an existing manual Application for another company to ensure unmark does not delete it
+    db = SessionLocal()
+    existing_manual_app = Application(
+        company="Microsoft",
+        role="Prior Manual Application",
+        stage="wishlist",
+        source="manual",
+    )
+    db.add(existing_manual_app)
+    db.commit()
+    manual_app_id = existing_manual_app.id
+    db.close()
+
     res = client.get("/api/jobs/radar")
     assert res.status_code == 200
     data = res.get_json()
     first_job = data["jobs"][0]
-    job_id = first_job["id"]
 
     # Confirm genuine application submission
-    ref_code = f"TEST-CONFIRM-{first_job['company'].upper()[:4]}-2027"
+    ref_code = "USER-REF-9988"
     conf_res = client.post("/api/jobs/confirm-applied", json={
         "job_id": job_id,
         "confirmation_ref": ref_code,
@@ -87,6 +129,14 @@ def test_confirm_applied_and_unmark(client):
     conf_data = conf_res.get_json()
     assert conf_data["status"] == "success"
     assert conf_data["application_ref"] == ref_code
+
+    # Attempt duplicate confirm -> must return 409 Conflict
+    dup_res = client.post("/api/jobs/confirm-applied", json={
+        "job_id": job_id,
+        "confirmation_ref": "ANOTHER-REF",
+    })
+    assert dup_res.status_code == 409
+    assert dup_res.get_json()["status"] == "conflict"
 
     # Check verified receipts
     rec_res = client.get("/api/jobs/receipts")
@@ -99,10 +149,12 @@ def test_confirm_applied_and_unmark(client):
     # Check database sync into Application
     db = SessionLocal()
     try:
-        app_entry = db.query(Application).filter(Application.company.ilike(first_job["company"])).first()
+        app_entry = db.query(Application).filter(Application.role == "SWE").first()
         assert app_entry is not None
         assert app_entry.stage == "applied"
         assert ref_code in app_entry.notes
+        # Ensure the prior manual application still exists
+        assert db.query(Application).filter(Application.id == manual_app_id).first() is not None
     finally:
         db.close()
 
@@ -115,23 +167,33 @@ def test_confirm_applied_and_unmark(client):
     rec_res2 = client.get("/api/jobs/receipts")
     assert len(rec_res2.get_json()["receipts"]) == 0
 
+    # Ensure the prior manual application was NOT deleted by safe unmark
+    db = SessionLocal()
+    try:
+        assert db.query(Application).filter(Application.id == manual_app_id).first() is not None
+    finally:
+        db.close()
+
 
 def test_blueprints_endpoint(client):
-    """Verifies authentic technical blueprints for tier-1 companies."""
-    client.get("/api/jobs/radar")
+    """Verifies authentic technical blueprints for live/fixture companies."""
+    _make_fixture_job("Google", "Software Engineer", 45.0, "2027", "ext-bp-1")
+    _make_fixture_job("Uber", "Backend Engineer", 38.0, "2027", "ext-bp-2")
+
     res = client.get("/api/jobs/blueprints")
     assert res.status_code == 200
     data = res.get_json()
     assert data["status"] == "success"
     blueprints = data["blueprints"]
-    assert len(blueprints) > 10
+    assert len(blueprints) == 2
 
     companies = {b["company"] for b in blueprints}
-    assert any("Google" in c for c in companies)
-    assert any("Uber" in c for c in companies)
-    for b in blueprints[:10]:
+    assert "Google" in companies
+    assert "Uber" in companies
+    for b in blueprints:
         assert "oa_platform" in b
         assert "core_topics" in b
+
 
 
 def test_toggle_auto_apply_and_settings(client):

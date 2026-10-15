@@ -57,7 +57,7 @@ from api.domain.bughunt import bughunt_bp
 from api.domain.complexity import complexity_bp
 from api.domain.lofi import lofi_bp
 from api.domain.century import century_bp
-from api.domain.job_radar import job_radar_bp, execute_hourly_scan
+from api.domain.job_radar import job_radar_bp
 from api.domain.job_sources import job_sources_bp
 from api.domain.job_pack import job_pack_bp
 from api.domain.job_approvals import job_approvals_bp
@@ -325,12 +325,6 @@ def cron_trigger():
         result = notifier.run(skip=solved_keys)
         if nudge_due and result.get("status") == "success":
             repo.set_setting("inactivity_last_sent", datetime.now(timezone.utc).isoformat())
-
-        # Also trigger the hourly 2027 job radar scan & stealth auto-apply
-        try:
-            execute_hourly_scan(db)
-        except Exception as e:
-            print(f"Hourly job radar scan skipped: {e}")
 
         return jsonify({"status": "success", "reason": "inactivity" if nudge_due else "interval", "data": result})
     finally:

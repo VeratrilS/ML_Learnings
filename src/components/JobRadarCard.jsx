@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
     Briefcase, Radio, Zap, ArrowRight, CheckCircle2, Clock, Sparkles,
-    ShieldCheck, RefreshCw, Send, Building2, Flame, Bot, Check, AlertCircle,
+    ShieldCheck, RefreshCw, Send, Building2, Flame, Bot, Check, AlertCircle, BellRing,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApi, navigate } from '../lib/hooks';
@@ -10,7 +10,7 @@ import { play } from '../lib/sfx';
 
 function fmtCtc(val) {
     if (!val || Number(val) === 0) return 'CTC not listed';
-    return `₹${Number(val).toFixed(1)} LPA`;
+    return `₹${Number(val).toFixed(1)} LPA (est.)`;
 }
 
 function useCountdown(targetIso) {
@@ -134,16 +134,16 @@ export default function JobRadarCard() {
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h2 className="text-[15px] font-bold tracking-tight">2027 Job Desk & Auto-Apply</h2>
+                                <h2 className="text-[15px] font-bold tracking-tight">2027 Job Desk & Scan Alerts</h2>
                                 <span className="badge text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                                    ≥20 LPA · CSE
+                                    ≥15 LPA · CSE
                                 </span>
                             </div>
                             <p className="text-xs text-subtle mt-0.5 flex items-center gap-1.5">
-                                <span>Next hourly scan:</span>
+                                <span>Next scan:</span>
                                 <span className="font-mono text-emerald-400 font-semibold">{countdown || 'Scanning soon'}</span>
                                 <span className="text-muted">·</span>
-                                <span>{summary?.eligible_2027_count || 204} curated 2027 roles</span>
+                                <span>{summary?.total_openings ?? 0} active roles</span>
                             </p>
                         </div>
                     </div>
@@ -155,9 +155,9 @@ export default function JobRadarCard() {
                             onClick={handleRunScan}
                             loading={scanning}
                             icon={RefreshCw}
-                            title="Trigger immediate scan across 24 hiring portals"
+                            title="Trigger immediate scan across career portals"
                         >
-                            <span className="hidden sm:inline">Hourly Check</span>
+                            <span className="hidden sm:inline">Scan Now</span>
                         </Button>
                         <Button size="sm" variant="secondary" onClick={openDesk} className="gap-1.5">
                             Open Desk <ArrowRight className="h-3.5 w-3.5" />
@@ -165,7 +165,7 @@ export default function JobRadarCard() {
                     </div>
                 </div>
 
-                {/* Background Auto-Apply Status Strip & Daily 100-200 Progress */}
+                {/* Daily Scan Alerts Strip */}
                 <div className="mt-3.5 pt-3 border-t border-line/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                         <button
@@ -178,41 +178,24 @@ export default function JobRadarCard() {
                                     ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                                     : 'bg-surface-2 border-line text-subtle',
                             )}
-                            title="Toggle background automated applications"
+                            title="Toggle daily scan alerts"
                         >
-                            <Bot className="h-3.5 w-3.5" />
-                            {summary?.auto_apply_enabled ? 'Background Auto-Apply: ACTIVE' : 'Background Auto-Apply: PAUSED'}
+                            <BellRing className="h-3.5 w-3.5" />
+                            {summary?.auto_apply_enabled ? 'Daily scan alerts: ON' : 'Daily scan alerts: OFF'}
                         </button>
-                        <span className="text-[11px] text-subtle hidden sm:inline" title="Runs quietly in background without popups or work disruption">
-                            ⚡ Zero disruption stealth mode
-                        </span>
                     </div>
 
-                    <div className="flex items-center gap-2 min-w-48">
-                        <div className="flex-1">
-                            <div className="flex justify-between text-[11px] font-medium text-subtle mb-1">
-                                <span>Applied Target</span>
-                                <span className="text-fg font-mono font-bold tabular-nums">
-                                    {autoAppliedCount}/{dailyTarget}
-                                </span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden border border-line">
-                                <div
-                                    className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-500 rounded-full"
-                                    style={{ width: `${progressPct}%` }}
-                                />
-                            </div>
-                        </div>
+                    <div className="flex items-center gap-2">
                         <Button
                             size="sm"
                             variant="ghost"
                             onClick={handleDispatchNextAlert}
                             loading={applying}
                             className="text-xs h-7 px-2 shrink-0 border border-line hover:border-emerald-500/40"
-                            title="Dispatch alert packet for top role"
+                            title="Dispatch email packet for top role"
                         >
                             <Send className="h-3 w-3 mr-1" />
-                            Dispatch
+                            Email Packet
                         </Button>
                     </div>
                 </div>
@@ -300,7 +283,7 @@ export default function JobRadarCard() {
                     onClick={openDesk}
                     className="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 ml-auto"
                 >
-                    View all 204 curated openings <ArrowRight className="h-3.5 w-3.5" />
+                    View all openings <ArrowRight className="h-3.5 w-3.5" />
                 </button>
             </div>
         </Card>
