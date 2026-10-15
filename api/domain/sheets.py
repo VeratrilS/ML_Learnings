@@ -30,7 +30,7 @@ SHEETS = {
     LEARNYARD_INTERVIEW_SHEET["key"]: LEARNYARD_INTERVIEW_SHEET,
     LEARNYARD_LAST_MINUTE_SHEET["key"]: LEARNYARD_LAST_MINUTE_SHEET,
 }
-SEED_VERSION = "6"
+SEED_VERSION = "7"
 DAILY_MIN = 1  # a daily minimum to aim for, never a cap
 DIFFICULTIES = ("Medium", "Hard")
 
@@ -83,6 +83,15 @@ def _ensure_tables(state):
 
 
 # ---------------- seeding ----------------
+def _safe_int(val):
+    if val is None:
+        return None
+    if isinstance(val, int):
+        return val
+    s = str(val).strip()
+    return int(s) if s.isdigit() else None
+
+
 def seed_if_needed(db, key):
     """Seed a sheet once. When SEED_VERSION changes, problems are upserted and stale rows beyond count removed."""
     from api.domain.repositories import NotificationRepository
@@ -112,11 +121,14 @@ def seed_if_needed(db, key):
                 p = SheetProblem(sheet=key, position=pos)
                 db.add(p)
             p.position = pos
-            p.leetcode_id = lc_id
+            p.leetcode_id = _safe_int(lc_id)
             p.title = title[:300]
             p.slug = (practice_url or "")[:500]
             p.difficulty = diff
-            p.acceptance = float(mod_id)
+            try:
+                p.acceptance = float(mod_id) if mod_id is not None else 1.0
+            except (ValueError, TypeError):
+                p.acceptance = 1.0
             ly_id = item.get("id", pos)
             p.topics = f"{topics}|||{article_url}|||{platform}|||{kind}|||{ly_id}"[:500]
             p.last_asked = (platform or "")[:40]
@@ -126,9 +138,17 @@ def seed_if_needed(db, key):
             if p is None:
                 p = SheetProblem(sheet=key, position=position)
                 db.add(p)
-            p.position, p.leetcode_id, p.title, p.slug = position, lc_id, title[:300], (slug or "")[:500]
+            p.position = position
+            p.leetcode_id = _safe_int(lc_id)
+            p.title = title[:300]
+            p.slug = (slug or "")[:500]
             p.difficulty = difficulty
-            p.acceptance, p.topics, p.last_asked = acceptance, (topics or "")[:500], (last_asked or "")[:40]
+            try:
+                p.acceptance = float(acceptance) if acceptance is not None else None
+            except (ValueError, TypeError):
+                p.acceptance = None
+            p.topics = (topics or "")[:500]
+            p.last_asked = (last_asked or "")[:40]
     db.commit()
     repo.set_setting(_seeded_key(key), SEED_VERSION)
     return True

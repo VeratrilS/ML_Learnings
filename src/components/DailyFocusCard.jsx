@@ -511,7 +511,7 @@ export default function DailyFocusCard({
                             <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
                                 <div className="flex items-center gap-2">
                                     <span className="badge bg-accent/15 text-accent font-semibold text-[11px] flex items-center gap-1">
-                                        <Layers className="h-3 w-3" /> {topicsCovered} Topics Covered
+                                        <Target className="h-3 w-3" /> 25 Daily Focus Problems
                                     </span>
                                     <span className="badge bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono text-[11px]">
                                         {medCount} Medium
@@ -520,7 +520,7 @@ export default function DailyFocusCard({
                                         {hardCount} Hard
                                     </span>
                                     <span className="badge bg-surface-2 text-subtle text-[11px] font-mono">
-                                        Circular Subtopic Rotation Active
+                                        Active Recall (No Topic Spoilers)
                                     </span>
                                 </div>
 

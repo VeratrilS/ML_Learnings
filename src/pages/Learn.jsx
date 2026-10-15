@@ -85,7 +85,7 @@ function LessonRow({ lesson, isNext, onToggle }) {
 }
 
 const TABS = [
-    { value: 'learnyard', label: <span className="inline-flex items-center gap-1.5"><Layers className="h-3.5 w-3.5 text-accent" /> LearnYard DSA (1,019 · 11d)</span> },
+    { value: 'learnyard', label: <span className="inline-flex items-center gap-1.5"><Layers className="h-3.5 w-3.5 text-accent" /> Fraz&apos;s DSA Sheet (1,019 · 11d)</span> },
     { value: 'apple', label: <span className="inline-flex items-center gap-1.5"><Apple className="h-3.5 w-3.5" /> Apple sheet (130)</span> },
     { value: 'videos', label: <span className="inline-flex items-center gap-1.5"><MonitorPlay className="h-3.5 w-3.5" /> System Design</span> },
 ];

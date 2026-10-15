@@ -107,14 +107,27 @@ function ProblemRow({
                         {problem.title}
                     </a>
 
-                    {/* Up next badge if applicable (no topic spoilers) */}
-                    {isNext && (
-                        <div className="mt-1">
+                    {/* Detailed Topic Tags for Fraz Sheet */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        {isNext && (
                             <span className="badge bg-accent text-accent-fg text-[10px] font-semibold">
                                 Up next
                             </span>
-                        </div>
-                    )}
+                        )}
+                        {problem.sub_name && (
+                            <span className="inline-flex items-center rounded bg-accent/10 border border-accent/25 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                                {problem.sub_name}
+                            </span>
+                        )}
+                        {problem.mod_name && (
+                            <span className="inline-flex items-center rounded bg-surface-2 border border-line/70 px-1.5 py-0.5 text-[10px] font-medium text-subtle">
+                                {problem.mod_name}
+                            </span>
+                        )}
+                        <span className="text-[10px] font-mono text-subtle">
+                            {platformLabel}
+                        </span>
+                    </div>
                 </div>
             </div>
 
