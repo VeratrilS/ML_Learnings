@@ -67,6 +67,7 @@ function useCountdown(targetIso) {
 export default function JobRadar() {
     const { data, loading, reload } = useApi('/jobs/radar');
     const blueprintsApi = useApi('/jobs/blueprints');
+    const queueApi = useApi('/jobs/queue');
     const [liveMinCtc15, setLiveMinCtc15] = useState(true);
     const liveApi = useApi(`/jobs/live?min_score=50${liveMinCtc15 ? '&min_ctc=15' : ''}`);
     const toast = useToast();
@@ -107,6 +108,12 @@ export default function JobRadar() {
     const recentLogs = useMemo(() => data?.recent_logs || [], [data]);
     const blueprints = useMemo(() => blueprintsApi.data?.blueprints || [], [blueprintsApi.data]);
     const liveJobs = useMemo(() => liveApi.data?.data || [], [liveApi.data]);
+    const approvedJobs = useMemo(() => {
+        if (queueApi.data?.data && Array.isArray(queueApi.data.data) && queueApi.data.data.length > 0) {
+            return queueApi.data.data;
+        }
+        return jobs.filter((j) => j.status === 'approved');
+    }, [queueApi.data, jobs]);
     const countdown = useCountdown(summary?.next_hourly_scan);
 
     const bookmarkletHref = useMemo(() => profile ? buildBookmarklet(profile) : '#', [profile]);
@@ -188,7 +195,10 @@ ${bullets}
 
             const isAppliedStatus = job.status === 'applied_confirmed' || job.status === 'manual_applied';
             if (statusFilter === 'applied' && !isAppliedStatus) return false;
-            if (statusFilter === 'ready' && isAppliedStatus) return false;
+            if (statusFilter === 'approved' && job.status !== 'approved') return false;
+            if (statusFilter === 'ready' && (isAppliedStatus || job.status === 'skipped')) return false;
+            if (statusFilter === 'skipped' && job.status !== 'skipped') return false;
+            if (statusFilter === 'all' && job.status === 'skipped') return false;
 
             if (roleTypeFilter === 'fte' && !job.role.toLowerCase().includes('fte')) return false;
             if (roleTypeFilter === 'intern' && !job.role.toLowerCase().includes('intern')) return false;
@@ -647,6 +657,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                 <Segmented
                                     options={[
                                         { value: 'all', label: `All (${filteredJobs.length})` },
+                                        { value: 'approved', label: `Approved (${approvedJobs.length})` },
                                         { value: 'ready', label: 'Ready to Apply' },
                                         { value: 'applied', label: `Applied (${confirmedJobs.length})` },
                                     ]}
@@ -701,6 +712,97 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             </div>
                         </div>
                     </div>
+
+                    {/* Approved — to apply (From Email / Queue) */}
+                    {approvedJobs.length > 0 && (
+                        <div className="space-y-3 p-4 rounded-2xl bg-gradient-to-r from-surface via-surface to-emerald-950/20 border-2 border-emerald-500/40 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="grid place-items-center h-6 w-6 rounded-lg bg-emerald-500/20 text-emerald-400">
+                                        <CheckCircle2 className="h-4 w-4" />
+                                    </span>
+                                    <h3 className="font-bold text-sm text-fg">Approved — To Apply ({approvedJobs.length} roles)</h3>
+                                    <span className="badge text-[10px] font-mono bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                        Approved by you · Ready to submit
+                                    </span>
+                                </div>
+                                <span className="text-xs text-subtle font-mono hidden sm:inline">
+                                    Pre-generated packs · 1-click assist
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {approvedJobs.map((job) => (
+                                    <div key={job.id} className="p-3.5 rounded-xl bg-surface-2 border border-emerald-500/30 flex flex-col justify-between gap-3">
+                                        <div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="font-bold text-sm text-fg truncate">{job.company}</span>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <span className="badge text-[10px] font-mono text-emerald-400 bg-surface border border-emerald-500/30 font-bold">
+                                                        {fmtEstCtc(job)}
+                                                    </span>
+                                                    <span className="badge text-[10px] font-mono bg-surface border border-line text-cyan-400 font-bold">
+                                                        {job.match_score || 90}% Match
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-muted font-medium mt-0.5 truncate">{job.role}</p>
+                                            <div className="flex items-center gap-2 text-[11px] text-subtle mt-1 flex-wrap">
+                                                <span className="badge text-[10px] uppercase font-mono bg-surface border border-line">{job.source || 'Portal'}</span>
+                                                <span>·</span>
+                                                <span>{job.location || 'India'}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 pt-2 border-t border-line/60 flex-wrap">
+                                            <a
+                                                href={job.portal_url || job.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="btn btn-secondary btn-sm text-xs gap-1 flex-1 min-w-[120px] justify-center truncate"
+                                                title="Launch official application portal"
+                                            >
+                                                <span>Open Application</span>
+                                                <ExternalLink className="h-3 w-3 shrink-0" />
+                                            </a>
+
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={handleCopyBookmarklet}
+                                                className="text-xs py-1.5 px-2.5 border border-line text-subtle hover:text-fg"
+                                                title="Copy ⚡ Autofill JavaScript snippet"
+                                            >
+                                                <Zap className="h-3 w-3 mr-1 text-amber-400" />
+                                                Autofill
+                                            </Button>
+
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleOpenPack(job)}
+                                                className="text-xs py-1.5 px-2.5 border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+                                                title="Open application pack with tailored answers & highlights"
+                                            >
+                                                <Sparkles className="h-3 w-3 mr-1" />
+                                                Pack
+                                            </Button>
+
+                                            <Button
+                                                size="sm"
+                                                variant="primary"
+                                                onClick={() => handleConfirmSubmit(job)}
+                                                className="text-xs py-1.5 px-3 shrink-0"
+                                            >
+                                                <Check className="h-3 w-3 mr-1" />
+                                                I Applied
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Live Career Board Feeds (Greenhouse, Lever, Ashby, SmartRecruiters) */}
                     {liveJobs.length > 0 && (
