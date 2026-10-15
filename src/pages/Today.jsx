@@ -18,6 +18,7 @@ import ContestsCard from '../components/ContestsCard';
 import LeetCodeCard from '../components/LeetCodeCard';
 import StudyCard from '../components/StudyCard';
 import CenturyCard from '../components/CenturyCard';
+import JobRadarCard from '../components/JobRadarCard';
 
 const QUOTES = [
     ['Not everyone who works hard is rewarded. But all those who succeed have worked hard.', 'Kamogawa Genji'],
@@ -229,10 +230,13 @@ export default function Today({ stats, xp }) {
                             <NowCard rev={rev} onPlanChange={planChangedOutside} />
                         </div>
                     )}
-                    <div id="plan" className={cx(SECTION, 'order-2')}>
+                    <div id="job-radar" className={cx(SECTION, 'order-2')}>
+                        <JobRadarCard />
+                    </div>
+                    <div id="plan" className={cx(SECTION, 'order-3')}>
                         <PlanCard key={planKey} onChange={planChangedInside} />
                     </div>
-                    <div className={cx(SECTION, 'order-3')}>{upNext}</div>
+                    <div className={cx(SECTION, 'order-4')}>{upNext}</div>
                     <div id="episode" className={cx(SECTION, 'duo order-4 grid gap-5 lg:gap-6 xl:grid-cols-2 xl:items-start')}>
                         <EpisodeCard onChange={progressChanged} />
                         <LearnCard onChange={progressChanged} />

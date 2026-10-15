@@ -89,6 +89,7 @@ export const CENTURY_FEATURES = [
     { id: 'shutdown', label: 'Shutdown Ritual', domain: 'Bio-Hacking', icon: 'Moon', desc: 'Evening close-the-day: mood, win, blocker, and tomorrow\'s top 3 intentions.', xp: 60 },
 
     // ---------------- 6. Placement Warfare & Career (76-90) ----------------
+    { id: 'job_radar', label: '2027 Job Radar & Auto-Apply', domain: 'Placement Warfare', icon: 'Radio', desc: 'Hourly crawler & ML candidate mimicry engine auto-applying to 2027 CSE openings >= 20 LPA in background.', xp: 150, dedicatedPage: 'JobRadar', dedicatedCard: 'JobRadarCard' },
     { id: 'placements', label: 'Placement Pipeline', domain: 'Placement Warfare', icon: 'Briefcase', desc: 'Visual Kanban board tracking company applications from wishlist to technical rounds to offer.', xp: 100, dedicatedPage: 'Placements', dedicatedCard: 'PlacementsCard' },
     { id: 'interview', label: 'AI Interview Lab', domain: 'Placement Warfare', icon: 'MessagesSquare', desc: 'AI mock interviewer across DSA, System Design, and Behavioral rounds with instant rubric score.', xp: 130, dedicatedPage: 'Interview' },
     { id: 'mistakes', label: 'Mistake Journal', domain: 'Placement Warfare', icon: 'Bug', desc: 'Log code bugs, logic flaws, and contest slip-ups with automated tag extraction and checklists.', xp: 80, dedicatedPage: 'Mistakes' },

@@ -57,6 +57,8 @@ from api.domain.bughunt import bughunt_bp
 from api.domain.complexity import complexity_bp
 from api.domain.lofi import lofi_bp
 from api.domain.century import century_bp
+from api.domain.job_radar import job_radar_bp, execute_hourly_scan
+from api.domain.job_sources import job_sources_bp
 
 app = Flask(__name__)
 # Enable CORS so our React frontend (running on different port) can talk to this API
@@ -64,7 +66,7 @@ CORS(app)
 for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, weekly_bp, insights_bp, focus_bp, journal_bp, xp_bp, features_bp,
            pdf_extract_bp, mistakes_bp, placements_bp, oa_bp, interview_bp, gym_bp, brief_bp, habits_bp, capture_bp, flashcards_bp, tutor_bp,
            public_stats_bp, studio_bp, agents_bp, speedrun_bp, bounties_bp, arena_bp, drillmaster_bp, dempsey_bp, radar_bp,
-           ghost_bp, forge_bp, hotseat_bp, bughunt_bp, complexity_bp, lofi_bp, century_bp):
+           ghost_bp, forge_bp, hotseat_bp, bughunt_bp, complexity_bp, lofi_bp, century_bp, job_radar_bp, job_sources_bp):
     app.register_blueprint(bp)
 
 # ---------------- Passcode login ----------------
@@ -73,7 +75,7 @@ for bp in (todos_bp, contests_bp, syllabus_bp, learning_bp, sheets_bp, weekly_bp
 # /api/public/stats feeds the public portfolio page; it is cached server-side for 6h, so it can't be used to spam either.
 _OPEN_ENDPOINTS = {"/api/health", "/api/auth/status", "/api/auth/login",
                    "/api/cron", "/api/digest", "/api/syllabus/remind", "/api/weekly/cron",
-                   "/api/public/stats"}
+                   "/api/public/stats", "/api/jobs/scan"}
 
 
 def _auth_token():
@@ -319,6 +321,13 @@ def cron_trigger():
         result = notifier.run(skip=solved_keys)
         if nudge_due and result.get("status") == "success":
             repo.set_setting("inactivity_last_sent", datetime.now(timezone.utc).isoformat())
+
+        # Also trigger the hourly 2027 job radar scan & stealth auto-apply
+        try:
+            execute_hourly_scan(db)
+        except Exception as e:
+            print(f"Hourly job radar scan skipped: {e}")
+
         return jsonify({"status": "success", "reason": "inactivity" if nudge_due else "interval", "data": result})
     finally:
         db.close()

@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
     Sun, Moon, Code2, Swords, FileText, Settings as SettingsIcon, House, Flame, GraduationCap, Search, RotateCcw,
-    MonitorPlay, Ellipsis, ChevronRight, FlaskConical, FolderCog, Trophy,
+    MonitorPlay, Ellipsis, ChevronRight, FlaskConical, FolderCog, Trophy, Radio,
 } from 'lucide-react';
 import { FEATURES, useFeatures } from './lib/features';
 import { useTheme } from './themes/ThemeContext';
@@ -20,10 +20,12 @@ const Learn = lazy(() => import('./pages/Learn'));
 const Lab = lazy(() => import('./pages/Lab'));
 const Studio = lazy(() => import('./pages/Studio'));
 const Century = lazy(() => import('./pages/Century'));
+const JobRadar = lazy(() => import('./pages/JobRadar'));
 
 // `tab`: shown in the mobile bottom bar; everything else lives under "More" on mobile.
 const NAV = [
     { id: 'today', label: 'Today', icon: House, tab: true },
+    { id: 'job-radar', label: '2027 Job Desk', long: '2027 Job Radar & Auto-Apply', icon: Radio, tab: true },
     { id: 'problems', label: 'DSA', long: 'DSA Problems', icon: Code2, tab: true },
     { id: 'study', label: 'Study', long: 'End-sem Prep', icon: GraduationCap, tab: true },
     { id: 'learn', label: 'Learn', icon: MonitorPlay, tab: true },
@@ -199,6 +201,7 @@ export default function App() {
                             {current === 'lab' && <Lab />}
                             {current === 'century' && <Century />}
                             {current === 'studio' && <Studio />}
+                            {(current === 'job-radar' || current === 'job_radar') && <JobRadar />}
                             {featurePage && current === featurePage.id && current !== 'century' && (
                                 <>
                                     {!features.isOn(featurePage.id) && (

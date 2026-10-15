@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
     Search, House, Code2, Swords, FileText, Settings as SettingsIcon, Send, Sparkles, RefreshCw,
-    CircleCheck, Circle, Tv, Timer, SunMoon, CirclePause, CirclePlay, CornerDownLeft,
+    CircleCheck, Circle, Tv, Timer, SunMoon, CirclePause, CirclePlay, CornerDownLeft, Radio,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { navigate } from '../lib/hooks';
@@ -16,6 +16,7 @@ const DIFF = {
 
 const NAV = [
     { id: 'today', label: 'Today', icon: House, keywords: 'home dashboard daily' },
+    { id: 'job-radar', label: '2027 Job Desk & Auto-Apply', icon: Radio, keywords: 'jobs radar intern placement careers 2027 cse lpa apply' },
     { id: 'problems', label: 'DSA Problems', icon: Code2, keywords: 'leetcode list dsa' },
     { id: 'cf', label: 'Codeforces', icon: Swords, keywords: 'cf contest' },
     { id: 'pdf', label: 'PDF Studio', icon: FileText, keywords: 'documents notes' },

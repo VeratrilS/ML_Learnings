@@ -9,7 +9,7 @@ const PAGE_FILES = import.meta.glob([
     '../pages/Agents.jsx', '../pages/Speedrun.jsx', '../pages/Bounties.jsx', '../pages/Arena.jsx', '../pages/Drillmaster.jsx',
     '../pages/Dempsey.jsx', '../pages/Radar.jsx', '../pages/Ghost.jsx', '../pages/Forge.jsx', '../pages/HotSeat.jsx',
     '../pages/Century.jsx', '../pages/BugHunt.jsx', '../pages/Complexity.jsx', '../pages/Lofi.jsx',
-    '../pages/ATS.jsx', '../pages/ArchSim.jsx',
+    '../pages/ATS.jsx', '../pages/ArchSim.jsx', '../pages/JobRadar.jsx',
 ]);
 
 const COMPONENT_FILES = import.meta.glob([
@@ -21,7 +21,7 @@ const COMPONENT_FILES = import.meta.glob([
     '../components/DempseyCard.jsx', '../components/RadarCard.jsx',
     '../components/GhostCard.jsx', '../components/ForgeCard.jsx', '../components/HotSeatCard.jsx',
     '../components/CenturyCard.jsx', '../components/BugHuntCard.jsx', '../components/ComplexityCard.jsx', '../components/LofiCard.jsx',
-    '../components/ATSCard.jsx', '../components/ArchSimCard.jsx',
+    '../components/ATSCard.jsx', '../components/ArchSimCard.jsx', '../components/JobRadarCard.jsx',
 ]);
 
 const lazyFrom = (files, name) => {

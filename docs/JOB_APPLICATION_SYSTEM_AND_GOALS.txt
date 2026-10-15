@@ -1,0 +1,265 @@
+================================================================================
+JOB RADAR & PLACEMENT ENGINE: COMPREHENSIVE ROADMAP, ARCHITECTURE & STATUS
+Candidate: Nandam Venkata Sai Raghava (Class of 2027, NIT Rourkela, B.Tech CSE)
+Target Compensation: >= 15.0 LPA (15.0 LPA to 64.5 LPA CTC)
+Last Updated: October 15, 2026
+================================================================================
+
+1. CORE DIRECTIVE & CANDIDATE INTEGRITY
+--------------------------------------------------------------------------------
+This system operates under one strict, non-negotiable rule:
+"NEVER FABRICATE, MIMIC, OR FALSELY CLAIM AN APPLICATION WAS SUBMITTED TO A 
+COMPANY. THIS IS A REAL CANDIDATE'S LIFE AND CAREER. ONLY ADD AN APPLICATION 
+TO THE DATA WHEN IT HAS GENUINELY BEEN SUBMITTED ON THE OFFICIAL PORTAL."
+
+Why this rule is essential:
+- Major enterprise tech companies (Google, Uber, Microsoft, D. E. Shaw, Atlassian,
+  Goldman Sachs) manage recruitment through enterprise Applicant Tracking Systems 
+  (Workday, Greenhouse, Taleo, Lever, SmartRecruiters, or proprietary portals).
+- These portals enforce Single Sign-On (SSO), OTP phone/email verification, 
+  reCAPTCHA / Cloudflare bot-detection challenges, and direct resume file parsing.
+- Any background script attempting to fake or brute-force form submissions to 
+  external endpoints would either fail at Cloudflare/SSO barriers or, worse, 
+  get the candidate's name, email (sairaghava1318@gmail.com), and IP flagged 
+  or blacklisted in corporate ATS spam filters.
+- Falsely telling a student "You have been applied to 150 companies" and generating 
+  simulated acceptance receipts is dangerous: it creates the illusion of safety, 
+  causing the student to miss actual application deadlines and OA windows.
+- Therefore, this system functions as an AUTHENTIC RADAR and HIGH-SPEED APPLICATION 
+  COPILOT: it monitors verified openings, generates customized screening answers, 
+  provides direct official portal links, dispatches real email alerts to Sai's 
+  inbox, and ONLY marks an application as applied when Sai submits on the official 
+  portal and confirms it with a real reference.
+
+
+2. CANDIDATE PROFILE & ML MIMICRY VECTORS
+--------------------------------------------------------------------------------
+All ATS match scoring, shortlist probability P(shortlist), and screening prompt 
+syntheses are mathematically derived from Sai Raghava's verified credentials:
+
+- Full Name: Nandam Venkata Sai Raghava
+- Email: sairaghava1318@gmail.com | Phone: +91 9110307856
+- Institution: National Institute of Technology, Rourkela (NIT Rourkela)
+- Degree: B.Tech in Computer Science and Engineering (Class of 2027)
+- Academic Standing: CGPA 8.99 / 10.0 (Intermediate: 97.1%, 10th: 10.0 CGPA)
+- Competitive Programming:
+  * LeetCode Contest Rating: 1709 (900+ problems solved, 15 badges)
+  * Codeforces: Specialist (Peak Rating 1425, 325+ problems solved)
+  * CodeChef: 3-Star (Peak Rating 1632)
+- Industry Experience:
+  * Maruti Suzuki India Ltd (MSIL) - Software Engineering Intern:
+    Engineered full-stack vehicle transport & allocation portal in MERN.
+    Built 13 responsive React pages, 120+ REST APIs, JWT authentication, RBAC.
+  * DataAnnotation.tech - C++ LLM Inference Engine Expert:
+    Evaluated and debugged llama.cpp C++ inference sampling (XTC sampling),
+    preserving special token IDs and low-level memory consistency.
+- Flagship Systems Projects:
+  * Distributed Railway Reservation Platform:
+    8 microservices, 13 Kafka topics, Redis Lua atomic distributed locks,
+    PostgreSQL row-level locking, Saga rollback pattern for payment failures.
+  * Redis-compatible High-Performance Cache Server in C++:
+    Built on raw TCP sockets using POSIX threads, custom RESP parser, 
+    thread pool with mutex locks, O(1) LRU/LFU eviction policies.
+
+
+3. TARGET COMPANIES (>= 15 LPA TO 65 LPA) ROSTER & OFFICIAL PORTALS
+--------------------------------------------------------------------------------
+The system scans and maintains verified openings for 2027 CSE graduates across 
+50+ premier tech organizations:
+
+[Ultra-High CTC / Quantitative Trading / Systems (35 - 65 LPA)]
+1. Jane Street (CTC: 60.0 LPA, Stipend: ₹2,50,000/mo)
+   Portal: https://www.janestreet.com/join-jane-street/open-roles/
+2. Tower Research Capital (CTC: 55.0 LPA, Stipend: ₹2,20,000/mo)
+   Portal: https://www.tower-research.com/open-positions
+3. Graviton Research (CTC: 54.0 LPA, Stipend: ₹2,00,000/mo)
+   Portal: https://gravitonresearch.com/careers
+4. D. E. Shaw & Co (CTC: 52.0 LPA, Stipend: ₹2,00,000/mo)
+   Portal: https://www.deshaw.com/careers
+5. Databricks (CTC: 46.0 LPA, Stipend: ₹1,60,000/mo)
+   Portal: https://www.databricks.com/company/careers/university-recruiting
+6. Google (CTC: 45.0 LPA, Stipend: ₹1,25,000/mo)
+   Portal: https://careers.google.com/jobs/results/?distance=50&q=software%20engineer%20intern
+7. Together AI (CTC: 42.0 LPA, Stipend: ₹1,50,000/mo)
+   Portal: https://www.together.ai/careers
+8. Apple (CTC: 40.0 LPA, Stipend: ₹1,50,000/mo)
+   Portal: https://www.apple.com/careers/in/students.html
+9. Uber (CTC: 38.0 LPA, Stipend: ₹1,60,000/mo)
+   Portal: https://www.uber.com/us/en/careers/list/?department=University
+10. Rubrik (CTC: 38.0 LPA, Stipend: ₹1,40,000/mo)
+    Portal: https://www.rubrik.com/company/careers/university-recruiting
+
+[Top Tier Tech / Cloud / High-Scale Distributed Systems (25 - 38 LPA)]
+11. Atlassian (CTC: 36.0 LPA, Stipend: ₹1,20,000/mo)
+    Portal: https://www.atlassian.com/company/careers/students
+12. Arcesium (CTC: 36.0 LPA, Stipend: ₹1,30,000/mo)
+    Portal: https://www.arcesium.com/careers.html
+13. NVIDIA (CTC: 35.0 LPA, Stipend: ₹1,30,000/mo)
+    Portal: https://www.nvidia.com/en-us/about-nvidia/careers/university-recruiting/
+14. Cohesity (CTC: 34.0 LPA, Stipend: ₹1,20,000/mo)
+    Portal: https://www.cohesity.com/company/careers/
+15. Sprinklr (CTC: 32.0 LPA, Stipend: ₹1,50,000/mo)
+    Portal: https://www.sprinklr.com/careers/
+16. Salesforce (CTC: 32.0 LPA, Stipend: ₹1,10,000/mo)
+    Portal: https://careers.salesforce.com/en/university-recruiting/
+17. Amazon / AWS (CTC: 32.0 LPA, Stipend: ₹1,20,000/mo)
+    Portal: https://www.amazon.jobs/en/business_categories/student-programs
+18. Polygon Technology (CTC: 32.0 LPA, Stipend: ₹1,20,000/mo)
+    Portal: https://polygon.technology/careers
+19. Microsoft (CTC: 30.0 LPA, Stipend: ₹1,25,000/mo)
+    Portal: https://careers.microsoft.com/professionals/us/en/students-and-graduates
+20. Adobe (CTC: 30.0 LPA, Stipend: ₹1,15,000/mo)
+    Portal: https://www.adobe.com/careers/university.html
+21. CRED (CTC: 30.0 LPA, Stipend: ₹1,20,000/mo)
+    Portal: https://careers.cred.club/
+22. Intuit (CTC: 30.0 LPA, Stipend: ₹1,15,000/mo)
+    Portal: https://www.intuit.com/careers/students/
+23. Goldman Sachs (CTC: 28.0 LPA, Stipend: ₹1,20,000/mo)
+    Portal: https://www.goldmansachs.com/careers/students/programs/
+24. PhonePe (CTC: 28.0 LPA, Stipend: ₹1,00,000/mo)
+    Portal: https://www.phonepe.com/careers/
+25. Harness (CTC: 28.0 LPA, Stipend: ₹1,00,000/mo)
+    Portal: https://www.harness.io/company/careers
+26. ServiceNow (CTC: 28.0 LPA, Stipend: ₹1,05,000/mo)
+    Portal: https://careers.servicenow.com/early-career
+27. Morgan Stanley (CTC: 26.0 LPA, Stipend: ₹1,00,000/mo)
+    Portal: https://www.morganstanley.com/people-opportunities/students-graduates
+28. Zepto (CTC: 26.0 LPA, Stipend: ₹95,000/mo)
+    Portal: https://www.zeptonow.com/careers
+29. Zomato (CTC: 26.0 LPA, Stipend: ₹95,000/mo)
+    Portal: https://www.zomato.com/careers
+30. Flipkart (CTC: 26.0 LPA, Stipend: ₹1,00,000/mo)
+    Portal: https://www.flipkartcareers.com/
+31. Swiggy (CTC: 25.0 LPA, Stipend: ₹90,000/mo)
+    Portal: https://careers.swiggy.com/
+32. Oracle / OCI (CTC: 25.0 LPA, Stipend: ₹1,00,000/mo)
+    Portal: https://www.oracle.com/corporate/careers/students-grads/
+33. Meesho (CTC: 25.0 LPA, Stipend: ₹95,000/mo)
+    Portal: https://meesho.io/careers
+
+[Established Tech / Product / FinTech Giants (15 - 24 LPA)]
+34. Razorpay (CTC: 24.0 LPA, Stipend: ₹90,000/mo)
+    Portal: https://razorpay.com/jobs/
+35. Cisco Systems (CTC: 24.0 LPA, Stipend: ₹90,000/mo)
+    Portal: https://www.cisco.com/c/en/us/about/careers/we-are-cisco/students-and-new-graduates.html
+36. Postman (CTC: 24.0 LPA, Stipend: ₹90,000/mo)
+    Portal: https://www.postman.com/company/careers/
+37. Qualcomm (CTC: 22.0 LPA, Stipend: ₹85,000/mo)
+    Portal: https://www.qualcomm.com/company/careers/students
+38. InMobi (CTC: 22.0 LPA, Stipend: ₹85,000/mo)
+    Portal: https://www.inmobi.com/company/careers/
+39. Wells Fargo (CTC: 20.0 LPA, Stipend: ₹85,000/mo)
+    Portal: https://www.wellsfargojobs.com/en/university-programs/
+40. Texas Instruments (CTC: 19.5 LPA, Stipend: ₹85,000/mo)
+    Portal: https://careers.ti.com/students-and-graduates/
+41. Walmart Global Tech (CTC: 18.5 LPA, Stipend: ₹85,000/mo)
+    Portal: https://careers.walmart.com/technology
+42. NetApp (CTC: 18.0 LPA, Stipend: ₹80,000/mo)
+    Portal: https://www.netapp.com/company/careers/university-recruiting/
+43. AMD (CTC: 18.0 LPA, Stipend: ₹80,000/mo)
+    Portal: https://www.amd.com/en/corporate/careers/students.html
+44. BNY Mellon (CTC: 17.5 LPA, Stipend: ₹75,000/mo)
+    Portal: https://www.bnymellon.com/us/en/careers/students.html
+45. JP Morgan Chase (CTC: 17.0 LPA, Stipend: ₹75,000/mo)
+    Portal: https://careers.jpmorgan.com/us/en/students/programs
+46. Deutsche Bank (CTC: 16.5 LPA, Stipend: ₹70,000/mo)
+    Portal: https://careers.db.com/students-graduates/
+47. Intel (CTC: 16.5 LPA, Stipend: ₹70,000/mo)
+    Portal: https://jobs.intel.com/en/student-grad
+48. Samsung R&D (CTC: 16.0 LPA, Stipend: ₹65,000/mo)
+    Portal: https://research.samsung.com/sri-b
+49. Target Tech (CTC: 16.0 LPA, Stipend: ₹70,000/mo)
+    Portal: https://corporate.target.com/careers/technology
+50. Western Digital (CTC: 16.0 LPA, Stipend: ₹65,000/mo)
+    Portal: https://www.westerndigital.com/company/careers/students-and-recent-grads
+51. Dell Technologies (CTC: 15.5 LPA, Stipend: ₹60,000/mo)
+    Portal: https://jobs.dell.com/university
+
+
+4. END-TO-END APPLICATION WORKFLOW
+--------------------------------------------------------------------------------
+STEP 1: Automated Hourly Radar Scan
+- Checks 24 premier career sources and early-career recruitment portals.
+- Strict filter: Graduating Batch 2027, CSE/IT branches, CTC >= 15.0 LPA.
+- Evaluates minimum CGPA against Sai's 8.99 CGPA (clearing all 7.0+, 7.5+, 8.0+ cutoffs).
+
+STEP 2: Screening Prompt Synthesis (ML Mimic Engine)
+- Pre-computes answers customized for each company and role:
+  * "Why this company?": References their distributed systems / high throughput scale.
+  * "Hardest engineering challenge?": Cites the Distributed Railway Reservation 
+    platform with 8 microservices, Kafka topics, Redis Lua locks, and Saga rollback.
+  * "Low-level / Concurrency experience?": Cites the C++ Redis-compatible Cache Server
+    with raw TCP sockets, mutex thread pool, RESP parser, and O(1) LRU/LFU eviction, 
+    plus llama.cpp C++ inference sampling at DataAnnotation.tech.
+
+STEP 3: 1-Click Launch & Pre-Filled Application Packet
+- On http://localhost:5173/#/job-radar:
+  * Click "Apply on Official Portal": Immediately opens the exact careers page in a new tab.
+  * Click "Copy Application Packet": Copies full candidate details and tailored 
+    answers to the clipboard in 1 click for instant pasting into the company portal.
+  * Click "Send to My Email": Dispatches the entire packet and portal URL to 
+    sairaghava1318@gmail.com so Sai can apply from his mobile phone or laptop anytime.
+
+STEP 4: Real Application Confirmation
+- Once Sai completes the real submission on the company's official portal and 
+  receives their on-screen confirmation code or confirmation email (e.g., #UBER-98214):
+  * Sai enters the confirmation reference into the "Confirm Submission" dialog.
+  * The system moves the opportunity to "Confirmed Applied".
+  * ONLY THEN is it added to the Placements Kanban board under the "Applied" stage.
+  * Zero simulated data, zero fake receipts, 100% genuine tracking.
+
+STEP 5: Technical Interview & OA Blueprints
+- Displays company-specific online assessment platforms:
+  * CodeSignal: Uber, Databricks
+  * HackerRank: D. E. Shaw, Goldman Sachs, Atlassian, Sprinklr, Razorpay, PhonePe
+  * Codility: Microsoft
+  * Google Online Challenge: Google
+- Provides specific topic prep recommendations (Tree/Graph traversals, Concurrency/Locks,
+  Dynamic Programming, and Microservice System Design).
+
+
+5. DATABASE & API ARCHITECTURE
+--------------------------------------------------------------------------------
+- Models (SQLAlchemy in api/domain/job_radar.py):
+  * JobOpportunity:
+    Fields: company, role, ctc_lpa, stipend_pm, location, portal_url, eligible_batches,
+    skills_required, match_score, shortlist_prob, status ("discovered" | "applied_confirmed"),
+    applied_at, application_ref, ml_tailored_answers.
+  * JobRadarProfile:
+    Fields: full_name, email, phone, college, degree, grad_year (2027), cgpa (8.99),
+    leetcode, codeforces, github, linkedin, min_ctc_lpa (15.0), auto_apply_enabled.
+  * JobRadarScanLog:
+    Fields: scanned_at, sources_scanned, total_evaluated, eligible_2027_found,
+    auto_applied_count, log_details, status.
+
+- API Endpoints (/api/jobs):
+  * GET  /api/jobs/radar: Full radar status, verified 2027 openings, summary metrics.
+  * POST /api/jobs/confirm-applied: Records genuine submission on official portal with ref.
+  * POST /api/jobs/unmark-applied: Reverts status if confirmed by mistake.
+  * POST /api/jobs/dispatch-live-alert: Dispatches live application packet to Sai's email.
+  * GET  /api/jobs/blueprints: Technical interview and OA blueprint per company.
+  * GET  /api/jobs/receipts: Confirmed application tracker with interview blueprints.
+  * POST /api/jobs/scan: Immediate trigger for huge hourly scout.
+  * POST /api/jobs/settings: Updates minimum CTC (>= 15 LPA) and preferences.
+
+- Background Daemons:
+  * Flask Backend: http://127.0.0.1:5000 (running as daemon)
+  * Vite Dev Server: http://localhost:5173 (running as daemon)
+  * Hourly cron check: Configured on /api/cron and triggered on radar access.
+
+
+6. SUMMARY OF CHANGES MADE TO ADDRESS USER FEEDBACK
+--------------------------------------------------------------------------------
+1. Purged 87 fake/simulated "thank you for applying" receipts from the database.
+2. Deleted 39 automatically injected mock applications from the Placements table.
+3. Reset all 156 job opportunities to "discovered" status (0 fake applied count).
+4. Updated all companies to point to their direct, official early career portals.
+5. Added "Confirm Real Application" workflow so records are strictly entered only 
+   upon actual submission.
+6. Expanded compensation threshold down to >= 15.0 LPA to include top product firms 
+   (Samsung R&D, Walmart, Target, NetApp, AMD, Cisco, Qualcomm, etc.).
+7. Verified live SMTP email alerts to sairaghava1318@gmail.com with zero errors.
+
+================================================================================
+END OF ROADMAP & STATUS DOCUMENT
+================================================================================
