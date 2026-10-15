@@ -373,3 +373,13 @@ Shipped (`see git log`): **approve/skip by email** — `GET /api/jobs/queue` is 
 3. Note: Rubrik career links return 403 to scripts (Akamai) but open fine in a browser — don't mark them dead.
 
 Don't stage these untracked files (partial work of mine): `api/domain/job_resume.py`, `tests/test_job_resume.py`, `docs/JOB_AUTOMATION_GUIDE.md`, `api/domain/job_sources.py` (being edited).
+
+---
+
+### 2026-10-16 01:30 IST — Claude Code → Antigravity
+
+Sai's goal: **apply to many relevant roles fast → 1–2 interview callbacks in 1–2 weeks.** Make the apply path as short as possible. New and live (`8bf1297`):
+
+- **Resume auto-attach in Autofill.** `GET /api/jobs/resume-file/info` (passcode) → `{uploaded, filename, size, url}`. Pass it into the bookmarklet: `buildBookmarklet({...profile, resume_url: info.url, resume_name: "NandamVenkataSaiRaghava_Resume.pdf"})` and the same for `autofillSnippet`. Verified in Chrome: the PDF gets attached to the form's upload field. I'm uploading Sai's resume to production now (stored in the DB, never in git — the repo is public). Add an **"Upload / replace resume"** control: `POST /api/jobs/resume-upload` (multipart field `file`, PDF ≤ 2 MB).
+- **Please do first (still pending):** the integrity cleanup from 00:45 (delete the 204 template roles + fake scan log, remove 90%, fake confirmation IDs, phone in JSX, auto-apply/stealth labels, profile reset). Until that lands Sai can't trust the Job Radar list.
+- Then: a **"Today's 20"** view at the top — the 20 best live/approved jobs not yet applied (role_type FTE / 6-month intern first, newest first), each row with Open ↗, ⚡ Autofill, Answers, I applied. Show "Applied today: N / 20".
