@@ -472,6 +472,9 @@ def _ensure_tables(state):
         JobPack.__table__.create(bind=engine, checkfirst=True)
     except Exception as e:
         print(f"job_packs check skipped: {e}")
+    # Job Radar's tables gain columns over time; add any the live table is missing (add-only, idempotent).
+    from api.domain.job_migrations import add_missing_columns
+    add_missing_columns()
 
 
 def _response(job, row, payload, cached):
