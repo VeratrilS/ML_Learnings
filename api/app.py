@@ -466,9 +466,9 @@ def leetcode_profile():
 # ---------------- Codeforces ----------------
 def _cf_suggested_range(rating):
     if not rating:
-        return 800, 1200
-    base = max(800, int(round(rating / 100.0)) * 100)
-    return base, min(3500, base + 300)
+        return 1400, 1600
+    base = max(1400, int(round(rating / 100.0)) * 100)
+    return base, min(3500, max(base + 200, 1600))
 
 
 @app.route('/api/cf/meta', methods=['GET'])
@@ -503,8 +503,8 @@ def cf_suggest():
             except Exception as e:
                 print(f"CF user lookup failed: {e}")
         lo, hi = _cf_suggested_range(rating)
-        min_rating = int(data.get("min_rating") or lo)
-        max_rating = int(data.get("max_rating") or hi)
+        min_rating = max(1400, int(data.get("min_rating") or lo))
+        max_rating = max(min_rating, int(data.get("max_rating") or hi))
         if min_rating > max_rating:
             min_rating, max_rating = max_rating, min_rating
 

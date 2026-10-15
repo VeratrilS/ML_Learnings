@@ -10,7 +10,7 @@ import {
 import { api } from '../lib/api';
 import { useApi, useLocalStorage, timeAgo, navigate } from '../lib/hooks';
 
-const MIN_R = 800;
+const MIN_R = 1400;
 const MAX_R = 3500;
 const RATINGS = Array.from({ length: (MAX_R - MIN_R) / 100 + 1 }, (_, i) => MIN_R + i * 100);
 const POPULAR_TAGS = [
@@ -18,7 +18,7 @@ const POPULAR_TAGS = [
     'data structures', 'binary search', 'sortings', 'graphs', 'number theory', 'strings',
     'two pointers', 'dfs and similar', 'trees', 'bitmasks',
 ];
-const DEFAULT_FILTERS = { min: null, max: null, count: 5, tags: [], tagMode: 'any', email: false };
+const DEFAULT_FILTERS = { min: 1400, max: 1600, count: 5, tags: [], tagMode: 'any', email: false };
 const HISTORY_PAGE = 40;
 
 // Codeforces rank titles. Colours always come from cfColor so they match badges elsewhere.
@@ -34,8 +34,8 @@ const CF_TIERS = [
     { min: 2600, name: 'International Grandmaster' },
     { min: 3000, name: 'Legendary Grandmaster' },
 ];
-// Colour bands of cfColor, used for the range preview strip (problem ratings 800–3500, +100 so the top bucket has width).
-const BANDS = [800, 1200, 1400, 1600, 1900, 2100, 2400, MAX_R + 100];
+// Colour bands of cfColor, used for the range preview strip (problem ratings 1400–3500, +100 so the top bucket has width).
+const BANDS = [1400, 1600, 1900, 2100, 2400, MAX_R + 100];
 const BAND_SPAN = MAX_R + 100 - MIN_R;
 const pctOf = (r) => ((Math.max(MIN_R, Math.min(MAX_R + 100, r)) - MIN_R) / BAND_SPAN) * 100;
 
@@ -64,10 +64,10 @@ function dayLabel(iso) {
 }
 
 function presetsFor(meta) {
-    const lo = meta?.suggested_min ?? 800;
-    const hi = meta?.suggested_max ?? 1200;
+    const lo = Math.max(1400, meta?.suggested_min ?? 1400);
+    const hi = Math.max(1600, meta?.suggested_max ?? 1600);
     return [
-        { key: 'warm', label: 'Warm-up', min: clamp(lo - 200), max: clamp(lo) },
+        { key: 'warm', label: 'Warm-up', min: clamp(lo), max: clamp(lo + 100) },
         { key: 'target', label: 'Target', min: clamp(lo), max: clamp(hi) },
         { key: 'stretch', label: 'Stretch', min: clamp(lo + 200), max: clamp(lo + 400) },
     ];
@@ -77,7 +77,7 @@ export default function Codeforces() {
     const toast = useToast();
     const meta = useApi('/cf/meta', { select: (d) => d });
     const history = useApi('/logs?type=codeforces');
-    const [filters, setFilters] = useLocalStorage('cf.filters', DEFAULT_FILTERS);
+    const [filters, setFilters] = useLocalStorage('cf.filters_v1400', DEFAULT_FILTERS);
     const [latestIds, setLatestIds] = useLocalStorage('cf.latestIds', []);
     const [view, setView] = useLocalStorage('cf.historyView', 'pending');
     const [generating, setGenerating] = useState(false);
@@ -86,7 +86,7 @@ export default function Codeforces() {
     const f = { ...DEFAULT_FILTERS, ...filters };
     const user = meta.data?.user;
     const hasHandle = !!user?.handle;
-    const logs = useMemo(() => history.data || [], [history.data]);
+    const logs = useMemo(() => (history.data || []).filter((l) => !l.difficulty || Number(l.difficulty) >= 1400), [history.data]);
 
     const latest = useMemo(() => {
         const byId = new Map(logs.map((l) => [l.id, l]));
@@ -296,8 +296,8 @@ function Stat({ label, value, icon: Icon }) {
 
 function Generator({ meta, metaLoading, filters, patch, generating, onGenerate }) {
     const [moreOpen, setMoreOpen] = useState(false);
-    const min = filters.min ?? meta?.suggested_min ?? 800;
-    const max = filters.max ?? meta?.suggested_max ?? 1200;
+    const min = Math.max(MIN_R, filters.min ?? meta?.suggested_min ?? 1400);
+    const max = Math.max(min, filters.max ?? meta?.suggested_max ?? 1600);
     const presets = presetsFor(meta);
     const allTags = meta?.tags || [];
     const popular = allTags.length ? POPULAR_TAGS.filter((t) => allTags.includes(t)) : POPULAR_TAGS;

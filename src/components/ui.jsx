@@ -47,6 +47,7 @@ const DIFF = {
     Easy: 'text-easy bg-easy/10',
     Medium: 'text-medium bg-medium/10',
     Hard: 'text-hard bg-hard/10',
+    Theory: 'text-subtle bg-surface-2 border border-line',
 };
 export function DifficultyBadge({ value, className }) {
     if (!value) return null;

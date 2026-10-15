@@ -105,6 +105,8 @@ def cf_problemset() -> list:
         for p in result["problems"]:
             if "rating" not in p or "contestId" not in p or "*special" in p.get("tags", []):
                 continue
+            if p.get("rating", 0) < 1400:
+                continue
             problems.append({
                 "key": f"{p['contestId']}/{p['index']}",
                 "contest_id": p["contestId"],
