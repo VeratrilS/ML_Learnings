@@ -26,6 +26,9 @@ function fmtEstCtc(job) {
             return `~${estMatch[1]} (est.)`;
         }
     }
+    if (!job.ctc_lpa || Number(job.ctc_lpa) === 0) {
+        return 'CTC not listed';
+    }
     if (job.source?.includes('(live)') || job.notes?.toLowerCase().includes('est')) {
         return `~₹${Number(job.ctc_lpa || 15).toFixed(0)}+ LPA (est.)`;
     }

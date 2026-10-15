@@ -9,7 +9,7 @@ import { Button, Card, CardHeader, Skeleton, cx, useToast } from './ui';
 import { play } from '../lib/sfx';
 
 function fmtCtc(val) {
-    if (!val) return '';
+    if (!val || Number(val) === 0) return 'CTC not listed';
     return `₹${Number(val).toFixed(1)} LPA`;
 }
 
