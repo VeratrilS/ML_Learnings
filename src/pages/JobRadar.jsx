@@ -109,6 +109,11 @@ export default function JobRadar() {
     const [referralData, setReferralData] = useState(null);
     const [referralLoading, setReferralLoading] = useState(false);
 
+    // Follow-up Draft state
+    const [followupModalJob, setFollowupModalJob] = useState(null);
+    const [followupData, setFollowupData] = useState(null);
+    const [followupLoading, setFollowupLoading] = useState(false);
+
     // Confirm Application Modal state
     const [confirmModalJob, setConfirmModalJob] = useState(null);
     const [confirmRefInput, setConfirmRefInput] = useState('');
@@ -289,6 +294,21 @@ ${bullets}
             });
         } finally {
             setReferralLoading(false);
+        }
+    };
+
+    const handleOpenFollowupDraft = async (job) => {
+        setFollowupModalJob(job);
+        setFollowupLoading(true);
+        try {
+            const res = await api(`/jobs/${job.id}/followup-draft`);
+            if (res?.data) {
+                setFollowupData(res.data);
+            }
+        } catch (e) {
+            toast(e.message || 'Failed to load follow-up drafts', 'error');
+        } finally {
+            setFollowupLoading(false);
         }
     };
 
@@ -1896,15 +1916,28 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                     </div>
 
                                     <div className="mt-4 pt-3 border-t border-line flex items-center justify-between gap-2">
-                                        <a
-                                            href={cj.portal_url || cj.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="btn btn-ghost btn-sm text-xs gap-1"
-                                        >
-                                            <ExternalLink className="h-3 w-3" />
-                                            <span>Portal Link</span>
-                                        </a>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <a
+                                                href={cj.portal_url || cj.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="btn btn-ghost btn-sm text-xs gap-1"
+                                            >
+                                                <ExternalLink className="h-3 w-3" />
+                                                <span>Portal Link</span>
+                                            </a>
+
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleOpenFollowupDraft(cj)}
+                                                className="text-xs h-7 px-2 gap-1 text-cyan-400 hover:text-cyan-300 border border-cyan-500/25 bg-cyan-500/10"
+                                                title="Recruiter follow-up notes (7d and 14d)"
+                                            >
+                                                <Mail className="h-3 w-3" />
+                                                <span>Follow-up Draft</span>
+                                            </Button>
+                                        </div>
 
                                         <button
                                             type="button"
@@ -2704,6 +2737,112 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                     <li>Zero scraping or automated spamming — genuine professional outreach only.</li>
                                 </ul>
                             </div>
+                        </>
+                    )}
+                </div>
+            </Sheet>
+
+            {/* Sheet 6: Recruiter Follow-up Drafts */}
+            <Sheet
+                open={Boolean(followupModalJob)}
+                onClose={() => setFollowupModalJob(null)}
+                title={followupModalJob ? `Follow-up Drafts · ${followupModalJob.company}` : 'Recruiter Follow-up Drafts'}
+            >
+                <div className="p-4 space-y-4">
+                    {followupModalJob && (
+                        <>
+                            <div>
+                                <h3 className="font-bold text-base text-fg flex items-center gap-2">
+                                    <Mail className="h-4 w-4 text-cyan-400" />
+                                    <span>{followupModalJob.company}</span>
+                                    <span className="badge text-[10px] font-mono text-emerald-400 bg-surface border border-emerald-500/30">
+                                        Applied {followupData?.days_since_applied ?? 0}d ago
+                                    </span>
+                                </h3>
+                                <p className="text-xs text-subtle mt-0.5">
+                                    Role: <strong>{followupModalJob.role}</strong> · {followupModalJob.application_ref ? `Ref #${followupModalJob.application_ref}` : 'No ref'}
+                                </p>
+                            </div>
+
+                            {/* 7-Day Follow-Up Card */}
+                            <Card className="card-pad border-line space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-xs text-fg">Day 7: Polite Status Check-in</span>
+                                        {followupData?.is_due_7d && (
+                                            <span className="badge text-[9px] font-mono bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                                Due Now (≥7d)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        icon={copiedField === 'draft_7d' ? Check : Copy}
+                                        onClick={() => {
+                                            if (followupData?.draft_7d && navigator.clipboard) {
+                                                navigator.clipboard.writeText(`${followupData.subject_7d}\n\n${followupData.draft_7d}`);
+                                                setCopiedField('draft_7d');
+                                                setTimeout(() => setCopiedField(null), 2000);
+                                                play('pop', { force: true });
+                                                toast('7-day follow-up copied to clipboard!', 'success');
+                                            }
+                                        }}
+                                        className="text-xs h-7 gap-1"
+                                    >
+                                        {copiedField === 'draft_7d' ? 'Copied!' : 'Copy 7d Draft'}
+                                    </Button>
+                                </div>
+                                <div className="text-[11px] font-mono text-fg font-semibold bg-surface-2 p-1.5 rounded-lg border border-line">
+                                    Subject: {followupData?.subject_7d || 'Application Follow-up'}
+                                </div>
+                                <div className="p-3 rounded-xl bg-surface-2/60 border border-line font-mono text-xs text-subtle whitespace-pre-wrap leading-relaxed">
+                                    {followupData?.draft_7d || 'Loading draft…'}
+                                </div>
+                                <div className="text-[10px] text-muted font-mono text-right">
+                                    {countWords(followupData?.draft_7d)} words · ~45s read
+                                </div>
+                            </Card>
+
+                            {/* 14-Day Follow-Up Card */}
+                            <Card className="card-pad border-line space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-xs text-fg">Day 14: Value Reaffirmation Note</span>
+                                        {followupData?.is_due_14d && (
+                                            <span className="badge text-[9px] font-mono bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                                Due Now (≥14d)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        icon={copiedField === 'draft_14d' ? Check : Copy}
+                                        onClick={() => {
+                                            if (followupData?.draft_14d && navigator.clipboard) {
+                                                navigator.clipboard.writeText(`${followupData.subject_14d}\n\n${followupData.draft_14d}`);
+                                                setCopiedField('draft_14d');
+                                                setTimeout(() => setCopiedField(null), 2000);
+                                                play('pop', { force: true });
+                                                toast('14-day follow-up copied to clipboard!', 'success');
+                                            }
+                                        }}
+                                        className="text-xs h-7 gap-1"
+                                    >
+                                        {copiedField === 'draft_14d' ? 'Copied!' : 'Copy 14d Draft'}
+                                    </Button>
+                                </div>
+                                <div className="text-[11px] font-mono text-fg font-semibold bg-surface-2 p-1.5 rounded-lg border border-line">
+                                    Subject: {followupData?.subject_14d || 'Application Follow-up'}
+                                </div>
+                                <div className="p-3 rounded-xl bg-surface-2/60 border border-line font-mono text-xs text-subtle whitespace-pre-wrap leading-relaxed">
+                                    {followupData?.draft_14d || 'Loading draft…'}
+                                </div>
+                                <div className="text-[10px] text-muted font-mono text-right">
+                                    {countWords(followupData?.draft_14d)} words · ~55s read
+                                </div>
+                            </Card>
                         </>
                     )}
                 </div>

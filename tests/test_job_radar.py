@@ -272,5 +272,33 @@ def test_job_referral_endpoint(client):
     assert "Kafka" in ref["template"]
 
 
+def test_job_followup_draft_endpoint(client):
+    """Verifies 7-day and 14-day polite recruiter follow-up note generation."""
+    job_id = _make_fixture_job("Databricks", "Distributed Systems Engineer", 48.0, "2027", "ext-dbx-ref-1")
+
+    # Mark applied
+    app_res = client.post("/api/jobs/manual-applied", json={"job_id": job_id, "confirmation_ref": "DBX-994"})
+    assert app_res.status_code == 200
+
+    # Get follow-up drafts
+    res = client.get(f"/api/jobs/{job_id}/followup-draft")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "success"
+    drafts = data["data"]
+    assert drafts["company"] == "Databricks"
+    assert "DBX-994" in drafts["draft_7d"]
+    assert "DBX-994" in drafts["draft_14d"]
+    assert "NIT Rourkela" in drafts["draft_7d"]
+    assert "Kafka microservices" in drafts["draft_14d"]
+
+    # Verify 60-90 word bounds
+    words_7d = len(drafts["draft_7d"].split())
+    words_14d = len(drafts["draft_14d"].split())
+    assert 55 <= words_7d <= 95
+    assert 55 <= words_14d <= 95
+
+
+
 
 

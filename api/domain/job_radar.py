@@ -749,6 +749,64 @@ def get_job_referral(job_id):
         db.close()
 
 
+@job_radar_bp.route("/<int:job_id>/followup-draft", methods=["GET"])
+def get_followup_draft(job_id):
+    """
+    Generates polite 60-90 word recruiter follow-up notes for applied jobs at day 7 and day 14.
+    Grounded in role, company, applied date, and candidate facts.
+    """
+    db = SessionLocal()
+    try:
+        job = db.get(JobOpportunity, job_id)
+        if not job:
+            return jsonify({"status": "error", "message": "Job not found"}), 404
+
+        company = job.company or "Company"
+        role = job.role or "Software Engineer"
+        ref_text = f" (Ref: #{job.application_ref})" if job.application_ref else ""
+        applied_date_str = job.applied_at.strftime("%B %d, %Y") if job.applied_at else "recently"
+        now = _utcnow()
+        days_since_applied = (now - job.applied_at).days if job.applied_at else 0
+
+        draft_7d = (
+            f"Dear {company} Recruiting Team,\n\n"
+            f"I hope you are having a productive week. I recently submitted my application for the {role} position on {applied_date_str}{ref_text}.\n\n"
+            f"I remain very enthusiastic about the opportunity at {company}. As a final-year CSE student at NIT Rourkela (8.99 CGPA) "
+            f"with a background in distributed systems and C++, I would welcome the opportunity to discuss how my technical skills "
+            f"can contribute to your engineering goals.\n\n"
+            f"Thank you for your time and consideration.\n\n"
+            f"Best regards,\nNandam Venkata Sai Raghava\nsairaghava1318@gmail.com"
+        )
+
+        draft_14d = (
+            f"Dear {company} Hiring Team,\n\n"
+            f"I am writing to politely check in on the status of my application for the {role} opening, submitted on {applied_date_str}{ref_text}.\n\n"
+            f"{company}'s engineering work strongly aligns with my experience building Kafka microservices and high-throughput systems "
+            f"during my software engineering internship at MSIL. I would be thrilled to bring this background to your engineering group.\n\n"
+            f"Please let me know if any additional details or portfolio code would be helpful. Thank you for your continued review.\n\n"
+            f"Sincerely,\nNandam Venkata Sai Raghava"
+        )
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "id": job.id,
+                "company": company,
+                "role": role,
+                "applied_at": _iso(job.applied_at),
+                "days_since_applied": days_since_applied,
+                "is_due_7d": days_since_applied >= 7,
+                "is_due_14d": days_since_applied >= 14,
+                "draft_7d": draft_7d,
+                "draft_14d": draft_14d,
+                "subject_7d": f"Application Follow-up: {role} - Nandam Venkata Sai Raghava",
+                "subject_14d": f"Checking in: {role} Application - Nandam Venkata Sai Raghava",
+            }
+        })
+    finally:
+        db.close()
+
+
 @job_radar_bp.route("/auto-apply", methods=["POST"])
 def auto_apply_job():
     """Fallback handler redirecting to confirm-applied to prevent any simulated auto-applications."""
