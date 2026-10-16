@@ -13,3 +13,12 @@ def test_adds_missing_columns_once(tmp_path):
     assert {c.name for c in JobOpportunity.__table__.columns} <= have
     assert f"{JobOpportunity.__table__.name}.portal_url" in added
     assert add_missing_columns(eng) == []  # idempotent
+
+
+def test_relaxes_not_null_only_on_postgres_semantics(tmp_path):
+    # SQLite can't ALTER nullability; the function must not crash there and must leave columns alone.
+    eng = create_engine(f"sqlite:///{tmp_path / 'n.db'}")
+    with eng.begin() as conn:
+        conn.execute(text(f"CREATE TABLE {JobOpportunity.__table__.name} (id INTEGER PRIMARY KEY, eligible_batches VARCHAR(80) NOT NULL)"))
+    added = add_missing_columns(eng)
+    assert not any("now nullable" in a for a in added)

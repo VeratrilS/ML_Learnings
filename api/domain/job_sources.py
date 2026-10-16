@@ -49,7 +49,7 @@ WD_PAGE, WD_MAX_PAGES = 20, 5      # Workday caps a page at 20
 SR_PAGE, SR_MAX = 100, 500
 SCAN_GAP = timedelta(hours=5)       # the scheduler hits /scan ~4x a day
 DIGEST_GAP = timedelta(hours=20)    # ...but at most one digest email a day
-LAST_SCAN_KEY = "jobs_last_scan"
+LAST_SCAN_KEY = "jobs_last_scan_v2"  # v2: the v1 slot was taken by a scan that failed on a NOT NULL column
 LAST_DIGEST_KEY = "jobs_last_digest"
 DIGEST_MIN_SCORE = 60
 DIGEST_MIN_CTC = 15.0
@@ -772,11 +772,18 @@ def scan_route():
     try:
         repo = NotificationRepository(db)
         now = datetime.now(timezone.utc)
-        if _recent(repo.get_setting(LAST_SCAN_KEY), SCAN_GAP, now):
+        previous = repo.get_setting(LAST_SCAN_KEY)
+        if _recent(previous, SCAN_GAP, now):
             return jsonify({"status": "skipped", "message": "Scanned recently."})
         repo.set_setting(LAST_SCAN_KEY, now.isoformat())  # claim the slot first so concurrent POSTs don't double-scan
-        scored, errors = collect()
-        new = upsert(db, scored)
+        try:
+            scored, errors = collect()
+            new = upsert(db, scored)
+        except Exception as e:
+            # A failed scan must not use up the 5-hour slot: give it back so the next run retries.
+            db.rollback()
+            repo.set_setting(LAST_SCAN_KEY, previous or "2000-01-01T00:00:00+00:00")
+            return jsonify({"status": "error", "message": f"Scan failed: {str(e)[:300]}"}), 500
         alerts = select_alerts(new)
         alerted = send_new_role_alert(alerts) if alerts else False
         emailed = False

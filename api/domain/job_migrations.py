@@ -28,9 +28,15 @@ def add_missing_columns(bind=None):
                 table = model.__table__
                 if table.name not in existing_tables:
                     continue  # create(checkfirst) makes it with every column
-                have = {c["name"] for c in insp.get_columns(table.name)}
+                live_cols = {c["name"]: c for c in insp.get_columns(table.name)}
+                have = set(live_cols)
                 for col in table.columns:
                     if col.name in have:
+                        # The model now allows NULL but the live column doesn't: relax it (never tightens).
+                        if (col.nullable and not col.primary_key and live_cols[col.name].get("nullable") is False
+                                and bind.dialect.name == "postgresql"):
+                            conn.execute(text(f'ALTER TABLE {table.name} ALTER COLUMN "{col.name}" DROP NOT NULL'))
+                            added.append(f"{table.name}.{col.name} (now nullable)")
                         continue
                     ddl_type = col.type.compile(dialect=bind.dialect)
                     if bind.dialect.name == "postgresql":

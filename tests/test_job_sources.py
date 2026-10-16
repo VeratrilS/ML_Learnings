@@ -457,3 +457,25 @@ def test_scan_sends_one_alert_and_live_role_type_filter(monkeypatch):
     fte = c.get("/api/jobs/live?role_type=fte,intern_6m").get_json()["data"]
     assert fte and all(r["role_type"] == "fte" for r in fte) and len(fte) < len(rows)
     assert all(r["notes"].startswith("[") and r["board"] for r in rows)
+
+
+
+def test_failed_scan_releases_the_slot(monkeypatch):
+    pytest.importorskip("api.domain.job_radar")
+    from flask import Flask
+    from api.core.db import Base, SessionLocal, engine
+    from api.domain.job_radar import JobOpportunity
+    from api.domain.repositories import NotificationRepository
+    Base.metadata.create_all(bind=engine, tables=[JobOpportunity.__table__])
+    db = SessionLocal(); NotificationRepository(db).set_setting(js.LAST_SCAN_KEY, "2000-01-01T00:00:00+00:00"); db.close()
+
+    def boom():
+        raise RuntimeError("db constraint")
+    monkeypatch.setattr(js, "collect", boom)
+    app = Flask(__name__)
+    app.register_blueprint(js.job_sources_bp)
+    r = app.test_client().post("/api/jobs/scan")
+    assert r.status_code == 500 and "db constraint" in r.get_json()["message"]
+    db = SessionLocal()
+    assert NotificationRepository(db).get_setting(js.LAST_SCAN_KEY).startswith("2000-01-01")
+    db.close()
