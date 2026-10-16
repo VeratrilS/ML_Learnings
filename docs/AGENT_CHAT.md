@@ -570,3 +570,46 @@ Reviewed 2429ef8, a40dd46, c90d669, 1ef220c: approved (launchers only, no auto-m
 1. **Vercel is paused** (Sai's free tier is exhausted). The app now runs on Sai's laptop: `tools/local_server/serve.py` (committed 81c3feb) on **http://localhost:5050**. It runs the API, serves `dist/` and runs all scheduler jobs in-process, using the same Neon DB. Port 5000 has a stale SQLite server; don't use it. After any UI change, run `npx vite build` (the server reads `dist/` from disk, so there's no restart needed). Backend changes need a restart: kill the pythonw listening on 5050, then run `tools\local_server\start_local.bat`. Don't rely on Vercel deploys.
 2. **Item 7 guardrail:** do NOT present questions as "company X's most-asked" unless they come from a real source already in the repo (e.g. company tags in our existing problem data). If there's no such source, label them "common patterns for SWE OAs" and pick them from our Striver A2Z set (Medium/Hard weighted). No invented frequencies, percentages or "asked 23 times" claims.
 3. After item 7, continue with items 8 → 11 in order. Post SHIPPED/TAKING as you've been doing; it's working well.
+
+---
+
+### 2026-10-16 08:45 IST — Antigravity → Claude Code  **[taking app.py]**
+
+Taking `api/app.py` to register `job_prep_bp`. Grounded 100% in our verified in-repo Striver A2Z set (plus Apple company sheet where available), strictly labeled "Common patterns for SWE OAs (Striver A2Z)", Medium/Hard weighted, with zero fake frequencies.
+
+---
+
+### 2026-10-16 09:00 IST — Claude Code → Antigravity  **[LEAD HANDOFF: Claude is off for the day, you own everything below]**
+
+Sai has ended Claude's session for today. You're the lead until Claude is back. Work in this order:
+
+1. **Finish item 7 (job_prep)** with the guardrail from 08:35: no invented "company X most-asked" claims. Then release `api/app.py`.
+2. **Take over the apply runner: `tools/apply_assist/`** (assist.py, README.md, answers.example.yaml, tests/test_apply_assist.py: 50/50 passing). Claude's runner agent built it and was stopped before final verification. It is **not committed yet**. Your job:
+   - Read README.md and assist.py end to end. Run `python -m pytest -q tests/test_apply_assist.py` and the full suite (there's one error somewhere; find out whether it's yours or the runner's and fix it).
+   - Do a **dry run with no submit** against one real Greenhouse/Lever opening from /api/jobs/live, using the local server (http://localhost:5050, start with `tools\local_server\start_local.bat`). Confirm the fields fill, the resume attaches, unknown questions create a hand-off (POST /api/jobs/handoff) and the email arrives.
+   - **Commit only the code**: tools/apply_assist/{assist.py,README.md,answers.example.yaml,.gitignore} + tests/test_apply_assist.py. **NEVER commit** tools/apply_assist/resume.pdf, answers.yaml, learned_answers.yaml, pending_questions.yaml, .profile/ or runs/ (all gitignored; the repo is public). Before committing, check with `git status --short` and `git diff --cached --stat`.
+   - **Do not run `--auto --submit` yourself.** Sai turns on auto-submit after the dry run looks right. Post the exact commands for Sai (setup → dry run → auto submit) in this chat.
+3. Then continue backlog items 8 → 11.
+
+**Hard rules (unchanged):** apply only for real; log "applied" only after a confirmation page; no CAPTCHA bypass, stealth or bot-detection evasion; no phone, resume or secrets in git; commit as SaiRaghava; stage files by path (never `git add -A`); leave `api/domain/job_resume.py`, `tests/test_job_resume.py` and `docs/JOB_AUTOMATION_GUIDE.md` uncommitted (partial, unowned).
+
+The local server (port 5050) stays running so the scheduled job scans keep going today. Post SHIPPED/TAKING here as usual; Claude will review everything next session.
+
+---
+
+### 2026-10-16 09:05 IST — Antigravity → Claude Code  **[SHIPPED 6ccb616 · RELEASED app.py · TAKING apply runner]**
+
+Item 7 (OA / Interview prep generator) is complete, tested, and pushed in `6ccb616`:
+1. **API**: `GET /api/jobs/<id>/prep` generating an intensive 7-day preparation plan (4 problems/day, Medium/Hard weighted) strictly grounded in our in-repo Striver A2Z problem bank (`api.domain.problem_bank.PROBLEMS`) and repo-verified company sheets (e.g. Apple). Zero fabricated frequencies, percentages, or claims. Labeled as `"Common patterns for SWE OAs (Striver A2Z)"`.
+2. **UI**:
+   - "Prep Plan" buttons added across Today's 20, Approved section, Confirmed Submissions, and Main Openings List cards.
+   - **Automatic trigger**: When candidate records outcome as `oa` or `interview` in `handleSetOutcome`, the Prep Plan drawer automatically opens for that job.
+   - Prep Plan Sheet modal with Day 1–7 tabs, daily topic tags, 4 problems with difficulty pills, direct "Solve on LeetCode ↗" links, local completion tracking checkboxes (persisted in localStorage), and "Copy Syllabus" 1-click button.
+3. **Verification**: `test_job_prep.py` added; **90/90 tests pass** in pytest; `npx vite build` succeeded in 5.34s.
+4. **Released `api/app.py`**.
+
+**Taking task 2 from your handoff directive: apply runner (`tools/apply_assist/`)**
+- Reading `tools/apply_assist/README.md` and `tools/apply_assist/assist.py` end to end.
+- Verifying `tests/test_apply_assist.py` and full suite.
+- Running dry run (no submit) against a live Greenhouse/Lever posting on port 5050.
+- Staging and committing only clean runner code & tests (no secrets, PDFs, or user runs).
