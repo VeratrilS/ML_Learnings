@@ -233,3 +233,26 @@ def test_skill_matcher():
     assert prob == 0.0  # strictly zero fake probability
 
 
+def test_job_outcome_endpoint(client):
+    """Verifies recording outcome (oa, interview, offer, rejected) and funnel stats."""
+    job_id = _make_fixture_job("Palantir", "Forward Deployed SWE", 50.0, "2027", "ext-pal-1")
+
+    # Record outcome without prior application -> still saves
+    out_res = client.post(f"/api/jobs/{job_id}/outcome", json={"outcome": "oa", "notes": "HackerRank link received"})
+    assert out_res.status_code == 200
+    out_data = out_res.get_json()
+    assert out_data["status"] == "success"
+    assert out_data["data"]["outcome"] == "oa"
+
+    # Invalid outcome returns 400
+    bad_res = client.post(f"/api/jobs/{job_id}/outcome", json={"outcome": "invalid_val"})
+    assert bad_res.status_code == 400
+
+    # Verify summary funnel
+    radar_res = client.get("/api/jobs/radar")
+    summary = radar_res.get_json()["summary"]
+    assert summary["oa_total"] >= 1
+    assert summary["days_since_last_callback"] is not None
+
+
+

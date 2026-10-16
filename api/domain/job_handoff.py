@@ -25,7 +25,7 @@ from api.core import config
 from api.core.db import Base, SessionLocal, engine
 from api.domain.job_approvals import _page
 
-CHOICES = ("now", "later")
+CHOICES = ("now", "later", "done")
 LINK_TTL = 24 * 3600
 
 
@@ -182,3 +182,55 @@ def decide():
         return _page("Apply runner", msg)
     finally:
         db.close()
+
+
+@job_handoff_bp.route("/handoffs", methods=["GET"])
+def list_handoffs():
+    choice = request.args.get("choice")
+    db = SessionLocal()
+    try:
+        q = db.query(JobHandoff)
+        if choice:
+            q = q.filter(JobHandoff.choice == choice)
+        rows = q.order_by(JobHandoff.created_at.desc()).limit(100).all()
+        return jsonify({
+            "status": "success",
+            "data": [
+                {
+                    "id": h.id,
+                    "job_id": h.job_id,
+                    "company": h.company,
+                    "role": h.role,
+                    "url": h.url,
+                    "reason": h.reason,
+                    "missing": json.loads(h.missing) if h.missing else [],
+                    "choice": h.choice,
+                    "created_at": h.created_at.isoformat() + "Z" if h.created_at else None,
+                    "decided_at": h.decided_at.isoformat() + "Z" if h.decided_at else None,
+                }
+                for h in rows
+            ]
+        })
+    finally:
+        db.close()
+
+
+@job_handoff_bp.route("/handoff/<int:handoff_id>/done", methods=["POST"])
+@job_handoff_bp.route("/handoff/<int:handoff_id>/choice", methods=["POST"])
+def set_handoff_choice(handoff_id):
+    data = request.get_json(silent=True) or {}
+    choice = (data.get("choice") or "done").lower().strip()
+    if choice not in CHOICES:
+        return jsonify({"status": "error", "message": f"Invalid choice: {choice}"}), 400
+    db = SessionLocal()
+    try:
+        h = db.get(JobHandoff, handoff_id)
+        if not h:
+            return jsonify({"status": "error", "message": "Not found"}), 404
+        h.choice = choice
+        h.decided_at = _now()
+        db.commit()
+        return jsonify({"status": "success", "data": _serialize(h)})
+    finally:
+        db.close()
+

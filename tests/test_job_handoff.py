@@ -28,3 +28,29 @@ def test_bad_links_and_auth(monkeypatch):
     monkeypatch.setenv("APP_PASSCODE", "1234")
     assert c.post("/api/jobs/handoff", json={"company": "X"}).status_code == 401  # creating needs the passcode
     assert c.get("/api/jobs/handoff/1").status_code == 401
+
+
+def test_handoffs_list_and_done(monkeypatch):
+    monkeypatch.setenv("APP_PASSCODE", "")
+    monkeypatch.setattr(jh, "_email", lambda h, missing: True)
+    c = app.test_client()
+
+    r = c.post("/api/jobs/handoff", json={"job_id": 99, "company": "Databricks", "role": "SWE", "url": "https://db.com",
+                                          "reason": "Custom essay", "missing": ["essay"]}).get_json()["data"]
+    hid = r["id"]
+
+    # Verify listing
+    res = c.get("/api/jobs/handoffs")
+    assert res.status_code == 200
+    handoffs = res.get_json()["data"]
+    assert any(h["id"] == hid for h in handoffs)
+
+    # Mark done
+    done_res = c.post(f"/api/jobs/handoff/{hid}/done", json={"choice": "done"})
+    assert done_res.status_code == 200
+    assert done_res.get_json()["data"]["choice"] == "done"
+
+    # Verify filter
+    done_list = c.get("/api/jobs/handoffs?choice=done").get_json()["data"]
+    assert any(h["id"] == hid for h in done_list)
+

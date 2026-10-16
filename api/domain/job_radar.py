@@ -70,6 +70,9 @@ class JobOpportunity(Base):
     followup_7d_sent_at = Column(DateTime, nullable=True)
     followup_14d_sent_at = Column(DateTime, nullable=True)
     board = Column(String(40), nullable=True)  # greenhouse | lever | ashby | smartrecruiters | direct
+    outcome = Column(String(30), nullable=True)  # oa | interview | rejected | offer | no_response
+    outcome_at = Column(DateTime, nullable=True)
+    outcome_note = Column(Text, nullable=True)
     ml_tailored_answers = Column(Text, nullable=True)  # Candidate application snippets
     notes = Column(Text, nullable=True)
     discovered_at = Column(DateTime, default=_utcnow)
@@ -435,6 +438,9 @@ def get_job_radar():
                 "follow_up_7d_at": _iso(j.follow_up_7d_at),
                 "follow_up_14d_at": _iso(j.follow_up_14d_at),
                 "ml_tailored_answers": json.loads(j.ml_tailored_answers) if j.ml_tailored_answers else None,
+                "outcome": j.outcome,
+                "outcome_at": _iso(j.outcome_at),
+                "outcome_note": j.outcome_note,
                 "notes": j.notes,
                 "discovered_at": _iso(j.discovered_at),
                 "last_checked_at": _iso(j.last_checked_at),
@@ -464,6 +470,20 @@ def get_job_radar():
             applied_streak += 1
             cur_d = cur_d - timedelta(days=1)
 
+        oa_total = sum(1 for j in jobs if j.outcome == "oa")
+        interview_total = sum(1 for j in jobs if j.outcome == "interview")
+        offer_total = sum(1 for j in jobs if j.outcome == "offer")
+        rejected_total = sum(1 for j in jobs if j.outcome == "rejected")
+
+        oa_this_week = sum(1 for j in jobs if j.outcome == "oa" and j.outcome_at and j.outcome_at >= week_cutoff)
+        interview_this_week = sum(1 for j in jobs if j.outcome == "interview" and j.outcome_at and j.outcome_at >= week_cutoff)
+        offer_this_week = sum(1 for j in jobs if j.outcome == "offer" and j.outcome_at and j.outcome_at >= week_cutoff)
+
+        callbacks = [j.outcome_at for j in jobs if j.outcome in ("oa", "interview", "offer") and j.outcome_at]
+        days_since_last_callback = None
+        if callbacks:
+            days_since_last_callback = (now - max(callbacks)).days
+
         logs_data = []
         for l in logs:
             logs_data.append({
@@ -487,7 +507,16 @@ def get_job_radar():
                 "confirmed_applied_count": len(applied_confirmed),
                 "applications_confirmed": len(applied_confirmed),
                 "auto_applied_count": len(applied_confirmed),
+                "applied_total": len(applied_confirmed),
+                "oa_total": oa_total,
+                "interview_total": interview_total,
+                "offer_total": offer_total,
+                "rejected_total": rejected_total,
                 "applied_this_week": applied_this_week,
+                "oa_this_week": oa_this_week,
+                "interview_this_week": interview_this_week,
+                "offer_this_week": offer_this_week,
+                "days_since_last_callback": days_since_last_callback,
                 "applied_streak_days": applied_streak,
                 "streak": applied_streak,
                 "packets_ready_count": len(eligible_2027),
@@ -607,6 +636,69 @@ def unmark_applied():
         })
     finally:
         db.close()
+
+
+@job_radar_bp.route("/<int:job_id>/outcome", methods=["POST"])
+def set_job_outcome(job_id):
+    """
+    Records an application outcome: oa | interview | rejected | offer | no_response.
+    Syncs with Placements Kanban stage.
+    """
+    data = request.get_json(silent=True) or {}
+    outcome = (data.get("outcome") or "").lower().strip()
+    notes = (data.get("notes") or "").strip()[:1000]
+
+    VALID_OUTCOMES = {"oa", "interview", "rejected", "offer", "no_response"}
+    if outcome not in VALID_OUTCOMES:
+        return jsonify({"status": "error", "message": f"Invalid outcome. Must be one of: {', '.join(sorted(VALID_OUTCOMES))}"}), 400
+
+    db = SessionLocal()
+    try:
+        job = db.query(JobOpportunity).filter(JobOpportunity.id == job_id).first()
+        if not job:
+            return jsonify({"status": "error", "message": "Job not found"}), 404
+
+        now = _utcnow()
+        job.outcome = outcome
+        job.outcome_at = now
+        if notes:
+            job.outcome_note = notes
+
+        # Sync to Placements Kanban if placement_app_id exists
+        if job.placement_app_id:
+            from api.domain.placements import Application, ApplicationEvent
+            app_entry = db.query(Application).filter(Application.id == job.placement_app_id).first()
+            if app_entry:
+                stage_map = {
+                    "oa": "oa",
+                    "interview": "interview",
+                    "rejected": "rejected",
+                    "offer": "offer",
+                }
+                if outcome in stage_map:
+                    app_entry.stage = stage_map[outcome]
+                    evt = ApplicationEvent(
+                        application_id=app_entry.id,
+                        event_type=f"outcome_{outcome}",
+                        notes=f"Outcome updated to {outcome.upper()}" + (f": {notes}" if notes else ""),
+                        timestamp=now,
+                    )
+                    db.add(evt)
+
+        db.commit()
+        return jsonify({
+            "status": "success",
+            "message": f"Recorded outcome '{outcome}' for {job.company}",
+            "data": {
+                "id": job.id,
+                "outcome": job.outcome,
+                "outcome_at": _iso(job.outcome_at),
+                "outcome_note": job.outcome_note,
+            }
+        })
+    finally:
+        db.close()
+
 
 
 
