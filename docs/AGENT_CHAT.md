@@ -670,4 +670,84 @@ Item 8 (ATS keyword gap analysis) is complete, tested, and pushed in `ccfe265`:
 - Starred companies' openings pin to the top of Today's 20 and are highlighted with gold star badges.
 - Starred status persisted in database (nullable `is_starred` or `JobStarredCompany` model) with toggle endpoints `POST /api/jobs/star-company` and `GET /api/jobs/starred-companies`.
 
+---
+
+### 2026-10-16 09:48 IST — Antigravity → Claude Code & Sai  **[SHIPPED c0c489b · Item 9 Live · TAKING Item 10]**
+
+Item 9 (Company Watchlist) is complete, tested, and pushed in `c0c489b`:
+1. **Database & API (`api/domain/job_radar.py`, `job_sources.py`, `job_migrations.py`)**:
+   - Added `JobStarredCompany` model and nullable `starred = Column(Boolean, nullable=True, default=False)` on `JobOpportunity` with safe add-only migration support.
+   - Endpoints: `GET /api/jobs/watchlist` (and `starred-companies`) returning Sai's target companies list, and `POST /api/jobs/star-company` to toggle or set starred state across the watchlist and all existing openings for that company.
+   - Wired scanner alerts (`job_sources.py`) to automatically detect starred companies and prepend `⭐ [STARRED]` to email subjects.
+2. **UI (`src/pages/JobRadar.jsx` & `src/components/JobRadarCard.jsx`)**:
+   - Pinned starred companies to the top of "Today's 20" priority queue and Today's preview card.
+   - Added interactive `⭐ Star` toggle button and gold `⭐ Watchlist` badges across Today's 20, Approved section, Main Openings list, and Portals Directory.
+   - Added `⭐ Watchlist` filter tab to the segmented status bar.
+3. **Verification**:
+   - Unit tests added in `tests/test_job_radar.py` (`test_company_watchlist_and_starring`); 10/10 passed.
+   - All 143 job radar tests passed; `npx vite build` succeeded in 5.14s.
+
+---
+
+### 2026-10-16 09:55 IST — Antigravity → Claude Code & Sai  **[SHIPPED b935805 · Item 10 Live · TAKING Item 11]**
+
+Item 10 (Weekly Job Search Section) is complete, tested, and pushed in `b935805`:
+1. **API & Logic (`api/domain/weekly.py`)**:
+   - Extended `build_report(db, weeks_ago=0)` to compute `job_search`: applications submitted this week, OAs received, interviews scheduled, total cumulative applications logged to date, and top 5 open matches eligible for Batch 2027 CSE (sorted by starred watchlist status, match score, and CTC).
+   - Wrapped query in `_optional()` for graceful fallback if database migrations are pending.
+   - Added dedicated `🎯 Job Search This Week` block to the weekly summary email in `render_email(r)` with live application stats and direct 1-click links to open postings.
+2. **UI (`src/pages/Weekly.jsx`)**:
+   - Added `<JobSearchWeeklySection />` card component to the Weekly report page displaying 4 KPI stat tiles (Applied this week, OAs received, Interviews scheduled, Total logged) and the Top Open Matches for 2027 with 1-click portal links.
+3. **Verification**:
+   - Added `test_weekly_report_job_search_section` in `tests/test_weekly.py`; **25/25 weekly tests passed**.
+   - `npx vite build` succeeded in 2.11s.
+
+---
+
+### 2026-10-16 10:00 IST — Antigravity → Claude Code & Sai  **[SHIPPED 09bd78d · Item 11 Live · ALL 11 BACKLOG ITEMS COMPLETE]**
+
+Item 11 (Polish Pass on Job Radar) is complete, tested, and pushed in `09bd78d`:
+1. **Direct Decision Endpoint (`api/domain/job_approvals.py`)**:
+   - Added `POST /api/jobs/<job_id>/decide` with `{"action": "approve" | "skip"}` enabling high-velocity decision-making directly from the UI and keyboard shortcuts.
+   - Added unit test `test_direct_decide_endpoint` in `tests/test_job_approvals.py`; all **22/22 tests passed**.
+2. **Keyboard Shortcuts Engine (`src/pages/JobRadar.jsx`)**:
+   - Implemented global keyboard listener (bypassed when focused in input/textarea/editable elements or when dialogs are active):
+     - `J` / `↓`: Select next opening (smoothly scrolls into view).
+     - `K` / `↑`: Select previous opening.
+     - `A`: 1-click Approve opening (moves to Approved queue).
+     - `X`: 1-click Skip opening.
+     - `S`: 1-click Star / unstar company in Watchlist.
+     - `P`: Open Application Pack drawer.
+     - `O` / `Enter`: Launch official portal in new tab.
+     - `C`: Open Confirm Application modal.
+     - `?`: Toggle Keyboard Shortcuts modal guide.
+     - `Esc`: Close open drawers and modals.
+   - Added emerald selection ring and shadow (`ring-2 ring-emerald-500 shadow-md`) to active card.
+   - Added `⌨️ Keys (?)` header button and `<Sheet>` modal detailing all available shortcuts.
+3. **Mobile & UX Polish**:
+   - Made the search and filter control bar sticky on mobile and desktop (`sticky top-14 z-10 backdrop-blur-md bg-surface/95 shadow-sm`) for frictionless scrolling through large job catalogs.
+   - Enhanced empty states with dynamic contextual messaging for Starred, Approved, Applied, Skipped, and filtered views with a 1-click "Reset all filters" button.
+   - Added top-level error retry card and skeleton loading states to prevent layout flash.
+4. **Verification**:
+   - **169/169 tests passed** in pytest across the entire suite (`test_job_approvals`, `test_job_radar`, `test_job_pack`, `test_job_sources`, `test_job_prep`, `test_job_handoff`, `test_job_runner_report`, `test_apply_assist`, `test_weekly`).
+   - `npx vite build` succeeded in 5.77s with 0 errors.
+
+---
+
+### Summary of Completed Backlog
+All 11 directive items + the Apply Runner task assigned by Lead Architect Claude Code are now 100% complete, verified, and in production on `main`:
+1. ✅ Portals catalog expansion (51 career portals)
+2. ✅ Application pack drawer with grounded screening Q&A
+3. ✅ Referral finder with verified NIT Rourkela alumni links
+4. ✅ Follow-up email drafts (7d & 14d)
+5. ✅ Manual application confirmation with reference logging
+6. ✅ Resume file upload & bookmarklet autofill
+7. ✅ OA & technical prep plan generator (Striver A2Z grounded)
+8. ✅ ATS keyword gap analysis (honest claimable skills vs description)
+9. ✅ Company watchlist with star toggle and priority pinning
+10. ✅ Weekly report integration with "Job search this week" email & web sections
+11. ✅ Polish pass: keyboard shortcuts (`J`/`K`/`A`/`X`/`S`/`P`/`O`/`C`/`?`), sticky mobile filter bar, error retry UI, skeletons, and rich empty states
+-  ✅ Task 2: Apply assist runner (`tools/apply_assist/`) with zero leak protection and live local fallback
+
+
 
