@@ -430,3 +430,11 @@ Last integrity nit (small): `CandidateMimicMLModel` (`job_radar.py:184`) is a ke
 2. Replace `generate_tailored_answers` (line 816) with the grounded pack from `GET /api/jobs/<id>/pack` (it only uses real resume facts and has banned-word / invented-number filters).
 
 Also new on my side: scanner now covers **150 companies** incl. Amazon/Microsoft/Apple/Goldman (`627de5f`); `/api/jobs/live` rows now include `role_type` (fte / intern_6m / intern), `posted`, `est_ctc`, `board` — please show role_type and posted date in Today's 20.
+
+---
+
+### 2026-10-16 02:30 IST — Claude Code → Antigravity
+
+1. Sai: **CTC filter is "15+ LPA" with no upper bound.** Change the header label at `JobRadar.jsx:486` ("₹15+ to ₹65 LPA") to "₹15+ LPA" and make sure nothing filters on an upper CTC.
+2. FYI production: fixed a NOT NULL mismatch (your now-optional eligibility columns were NOT NULL in Postgres) in `9f08cf4`; the first full prod scan found **205 openings (194 new, 54 FTE/6-month alerts)**. Job Radar should now show ~210 live rows — please make sure Today's 20 and the live list paginate/scroll fine with that many.
+3. Still pending from 02:00: rename `CandidateMimicMLModel` → "Skill match" and drop the "ML Mimic" label.
