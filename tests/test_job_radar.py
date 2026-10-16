@@ -8,6 +8,7 @@ from api.domain.job_radar import (
     JobOpportunity,
     JobRadarProfile,
     JobRadarScanLog,
+    JobStarredCompany,
     SkillMatcher,
     job_radar_bp,
 )
@@ -33,6 +34,7 @@ def client(app):
         db.query(JobRadarScanLog).delete()
         db.query(JobRadarProfile).delete()
         db.query(JobApplicationReceipt).delete()
+        db.query(JobStarredCompany).delete()
         db.query(Application).delete()
         db.query(ApplicationEvent).delete()
         db.commit()
@@ -297,6 +299,46 @@ def test_job_followup_draft_endpoint(client):
     words_14d = len(drafts["draft_14d"].split())
     assert 55 <= words_7d <= 95
     assert 55 <= words_14d <= 95
+
+
+def test_company_watchlist_and_starring(client):
+    """Verifies company star/unstar watchlist and role pinning."""
+    j1 = _make_fixture_job("Stripe", "Backend Engineer", 50.0, "2027", "ext-stripe-1")
+    j2 = _make_fixture_job("Uber", "Systems Engineer", 45.0, "2027", "ext-uber-1")
+
+    # Star Stripe
+    res = client.post("/api/jobs/star-company", json={"company": "Stripe", "starred": True})
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["status"] == "success"
+    assert body["starred"] is True
+    assert body["company"] == "Stripe"
+
+    # Verify watchlist
+    wl_res = client.get("/api/jobs/watchlist")
+    assert wl_res.status_code == 200
+    wl_body = wl_res.get_json()
+    assert "Stripe" in wl_body["companies"]
+
+    # Verify GET /radar reflects starred on Stripe role
+    radar_res = client.get("/api/jobs/radar")
+    assert radar_res.status_code == 200
+    r_data = radar_res.get_json()
+    assert "Stripe" in r_data["starred_companies"]
+    stripe_job = next(j for j in r_data["jobs"] if j["company"] == "Stripe")
+    uber_job = next(j for j in r_data["jobs"] if j["company"] == "Uber")
+    assert stripe_job["starred"] is True
+    assert stripe_job["is_starred"] is True
+    assert uber_job["starred"] is False
+
+    # Unstar Stripe
+    res_unstar = client.post("/api/jobs/star-company", json={"company": "Stripe", "starred": False})
+    assert res_unstar.status_code == 200
+    assert res_unstar.get_json()["starred"] is False
+
+    wl_res2 = client.get("/api/jobs/watchlist")
+    assert "Stripe" not in wl_res2.get_json()["companies"]
+
 
 
 

@@ -75,8 +75,19 @@ class JobOpportunity(Base):
     outcome_note = Column(Text, nullable=True)
     ml_tailored_answers = Column(Text, nullable=True)  # Candidate application snippets
     notes = Column(Text, nullable=True)
+    starred = Column(Boolean, nullable=True, default=False)
     discovered_at = Column(DateTime, default=_utcnow)
     last_checked_at = Column(DateTime, default=_utcnow)
+
+
+class JobStarredCompany(Base):
+    __tablename__ = "job_starred_companies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company = Column(String(140), unique=True, index=True, nullable=False)
+    starred_at = Column(DateTime, default=_utcnow)
+    notes = Column(String(255), nullable=True)
+
 
 
 class JobRadarScanLog(Base):
@@ -169,7 +180,7 @@ def _cleanup_fake_seeds():
 @job_radar_bp.record_once
 def _ensure_tables(state):
     from api.domain.job_migrations import add_missing_columns
-    for model in (JobOpportunity, JobRadarScanLog, JobRadarProfile, JobApplicationReceipt):
+    for model in (JobOpportunity, JobRadarScanLog, JobRadarProfile, JobApplicationReceipt, JobStarredCompany):
         try:
             model.__table__.create(bind=engine, checkfirst=True)
         except Exception as e:
@@ -441,6 +452,8 @@ def get_job_radar():
                 "outcome": j.outcome,
                 "outcome_at": _iso(j.outcome_at),
                 "outcome_note": j.outcome_note,
+                "starred": bool(j.starred or False),
+                "is_starred": bool(j.starred or False),
                 "notes": j.notes,
                 "discovered_at": _iso(j.discovered_at),
                 "last_checked_at": _iso(j.last_checked_at),
@@ -531,6 +544,7 @@ def get_job_radar():
                 "next_hourly_scan": _iso(prof.next_hourly_scan_at),
             },
             "recent_logs": logs_data,
+            "starred_companies": [r.company for r in db.query(JobStarredCompany).order_by(JobStarredCompany.company.asc()).all()],
         })
     finally:
         db.close()
@@ -803,6 +817,68 @@ def get_followup_draft(job_id):
                 "subject_14d": f"Checking in: {role} Application - Nandam Venkata Sai Raghava",
             }
         })
+    finally:
+        db.close()
+
+
+@job_radar_bp.route("/watchlist", methods=["GET"])
+@job_radar_bp.route("/starred-companies", methods=["GET"])
+def get_starred_companies():
+    """Returns Sai's starred companies on the watchlist."""
+    db = SessionLocal()
+    try:
+        rows = db.query(JobStarredCompany).order_by(JobStarredCompany.company.asc()).all()
+        return jsonify({
+            "status": "success",
+            "data": [{
+                "id": r.id,
+                "company": r.company,
+                "starred_at": _iso(r.starred_at),
+                "notes": r.notes
+            } for r in rows],
+            "companies": [r.company for r in rows]
+        })
+    finally:
+        db.close()
+
+
+@job_radar_bp.route("/star-company", methods=["POST"])
+def toggle_star_company():
+    """Toggle or set starred status for a company across the watchlist and all jobs."""
+    data = request.get_json(silent=True) or {}
+    company = (data.get("company") or "").strip()
+    if not company:
+        return jsonify({"status": "error", "message": "Company name required"}), 400
+
+    explicit_starred = data.get("starred")
+    notes = data.get("notes")
+
+    db = SessionLocal()
+    try:
+        existing = db.query(JobStarredCompany).filter(JobStarredCompany.company.ilike(company)).first()
+        is_starred = not bool(existing) if explicit_starred is None else bool(explicit_starred)
+
+        if is_starred:
+            if not existing:
+                row = JobStarredCompany(company=company, starred_at=_utcnow(), notes=notes)
+                db.add(row)
+            db.query(JobOpportunity).filter(JobOpportunity.company.ilike(company)).update({"starred": True}, synchronize_session=False)
+        else:
+            if existing:
+                db.delete(existing)
+            db.query(JobOpportunity).filter(JobOpportunity.company.ilike(company)).update({"starred": False}, synchronize_session=False)
+
+        db.commit()
+        return jsonify({
+            "status": "success",
+            "company": company,
+            "starred": is_starred,
+            "is_starred": is_starred,
+            "message": f"{company} {'starred' if is_starred else 'unstarred'}"
+        })
+    except Exception as e:
+        db.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         db.close()
 

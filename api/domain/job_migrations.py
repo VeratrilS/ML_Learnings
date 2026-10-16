@@ -12,7 +12,7 @@ from api.core.db import engine
 
 def _models():
     from api.domain import job_radar
-    return [m for m in (getattr(job_radar, n, None) for n in ("JobOpportunity", "JobRadarScanLog", "JobRadarProfile"))
+    return [m for m in (getattr(job_radar, n, None) for n in ("JobOpportunity", "JobRadarScanLog", "JobRadarProfile", "JobStarredCompany"))
             if m is not None]
 
 

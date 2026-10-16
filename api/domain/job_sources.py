@@ -599,6 +599,11 @@ def ctc_floor(band):
 def upsert(db, scored):
     """Insert new openings, refresh existing ones. Never touches status/applied fields Sai set."""
     from api.domain.job_radar import JobOpportunity
+    try:
+        from api.domain.job_radar import JobStarredCompany
+        starred_names = {c.company.lower() for c in db.query(JobStarredCompany).all()}
+    except Exception:
+        starred_names = set()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     seen = {}
     for p, s, matched, years in scored:
@@ -611,17 +616,20 @@ def upsert(db, scored):
         label = ROLE_LABELS.get(p.role_type or classify_role(p) or "intern")
         note = (f"{label} Live from {p.board.title()}" + (f"; posted {p.posted}" if p.posted else "")
                 + (f"; asks for {years}+ years" if years else "") + (f"; est. CTC {band}" if band else ""))
+        is_starred = bool((p.company or "").lower() in starred_names)
         if job is None:
             job = JobOpportunity(external_id=ext, company=p.company[:120], role=p.title[:180], ctc_lpa=ctc_floor(band),
                                  location=(p.location or "India")[:160], source=f"{p.board.title()} (live)"[:120],
                                  portal_url=p.url, skills_required=json.dumps(matched), match_score=s,
                                  shortlist_prob=0.0, status="discovered", notes=note, discovered_at=now,
-                                 last_checked_at=now, board=p.board)
+                                 last_checked_at=now, board=p.board, starred=is_starred)
             db.add(job)
             new.append(job)
         else:
             job.role, job.portal_url, job.match_score = p.title[:180], p.url, s
             job.skills_required, job.last_checked_at, job.board = json.dumps(matched), now, p.board
+            if is_starred:
+                job.starred = True
             if band and not job.ctc_lpa:
                 job.ctc_lpa = ctc_floor(band)
             if not job.notes or job.notes.startswith("Live from") or role_type_of(job):
@@ -672,7 +680,9 @@ def select_alerts(new_jobs):
 def alert_subject(jobs):
     first = jobs[0]
     more = f" (+{len(jobs) - 1} more)" if len(jobs) > 1 else ""
-    return f"New role released: {first.company} \u2014 {first.role}{more}"
+    has_starred = any(getattr(j, "starred", False) for j in jobs)
+    prefix = "⭐ [STARRED] " if has_starred else ""
+    return f"{prefix}New role released: {first.company} \u2014 {first.role}{more}"
 
 
 def alert_html(jobs):
@@ -742,6 +752,8 @@ def _serialize(j):
             "ctc_lpa": j.ctc_lpa or None, "est_ctc": _note_field(j.notes, r"est\. CTC ([^;]+)"),
             "posted": _note_field(j.notes, r"posted (\d{4}-\d{2}-\d{2})"), "board": getattr(j, "board", None),
             "role_type": role_type_of(j),
+            "starred": bool(getattr(j, "starred", False)),
+            "is_starred": bool(getattr(j, "starred", False)),
             "discovered_at": j.discovered_at.isoformat() + "Z" if j.discovered_at else None}
 
 

@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
     Radio, Bot, Briefcase, Zap, CheckCircle2, Clock, ShieldCheck,
     RefreshCw, Filter, Search, ExternalLink, ChevronDown, ChevronRight,
     Sparkles, ArrowRight, Building2, Flame, Award, Sliders, Check, Terminal,
     FileText, User, GraduationCap, Code2, Globe, Send, Play, Pause,
     Mail, Copy, BellRing, Target, BookOpen, Layers, Trophy, CheckCheck,
-    AlertCircle, Undo2, Share2, Compass, Cpu, X, Upload,
+    AlertCircle, Undo2, Share2, Compass, Cpu, X, Upload, Star,
 } from 'lucide-react';
 import { api, getToken } from '../lib/api';
 import { useApi, navigate } from '../lib/hooks';
@@ -176,6 +176,60 @@ export default function JobRadar() {
     const [scanning, setScanning] = useState(false);
     const [emailingJobId, setEmailingJobId] = useState(null);
     const [toggling, setToggling] = useState(false);
+
+    // Watchlist state (starred companies)
+    const [starredCompanies, setStarredCompanies] = useState(() => new Set());
+
+    useEffect(() => {
+        if (data?.starred_companies && Array.isArray(data.starred_companies)) {
+            setStarredCompanies(new Set(data.starred_companies.map((c) => String(c).toLowerCase().trim())));
+        }
+    }, [data?.starred_companies]);
+
+    const isCompanyStarred = useCallback((company) => {
+        if (!company) return false;
+        return starredCompanies.has(String(company).toLowerCase().trim());
+    }, [starredCompanies]);
+
+    const isJobStarred = useCallback((job) => {
+        if (!job) return false;
+        if (job.is_starred || job.starred) return true;
+        return isCompanyStarred(job.company);
+    }, [isCompanyStarred]);
+
+    const handleToggleStarCompany = async (company) => {
+        if (!company) return;
+        const norm = String(company).toLowerCase().trim();
+        const currentlyStarred = starredCompanies.has(norm);
+        const nextStarred = !currentlyStarred;
+
+        setStarredCompanies((prev) => {
+            const next = new Set(prev);
+            if (nextStarred) next.add(norm);
+            else next.delete(norm);
+            return next;
+        });
+
+        try {
+            await api('/jobs/star-company', {
+                method: 'POST',
+                body: { company, starred: nextStarred },
+            });
+            play(nextStarred ? 'sparkle' : 'pop', { force: true });
+            toast(nextStarred ? `⭐ Added ${company} to Watchlist` : `Removed ${company} from Watchlist`, 'info');
+            reload({ silent: true });
+            if (liveApi?.reload) liveApi.reload({ silent: true });
+            if (queueApi?.reload) queueApi.reload({ silent: true });
+        } catch (err) {
+            setStarredCompanies((prev) => {
+                const next = new Set(prev);
+                if (currentlyStarred) next.add(norm);
+                else next.delete(norm);
+                return next;
+            });
+            toast(err.message || 'Failed to update watchlist', 'error');
+        }
+    };
 
     const profile = data?.profile;
     const summary = data?.summary;
@@ -409,6 +463,7 @@ ${bullets}
             if (job.ctc_lpa > 0 && job.ctc_lpa < minCtcFilter) return false;
 
             const isAppliedStatus = job.status === 'applied_confirmed' || job.status === 'manual_applied';
+            if (statusFilter === 'starred' && !isJobStarred(job)) return false;
             if (statusFilter === 'applied' && !isAppliedStatus) return false;
             if (statusFilter === 'approved' && job.status !== 'approved') return false;
             if (statusFilter === 'ready' && (isAppliedStatus || job.status === 'skipped')) return false;
@@ -432,7 +487,7 @@ ${bullets}
 
             return true;
         });
-    }, [jobs, minCtcFilter, statusFilter, roleTypeFilter, locationFilter, query]);
+    }, [jobs, minCtcFilter, statusFilter, roleTypeFilter, locationFilter, query, isJobStarred]);
 
     useEffect(() => {
         setVisibleCount(30);
@@ -476,6 +531,11 @@ ${bullets}
         return jobs.filter((j) => j.status === 'skipped');
     }, [jobs]);
 
+    const starredJobs = useMemo(() => {
+        return jobs.filter((j) => isJobStarred(j));
+    }, [jobs, isJobStarred]);
+    const starredCount = starredJobs.length;
+
     const appliedTodayCount = useMemo(() => {
         const todayStr = new Date().toISOString().slice(0, 10);
         return jobs.filter((j) => (j.status === 'manual_applied' || j.status === 'applied_confirmed') && j.applied_at && j.applied_at.startsWith(todayStr)).length;
@@ -514,6 +574,8 @@ ${bullets}
             return 1;
         };
         return pool.sort((a, b) => {
+            const starDiff = (isJobStarred(b) ? 1 : 0) - (isJobStarred(a) ? 1 : 0);
+            if (starDiff !== 0) return starDiff;
             const roleDiff = scoreRole(b) - scoreRole(a);
             if (roleDiff !== 0) return roleDiff;
             const scoreA = Number(a.match_score || 0);
@@ -523,7 +585,7 @@ ${bullets}
             const dateB = b.discovered_at ? new Date(b.discovered_at).getTime() : 0;
             return dateB - dateA;
         }).slice(0, 20);
-    }, [approvedJobs, liveJobs, jobs]);
+    }, [approvedJobs, liveJobs, jobs, isJobStarred]);
 
     // Triggers
     const handleRunScan = async () => {
@@ -1087,6 +1149,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                 <Segmented
                                     options={[
                                         { value: 'all', label: `All (${filteredJobs.length})` },
+                                        { value: 'starred', label: `⭐ Watchlist (${starredCount})` },
                                         { value: 'approved', label: `Approved (${approvedJobs.length})` },
                                         { value: 'ready', label: 'Ready to Apply' },
                                         { value: 'applied', label: `Applied (${confirmedJobs.length})` },
@@ -1164,10 +1227,31 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {todays20Jobs.map((job) => (
-                                    <div key={job.id} className="p-3.5 rounded-xl bg-surface-2 border border-line hover:border-amber-500/40 transition-all flex flex-col justify-between gap-3">
+                                    <div key={job.id} className={cx(
+                                        "p-3.5 rounded-xl bg-surface-2 border transition-all flex flex-col justify-between gap-3",
+                                        isJobStarred(job) ? "border-amber-500/40 shadow-sm" : "border-line hover:border-amber-500/40"
+                                    )}>
                                         <div>
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="font-bold text-sm text-fg truncate">{job.company}</span>
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); handleToggleStarCompany(job.company); }}
+                                                        className={cx(
+                                                            "p-0.5 rounded transition-colors shrink-0",
+                                                            isJobStarred(job) ? "text-amber-400" : "text-subtle hover:text-amber-400"
+                                                        )}
+                                                        title={isJobStarred(job) ? "Starred company (in Watchlist) — Click to unstar" : "Star company to Watchlist"}
+                                                    >
+                                                        <Star className={cx("h-3.5 w-3.5", isJobStarred(job) && "fill-amber-400 text-amber-400")} />
+                                                    </button>
+                                                    <span className="font-bold text-sm text-fg truncate">{job.company}</span>
+                                                    {isJobStarred(job) && (
+                                                        <span className="badge text-[9px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold shrink-0">
+                                                            ⭐ Watchlist
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="flex items-center gap-1.5 shrink-0">
                                                     <span className="badge text-[10px] font-mono text-cyan-400 bg-surface border border-cyan-500/30 font-bold">
                                                         {fmtEstCtc(job)}
@@ -1335,7 +1419,25 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                     <div key={job.id} className="p-3.5 rounded-xl bg-surface-2 border border-emerald-500/30 flex flex-col justify-between gap-3">
                                         <div>
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="font-bold text-sm text-fg truncate">{job.company}</span>
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); handleToggleStarCompany(job.company); }}
+                                                        className={cx(
+                                                            "p-0.5 rounded transition-colors shrink-0",
+                                                            isJobStarred(job) ? "text-amber-400" : "text-subtle hover:text-amber-400"
+                                                        )}
+                                                        title={isJobStarred(job) ? "Starred company (in Watchlist) — Click to unstar" : "Star company to Watchlist"}
+                                                    >
+                                                        <Star className={cx("h-3.5 w-3.5", isJobStarred(job) && "fill-amber-400 text-amber-400")} />
+                                                    </button>
+                                                    <span className="font-bold text-sm text-fg truncate">{job.company}</span>
+                                                    {isJobStarred(job) && (
+                                                        <span className="badge text-[9px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold shrink-0">
+                                                            ⭐ Watchlist
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="flex items-center gap-1.5 shrink-0">
                                                     <span className="badge text-[10px] font-mono text-emerald-400 bg-surface border border-emerald-500/30 font-bold">
                                                         {fmtEstCtc(job)}
@@ -1615,7 +1717,23 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                     </div>
                                                     <div>
                                                         <div className="flex items-center gap-2 flex-wrap">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => { e.stopPropagation(); handleToggleStarCompany(job.company); }}
+                                                                className={cx(
+                                                                    "p-0.5 rounded transition-colors shrink-0",
+                                                                    isJobStarred(job) ? "text-amber-400" : "text-subtle hover:text-amber-400"
+                                                                )}
+                                                                title={isJobStarred(job) ? "Starred company (in Watchlist) — Click to unstar" : "Star company to Watchlist"}
+                                                            >
+                                                                <Star className={cx("h-4 w-4", isJobStarred(job) && "fill-amber-400 text-amber-400")} />
+                                                            </button>
                                                             <h3 className="font-bold text-base text-fg tracking-tight">{job.company}</h3>
+                                                            {isJobStarred(job) && (
+                                                                <span className="badge text-[10px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
+                                                                    ⭐ Watchlist
+                                                                </span>
+                                                            )}
                                                             <span className="badge font-mono font-bold text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                                                                 {fmtEstCtc(job)}
                                                             </span>
@@ -1958,7 +2076,20 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                 {cp.company.slice(0, 2).toUpperCase()}
                                             </div>
                                             <div>
-                                                <h4 className="font-bold text-sm text-fg leading-tight">{cp.company}</h4>
+                                                <div className="flex items-center gap-1.5">
+                                                    <h4 className="font-bold text-sm text-fg leading-tight">{cp.company}</h4>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); handleToggleStarCompany(cp.company); }}
+                                                        className={cx(
+                                                            "p-0.5 rounded transition-colors shrink-0",
+                                                            isCompanyStarred(cp.company) ? "text-amber-400" : "text-subtle hover:text-amber-400"
+                                                        )}
+                                                        title={isCompanyStarred(cp.company) ? "Starred company (in Watchlist) — Click to unstar" : "Star company to Watchlist"}
+                                                    >
+                                                        <Star className={cx("h-3.5 w-3.5", isCompanyStarred(cp.company) && "fill-amber-400 text-amber-400")} />
+                                                    </button>
+                                                </div>
                                                 <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
                                                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                                                     Active Hourly Check

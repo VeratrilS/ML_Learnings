@@ -86,10 +86,11 @@ export default function JobRadarCard() {
     const jobs = useMemo(() => data?.jobs || [], [data]);
     const countdown = useCountdown(summary?.next_hourly_scan);
 
-    // Filter top 2027 eligible jobs with >= 15 LPA (or unlisted CTC)
+    // Filter top 2027 eligible jobs with >= 15 LPA (or unlisted CTC), prioritizing starred companies
     const top2027 = useMemo(() => {
         return jobs
             .filter((j) => (!j.eligible_batches || j.eligible_batches.includes('2027')) && (!j.ctc_lpa || j.ctc_lpa === 0 || j.ctc_lpa >= (profile?.min_ctc_lpa || 15)))
+            .sort((a, b) => ((b.starred || b.is_starred ? 1 : 0) - (a.starred || a.is_starred ? 1 : 0)))
             .slice(0, 4);
     }, [jobs, profile]);
 
@@ -281,7 +282,10 @@ export default function JobRadarCard() {
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-bold text-sm text-fg tracking-tight">{job.company}</span>
+                                        <span className="font-bold text-sm text-fg tracking-tight flex items-center gap-1">
+                                            {(job.starred || job.is_starred) && <span title="Starred company">⭐</span>}
+                                            {job.company}
+                                        </span>
                                         <span className="badge text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
                                             {fmtCtc(job.ctc_lpa)}
                                         </span>
