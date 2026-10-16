@@ -99,6 +99,12 @@ def select_jobs(jobs, min_score=MIN_SCORE, min_ctc=MIN_CTC, role_types=ROLE_TYPE
                                        j.get("match_score") or 0, j.get("discovered_at") or ""), reverse=True)
 
 
+def filter_boards(jobs, boards=None):
+    """Keep only jobs on these ATS boards (comma-separated, e.g. 'greenhouse,lever,ashby'); None keeps all."""
+    wanted = {b.strip().lower() for b in (boards or "").split(",") if b.strip()}
+    return [j for j in jobs if (j.get("board") or "").lower() in wanted] if wanted else list(jobs)
+
+
 def role_key(company, role):
     return f"{_norm(company)}|{_norm(role)}"
 
@@ -1562,6 +1568,11 @@ def fill_page(driver, fc):
     return FillResult(fields, filled, todo, tracked_from_todo(todo))
 
 
+def looks_like_application(fields):
+    """A real first application page asks for an email or a resume; job-alert / search forms don't."""
+    return any(f.get("type") == "file" or rule_key(f) == "email" for f in fields)
+
+
 def check_page(driver):
     """(blocker reasons, missing required labels, page state) after filling."""
     fields = pick_form_fields(driver.scan())
@@ -1741,6 +1752,8 @@ class Runner:
         for key in fc.used_learned:
             self.learned.mark_used(key)
         reasons, missing, _st = check_page(self.d)
+        if not reasons and not looks_like_application(fill.fields):
+            reasons.append("Doesn't look like an application form (no email or resume field)")
         return fill, reasons, missing
 
     @staticmethod
@@ -1969,6 +1982,7 @@ def _resume_name(profile, answers):
 def run_batch(args, api, answers, learned, mode):
     from playwright.sync_api import sync_playwright
     jobs = select_jobs(api.live_jobs(args.min_score, args.min_ctc), args.min_score, args.min_ctc)
+    jobs = filter_boards(jobs, args.boards)
     radar = api.radar() or {}
     done = recent_role_keys(local_history() + server_history(radar.get("jobs")))
     jobs = dedupe(jobs, done)
@@ -2031,6 +2045,8 @@ def main(argv=None):
     ap.add_argument("--api", help=f"app base URL (default $APPLY_API_BASE or {DEFAULT_API})")
     ap.add_argument("--min-score", type=int, default=MIN_SCORE)
     ap.add_argument("--min-ctc", type=float, default=MIN_CTC)
+    ap.add_argument("--boards", default=None,
+                    help="only these job boards, e.g. greenhouse,lever,ashby (no account needed)")
     args = ap.parse_args(argv)
     if args.submit and not args.auto:
         ap.error("--submit only works together with --auto")

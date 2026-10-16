@@ -742,3 +742,16 @@ def test_run_without_answers_file_says_setup_first(tmp_path):
     with pytest.raises(SystemExit) as e:
         aa.main(["--next", "--answers", str(tmp_path / "missing.yaml")])
     assert "Run --setup first" in str(e.value)
+
+
+def test_looks_like_application_needs_email_or_resume():
+    alert_form = [{"type": "text", "label": "Keywords"}, {"type": "text", "label": "Location"}]
+    assert not aa.looks_like_application(alert_form)
+    assert aa.looks_like_application(alert_form + [{"type": "email", "label": "Email"}])
+    assert aa.looks_like_application([{"type": "file", "label": "Resume/CV"}])
+
+
+def test_filter_boards():
+    jobs = [{"board": "greenhouse"}, {"board": "workday"}, {"board": "Lever"}]
+    assert aa.filter_boards(jobs, "greenhouse, lever") == [jobs[0], jobs[2]]
+    assert aa.filter_boards(jobs, None) == jobs
