@@ -255,4 +255,22 @@ def test_job_outcome_endpoint(client):
     assert summary["days_since_last_callback"] is not None
 
 
+def test_job_referral_endpoint(client):
+    """Verifies referral search URLs and template generation."""
+    job_id = _make_fixture_job("Stripe", "Software Engineer", 45.0, "2027", "ext-stripe-ref-1")
+
+    res = client.get(f"/api/jobs/{job_id}/referral")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "success"
+    ref = data["data"]
+    assert ref["company"] == "Stripe"
+    assert "NIT%20Rourkela" in ref["alumni_url"]
+    assert "software%20engineer" in ref["engineers_url"]
+    assert "NIT Rourkela" in ref["template"]
+    assert "8.99 CGPA" in ref["template"]
+    assert "Kafka" in ref["template"]
+
+
+
 

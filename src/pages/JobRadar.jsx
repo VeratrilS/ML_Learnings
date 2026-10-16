@@ -104,6 +104,11 @@ export default function JobRadar() {
     const [packError, setPackError] = useState(null);
     const [copiedField, setCopiedField] = useState(null);
 
+    // Referral Finder state
+    const [referralModalJob, setReferralModalJob] = useState(null);
+    const [referralData, setReferralData] = useState(null);
+    const [referralLoading, setReferralLoading] = useState(false);
+
     // Confirm Application Modal state
     const [confirmModalJob, setConfirmModalJob] = useState(null);
     const [confirmRefInput, setConfirmRefInput] = useState('');
@@ -261,6 +266,29 @@ ${bullets}
             setTimeout(() => setCopiedField(null), 2000);
             play('combo', { force: true });
             toast('Copied full application pack to clipboard!', 'success');
+        }
+    };
+
+    const handleOpenReferralFinder = async (job) => {
+        setReferralModalJob(job);
+        setReferralLoading(true);
+        try {
+            const res = await api(`/jobs/${job.id}/referral`);
+            if (res?.data) {
+                setReferralData(res.data);
+            }
+        } catch (e) {
+            const company = job.company || 'Company';
+            const role = job.role || 'Software Engineer';
+            setReferralData({
+                company,
+                role,
+                alumni_url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(company + ' NIT Rourkela')}`,
+                engineers_url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(company + ' software engineer')}`,
+                template: `Hi [Name],\n\nHope you are doing well! I'm a final-year CSE student at NIT Rourkela (8.99 CGPA, LeetCode 1709, ex-MSIL intern) and saw the ${role} opening at ${company}.\n\nI have strong hands-on experience in distributed systems (Kafka microservices) and low-level C++. Would you be open to referring me for this role? Happy to share my resume and details.\n\nThank you,\nSai Raghava`,
+            });
+        } finally {
+            setReferralLoading(false);
         }
     };
 
@@ -1099,6 +1127,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
 
                                             <Button
                                                 size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleOpenReferralFinder(job)}
+                                                className="text-xs py-1.5 px-2.5 border border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20"
+                                                title="Find NIT Rourkela alumni & SWE referrals on LinkedIn"
+                                            >
+                                                <Share2 className="h-3 w-3 mr-1" />
+                                                Referral
+                                            </Button>
+
+                                            <Button
+                                                size="sm"
                                                 variant="primary"
                                                 onClick={() => {
                                                     setConfirmModalJob(job);
@@ -1190,6 +1229,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                             >
                                                 <Sparkles className="h-3 w-3 mr-1" />
                                                 Pack
+                                            </Button>
+
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleOpenReferralFinder(job)}
+                                                className="text-xs py-1.5 px-2.5 border border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20"
+                                                title="Find NIT Rourkela alumni & SWE referrals on LinkedIn"
+                                            >
+                                                <Share2 className="h-3 w-3 mr-1" />
+                                                Referral
                                             </Button>
 
                                             <Button
@@ -1516,6 +1566,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                     >
                                                         <Sparkles className="h-3 w-3" />
                                                         <span>Prepare Answers</span>
+                                                    </Button>
+
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => handleOpenReferralFinder(job)}
+                                                        className="text-xs h-7 px-2.5 gap-1 border border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20"
+                                                        title="Find NIT Rourkela alumni & SWE referrals on LinkedIn"
+                                                    >
+                                                        <Share2 className="h-3 w-3" />
+                                                        <span>Find Referral</span>
                                                     </Button>
 
                                                     <button
@@ -2541,6 +2602,109 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                 );
                             })}
                         </div>
+                    )}
+                </div>
+            </Sheet>
+
+            {/* Sheet 5: LinkedIn Referral Finder */}
+            <Sheet
+                open={Boolean(referralModalJob)}
+                onClose={() => setReferralModalJob(null)}
+                title={referralModalJob ? `LinkedIn Referrals · ${referralModalJob.company}` : 'LinkedIn Referral Finder'}
+            >
+                <div className="p-4 space-y-4">
+                    {referralModalJob && (
+                        <>
+                            <div>
+                                <h3 className="font-bold text-base text-fg flex items-center gap-2">
+                                    <Share2 className="h-4 w-4 text-cyan-400" />
+                                    <span>{referralModalJob.company}</span>
+                                    <span className="badge text-[10px] font-mono text-cyan-400 bg-surface border border-cyan-500/30">
+                                        {fmtEstCtc(referralModalJob)}
+                                    </span>
+                                </h3>
+                                <p className="text-xs text-subtle mt-0.5">
+                                    Position: <strong>{referralModalJob.role}</strong> · {referralModalJob.location || 'India'}
+                                </p>
+                            </div>
+
+                            {/* LinkedIn Search Launchers */}
+                            <div className="space-y-2">
+                                <div className="text-xs font-semibold text-fg">Direct LinkedIn People Searches:</div>
+                                <p className="text-[11px] text-subtle">
+                                    Opens LinkedIn in a new tab with tailored keywords to find verified connections.
+                                </p>
+
+                                <div className="grid sm:grid-cols-2 gap-2 pt-1">
+                                    <a
+                                        href={referralData?.alumni_url || `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent((referralModalJob.company || '') + ' NIT Rourkela')}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="btn btn-secondary text-xs gap-2 justify-center py-2.5 bg-surface border-line hover:border-cyan-500/50"
+                                    >
+                                        <GraduationCap className="h-4 w-4 text-cyan-400" />
+                                        <span>NIT Rourkela Alumni ↗</span>
+                                    </a>
+
+                                    <a
+                                        href={referralData?.engineers_url || `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent((referralModalJob.company || '') + ' software engineer')}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="btn btn-secondary text-xs gap-2 justify-center py-2.5 bg-surface border-line hover:border-cyan-500/50"
+                                    >
+                                        <Code2 className="h-4 w-4 text-emerald-400" />
+                                        <span>Software Engineers ↗</span>
+                                    </a>
+                                </div>
+                            </div>
+
+                            {/* Referral Request Message Template */}
+                            <div className="space-y-2 pt-2 border-t border-line">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="text-xs font-semibold text-fg">Referral Request Note Template</div>
+                                        <div className="text-[11px] text-subtle">
+                                            Concise ({countWords(referralData?.template)} words) · Grounded in your real NIT Rourkela & MSIL facts
+                                        </div>
+                                    </div>
+
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        icon={copiedField === 'referral_template' ? Check : Copy}
+                                        onClick={() => {
+                                            if (referralData?.template && navigator.clipboard) {
+                                                navigator.clipboard.writeText(referralData.template);
+                                                setCopiedField('referral_template');
+                                                setTimeout(() => setCopiedField(null), 2000);
+                                                play('pop', { force: true });
+                                                toast('Referral message copied to clipboard!', 'success');
+                                            }
+                                        }}
+                                        className="text-xs h-7 gap-1"
+                                    >
+                                        {copiedField === 'referral_template' ? 'Copied!' : 'Copy Note'}
+                                    </Button>
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-surface-2 border border-line font-mono text-xs text-subtle whitespace-pre-wrap leading-relaxed">
+                                    {referralData?.template || 'Loading template…'}
+                                </div>
+                            </div>
+
+                            {/* Best Practice Tip */}
+                            <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/30 text-xs text-subtle space-y-1">
+                                <div className="font-semibold text-cyan-400 flex items-center gap-1.5">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    <span>How to ask effectively (Sai's Strategy):</span>
+                                </div>
+                                <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                                    <li>Send connection invites to 2–3 active engineers or alumni from the search buttons above.</li>
+                                    <li>Add this customized note with the invite (fits LinkedIn connection character limits).</li>
+                                    <li>Zero scraping or automated spamming — genuine professional outreach only.</li>
+                                </ul>
+                            </div>
+                        </>
                     )}
                 </div>
             </Sheet>

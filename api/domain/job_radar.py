@@ -702,6 +702,53 @@ def set_job_outcome(job_id):
 
 
 
+@job_radar_bp.route("/<int:job_id>/referral", methods=["GET"])
+def get_job_referral(job_id):
+    """
+    Returns referral assistance for a company opening:
+    - LinkedIn search URLs for NIT Rourkela alumni & SWEs at the company
+    - Grounded referral-request message template using candidate facts (no scraping, no auto messaging).
+    """
+    import urllib.parse
+    db = SessionLocal()
+    try:
+        job = db.get(JobOpportunity, job_id)
+        if not job:
+            return jsonify({"status": "error", "message": "Job not found"}), 404
+
+        company = job.company or "Company"
+        role = job.role or "Software Engineer"
+
+        alumni_q = f"{company} NIT Rourkela"
+        swe_q = f"{company} software engineer"
+
+        alumni_url = f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(alumni_q)}"
+        swe_url = f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(swe_q)}"
+
+        template = (
+            f"Hi [Name],\n\n"
+            f"Hope you are doing well! I'm a final-year CSE student at NIT Rourkela (8.99 CGPA, LeetCode 1709, ex-MSIL intern) "
+            f"and saw the {role} opening at {company}.\n\n"
+            f"I have strong hands-on experience in distributed systems (Kafka microservices) and low-level C++. "
+            f"Would you be open to referring me for this role? Happy to share my resume and details.\n\n"
+            f"Thank you,\nSai Raghava"
+        )
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "id": job.id,
+                "company": company,
+                "role": role,
+                "alumni_url": alumni_url,
+                "engineers_url": swe_url,
+                "template": template,
+            }
+        })
+    finally:
+        db.close()
+
+
 @job_radar_bp.route("/auto-apply", methods=["POST"])
 def auto_apply_job():
     """Fallback handler redirecting to confirm-applied to prevent any simulated auto-applications."""
