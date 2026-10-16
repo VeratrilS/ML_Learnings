@@ -112,6 +112,7 @@ _ALIASES = {
     "distributed": "distributed", "restapis": "rest", "rest": "rest", "restfulapis": "rest", "llms": "llm",
     "llm": "llm", "multithreading": "multithreading", "concurrency": "multithreading", "dsa": "dsa",
     "datastructuresalgorithms": "dsa", "datastructuresandalgorithms": "dsa", "algorithms": "dsa",
+    "git": "git", "linux": "linux", "testing": "testing",
 }
 
 
@@ -121,7 +122,7 @@ def _canon(skill):
 
 
 # Every skill Sai can honestly claim: the listed skills plus what the highlights demonstrate.
-_CLAIMABLE = {_canon(s) for s in RESUME_FACTS["skills"]} | {t for h in RESUME_FACTS["highlights"] for t in h["tags"]}
+_CLAIMABLE = {_canon(s) for s in RESUME_FACTS["skills"]} | {t for h in RESUME_FACTS["highlights"] for t in h["tags"]} | {"git", "linux"}
 
 # ---------------- Template text (deterministic fallback) ----------------
 PROJECT_STORIES = {
@@ -254,6 +255,122 @@ def matched_skills(job):
             seen.add(c)
             out.append(s)
     return out
+
+
+SWE_TECH_KEYWORDS = [
+    # Languages
+    ("Java", re.compile(r"\bjava\b(?!script)", re.I)),
+    ("Go", re.compile(r"\b(?:golang|go)\b", re.I)),
+    ("C#", re.compile(r"\bc#|\bc-sharp\b", re.I)),
+    (".NET", re.compile(r"\b\.net\b", re.I)),
+    ("TypeScript", re.compile(r"\btypescript|\bts\b", re.I)),
+    ("Rust", re.compile(r"\brust\b", re.I)),
+    ("Ruby", re.compile(r"\bruby\b", re.I)),
+    ("PHP", re.compile(r"\bphp\b", re.I)),
+    ("Swift", re.compile(r"\bswift\b", re.I)),
+    ("Kotlin", re.compile(r"\bkotlin\b", re.I)),
+    ("Scala", re.compile(r"\bscala\b", re.I)),
+    # Cloud & DevOps
+    ("AWS", re.compile(r"\baws\b|amazon web services", re.I)),
+    ("Azure", re.compile(r"\bazure\b", re.I)),
+    ("GCP", re.compile(r"\bgcp\b|google cloud", re.I)),
+    ("Docker", re.compile(r"\bdocker\b", re.I)),
+    ("Kubernetes", re.compile(r"\b(?:kubernetes|k8s)\b", re.I)),
+    ("Terraform", re.compile(r"\bterraform\b", re.I)),
+    ("CI/CD", re.compile(r"\bci[/-]?cd\b", re.I)),
+    ("Jenkins", re.compile(r"\bjenkins\b", re.I)),
+    # Frameworks & Databases
+    ("Spring Boot", re.compile(r"\bspring(?: boot)?\b", re.I)),
+    ("Angular", re.compile(r"\bangular\b", re.I)),
+    ("Vue", re.compile(r"\bvue(?:\.js)?\b", re.I)),
+    ("Next.js", re.compile(r"\bnext\.?js\b", re.I)),
+    ("Django", re.compile(r"\bdjango\b", re.I)),
+    ("Flask", re.compile(r"\bflask\b", re.I)),
+    ("FastAPI", re.compile(r"\bfastapi\b", re.I)),
+    ("GraphQL", re.compile(r"\bgraphql\b", re.I)),
+    ("gRPC", re.compile(r"\bgrpc\b", re.I)),
+    ("RabbitMQ", re.compile(r"\brabbitmq\b", re.I)),
+    ("Cassandra", re.compile(r"\bcassandra\b", re.I)),
+    ("DynamoDB", re.compile(r"\bdynamodb\b", re.I)),
+    ("Snowflake", re.compile(r"\bsnowflake\b", re.I)),
+    ("Spark", re.compile(r"\bspark\b", re.I)),
+    ("Hadoop", re.compile(r"\bhadoop\b", re.I)),
+    ("PyTorch", re.compile(r"\bpytorch\b", re.I)),
+    ("TensorFlow", re.compile(r"\btensorflow\b", re.I)),
+    # Core SWE / Resume skills
+    ("C++", re.compile(r"c\+\+|\bcpp\b", re.I)),
+    ("Python", re.compile(r"\bpython\b", re.I)),
+    ("JavaScript", re.compile(r"\bjavascript|\bjs\b", re.I)),
+    ("SQL", re.compile(r"\bsql\b", re.I)),
+    ("React", re.compile(r"\breact\b", re.I)),
+    ("Node.js", re.compile(r"\bnode(?:\.js)?\b", re.I)),
+    ("Express", re.compile(r"\bexpress(?:\.js)?\b", re.I)),
+    ("Kafka", re.compile(r"\bkafka\b", re.I)),
+    ("Redis", re.compile(r"\bredis\b", re.I)),
+    ("Elasticsearch", re.compile(r"\belastic ?search\b", re.I)),
+    ("PostgreSQL", re.compile(r"\bpostgres(?:ql)?\b", re.I)),
+    ("MongoDB", re.compile(r"\bmongo(?:db)?\b", re.I)),
+    ("Microservices", re.compile(r"\bmicro-?services?\b", re.I)),
+    ("Distributed systems", re.compile(r"\bdistributed\b", re.I)),
+    ("REST APIs", re.compile(r"\brest(?:ful)?\b", re.I)),
+    ("Git", re.compile(r"\bgit\b", re.I)),
+    ("Linux", re.compile(r"\blinux\b", re.I)),
+    ("Multithreading", re.compile(r"\bmulti-?thread|concurren", re.I)),
+    ("DSA", re.compile(r"\b(?:data structures|algorithms|dsa)\b", re.I)),
+    ("LLMs", re.compile(r"\bllms?\b|large language", re.I)),
+]
+
+
+def skill_gap(job):
+    """Compares job skills + role keywords with candidate's claimable resume facts.
+
+    Returns:
+      {
+        'matched': [skills Sai can claim],
+        'missing': [skills the role mentions that Sai does NOT claim],
+        'match_ratio': float (0.0 to 1.0),
+        'match_pct': int (0 to 100),
+        'total_skills': int
+      }
+    """
+    seen_canons = set()
+    all_candidates = []
+
+    # 1. Listed skills on the job opportunity
+    for s in job_skills(job):
+        c = _canon(s)
+        if c and c not in seen_canons:
+            seen_canons.add(c)
+            all_candidates.append((s, c))
+
+    # 2. Extract technical keywords from role title & notes text
+    text = f"{getattr(job, 'role', '') or ''} {getattr(job, 'notes', '') or ''}"
+    for label, pattern in SWE_TECH_KEYWORDS:
+        if pattern.search(text):
+            c = _canon(label)
+            if c and c not in seen_canons:
+                seen_canons.add(c)
+                all_candidates.append((label, c))
+
+    matched = []
+    missing = []
+    for label, c in all_candidates:
+        if c in _CLAIMABLE:
+            matched.append(label)
+        else:
+            missing.append(label)
+
+    total = len(matched) + len(missing)
+    ratio = round(len(matched) / total, 2) if total > 0 else 1.0
+    pct = int(round(ratio * 100))
+
+    return {
+        "matched": matched,
+        "missing": missing,
+        "match_ratio": ratio,
+        "match_pct": pct,
+        "total_skills": total,
+    }
 
 
 def select_highlights(job, limit=5):
@@ -443,6 +560,7 @@ def generate_pack(job, location_prefs=DEFAULT_LOCATIONS):
         "answers": [{"question": q, "answer": answers[k]} for k, q in QUESTIONS],
         "resume_highlights": [h["bullet"] for h in highlights],
         "matched_skills": matched_skills(job),
+        "skill_gap": skill_gap(job),
         "job_key": _job_key(job),
     }
     return payload, model
@@ -518,3 +636,21 @@ def get_pack(job_id):
         return _response(job, row, payload, cached=False)
     finally:
         db.close()
+
+
+@job_pack_bp.route("/<int:job_id>/skill-gap", methods=["GET"])
+def get_skill_gap(job_id):
+    db = SessionLocal()
+    try:
+        job = db.query(JobOpportunity).filter(JobOpportunity.id == job_id).first()
+        if not job:
+            return jsonify({"status": "error", "message": "Job not found"}), 404
+        return jsonify({"status": "success", "data": {
+            "job_id": job.id,
+            "company": job.company,
+            "role": job.role,
+            **skill_gap(job),
+        }})
+    finally:
+        db.close()
+

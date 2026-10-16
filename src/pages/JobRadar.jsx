@@ -37,6 +37,41 @@ function countWords(str) {
     return str.trim().split(/\s+/).filter(Boolean).length;
 }
 
+// Claimable skills from Sai's verified resume (C++, Python, JS, SQL, React, Node, Express, Kafka, Redis, Elasticsearch, Postgres, Mongo, Microservices, Distributed systems, REST, Multithreading, DSA, LLMs, Git, Linux, Testing)
+const CLAIMABLE_SKILLS = new Set([
+    'c++', 'cpp', 'python', 'javascript', 'js', 'sql', 'react', 'node', 'nodejs', 'node.js', 'express', 'express.js',
+    'kafka', 'redis', 'elasticsearch', 'postgresql', 'postgres', 'mongodb', 'mongo',
+    'microservices', 'microservice', 'distributed', 'distributed systems', 'distributedsystems',
+    'rest', 'rest apis', 'restful', 'restapis', 'multithreading', 'concurrency',
+    'dsa', 'data structures', 'algorithms', 'data structures & algorithms', 'datastructuresalgorithms',
+    'llm', 'llms', 'git', 'linux', 'testing'
+]);
+
+function getSkillGapSummary(job) {
+    if (!job) return { matched: [], missing: [], total: 0, pct: 100 };
+    const rawSkills = Array.isArray(job.skills_required) ? job.skills_required : [];
+    const matched = [];
+    const missing = [];
+    const seen = new Set();
+
+    rawSkills.forEach(s => {
+        const norm = String(s).toLowerCase().replace(/[^a-z0-9+]/g, '');
+        if (!seen.has(norm)) {
+            seen.add(norm);
+            if (CLAIMABLE_SKILLS.has(norm) || CLAIMABLE_SKILLS.has(String(s).toLowerCase())) {
+                matched.push(s);
+            } else {
+                missing.push(s);
+            }
+        }
+    });
+
+    const total = matched.length + missing.length;
+    const pct = total > 0 ? Math.round((matched.length / total) * 100) : 100;
+    return { matched, missing, total, pct };
+}
+
+
 function useCountdown(targetIso) {
     const [timeLeft, setTimeLeft] = useState('');
 
@@ -1176,6 +1211,30 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                     </>
                                                 )}
                                             </div>
+                                            {(() => {
+                                                const gap = getSkillGapSummary(job);
+                                                if (!gap.total) return null;
+                                                return (
+                                                    <div className="flex flex-wrap items-center gap-1 mt-2">
+                                                        {gap.matched.slice(0, 4).map((s, idx) => (
+                                                            <span key={`m-${idx}`} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                                ✓ {s}
+                                                            </span>
+                                                        ))}
+                                                        {gap.missing.slice(0, 2).map((s, idx) => (
+                                                            <span key={`g-${idx}`} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                                                ! {s}
+                                                            </span>
+                                                        ))}
+                                                        {gap.total > 6 && (
+                                                            <span className="text-[10px] font-mono text-subtle">+{gap.total - 6}</span>
+                                                        )}
+                                                        <span className="text-[10px] font-mono text-subtle ml-auto">
+                                                            {gap.pct}% ATS match
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
 
                                         <div className="flex items-center gap-1.5 pt-2 border-t border-line/60 flex-wrap">
@@ -1292,6 +1351,30 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                 <span>·</span>
                                                 <span>{job.location || 'India'}</span>
                                             </div>
+                                            {(() => {
+                                                const gap = getSkillGapSummary(job);
+                                                if (!gap.total) return null;
+                                                return (
+                                                    <div className="flex flex-wrap items-center gap-1 mt-2">
+                                                        {gap.matched.slice(0, 4).map((s, idx) => (
+                                                            <span key={`m-${idx}`} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                                ✓ {s}
+                                                            </span>
+                                                        ))}
+                                                        {gap.missing.slice(0, 2).map((s, idx) => (
+                                                            <span key={`g-${idx}`} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                                                ! {s}
+                                                            </span>
+                                                        ))}
+                                                        {gap.total > 6 && (
+                                                            <span className="text-[10px] font-mono text-subtle">+{gap.total - 6}</span>
+                                                        )}
+                                                        <span className="text-[10px] font-mono text-subtle ml-auto">
+                                                            {gap.pct}% ATS match
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
 
                                         <div className="flex items-center gap-1.5 pt-2 border-t border-line/60 flex-wrap">
@@ -1560,13 +1643,28 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-wrap items-center gap-1.5 mt-3">
-                                                    {(job.skills_required || []).map((skill, idx) => (
-                                                        <span key={idx} className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-surface-2 border border-line text-subtle">
-                                                            {skill}
-                                                        </span>
-                                                    ))}
-                                                </div>
+                                                {(() => {
+                                                    const gap = getSkillGapSummary(job);
+                                                    return (
+                                                        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                                                            {gap.matched.map((skill, idx) => (
+                                                                <span key={`m-${idx}`} className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                                                                    ✓ {skill}
+                                                                </span>
+                                                            ))}
+                                                            {gap.missing.map((skill, idx) => (
+                                                                <span key={`g-${idx}`} className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                                                                    ! {skill}
+                                                                </span>
+                                                            ))}
+                                                            {gap.total > 0 && (
+                                                                <span className="text-[10px] font-mono text-subtle self-center ml-1">
+                                                                    ({gap.matched.length}/{gap.total} ATS match)
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
 
                                             {/* Action Column */}
@@ -2586,17 +2684,66 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                 </div>
                             </div>
 
-                            {/* 5. Matched Skills */}
-                            {packData.matched_skills?.length > 0 && (
-                                <div className="flex flex-wrap items-center gap-1.5 pt-2">
-                                    <span className="text-subtle font-medium text-[11px]">Matched Skills:</span>
-                                    {packData.matched_skills.map((s, idx) => (
-                                        <span key={idx} className="badge text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                            {s}
-                                        </span>
-                                    ))}
+                            {/* 5. ATS Keyword Gap Analysis */}
+                            <div className="p-3.5 rounded-xl bg-surface-2 border border-line space-y-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                                        <h4 className="font-bold text-fg text-xs uppercase tracking-wider">ATS Keyword Gap Analysis</h4>
+                                    </div>
+                                    <span className="badge text-[10px] font-mono font-bold bg-surface border border-line text-emerald-400">
+                                        {packData.skill_gap?.match_pct ?? 100}% Keyword Match ({packData.skill_gap?.matched?.length || (packData.matched_skills?.length || 0)}/{packData.skill_gap?.total_skills || (packData.matched_skills?.length || 0)})
+                                    </span>
                                 </div>
-                            )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {/* Matched on Resume */}
+                                    <div className="p-3 rounded-lg bg-surface border border-emerald-500/20 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                                Matched on Resume ({packData.skill_gap?.matched?.length || (packData.matched_skills?.length || 0)})
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            {(packData.skill_gap?.matched?.length > 0 ? packData.skill_gap.matched : (packData.matched_skills || [])).map((s, idx) => (
+                                                <span key={idx} className="badge text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                    ✓ {s}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Missing / Unlisted Keywords */}
+                                    <div className="p-3 rounded-lg bg-surface border border-amber-500/20 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                                                <AlertCircle className="h-3.5 w-3.5" />
+                                                Missing from Resume ({packData.skill_gap?.missing?.length || 0})
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            {(packData.skill_gap?.missing || []).length > 0 ? (
+                                                packData.skill_gap.missing.map((s, idx) => (
+                                                    <span key={idx} className="badge text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                                        ! {s}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-[11px] text-subtle font-mono">No missing keywords detected</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Honest Candidate Guidance Note */}
+                                <div className="p-2.5 rounded-lg bg-surface border border-line flex items-start gap-2 text-subtle text-[11px] leading-relaxed">
+                                    <span className="text-amber-400 font-bold shrink-0">ATS Advice:</span>
+                                    <span>
+                                        Keyword gaps are grounded strictly in your verified resume facts. Never add unverified claims to your resume. If you understand the foundations of a missing tool, highlight related engineering principles in your screening answers.
+                                    </span>
+                                </div>
+                            </div>
 
                             {/* Footer Submit confirmation */}
                             <div className="pt-3 border-t border-line flex items-center justify-between gap-3">

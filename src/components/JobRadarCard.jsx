@@ -13,6 +13,40 @@ function fmtCtc(val) {
     return `₹${Number(val).toFixed(1)} LPA (est.)`;
 }
 
+const CLAIMABLE_SKILLS = new Set([
+    'c++', 'cpp', 'python', 'javascript', 'js', 'sql', 'react', 'node', 'nodejs', 'node.js', 'express', 'express.js',
+    'kafka', 'redis', 'elasticsearch', 'postgresql', 'postgres', 'mongodb', 'mongo',
+    'microservices', 'microservice', 'distributed', 'distributed systems', 'distributedsystems',
+    'rest', 'rest apis', 'restful', 'restapis', 'multithreading', 'concurrency',
+    'dsa', 'data structures', 'algorithms', 'data structures & algorithms', 'datastructuresalgorithms',
+    'llm', 'llms', 'git', 'linux', 'testing'
+]);
+
+function getSkillGapSummary(job) {
+    if (!job) return { matched: [], missing: [], total: 0, pct: 100 };
+    const rawSkills = Array.isArray(job.skills_required) ? job.skills_required : [];
+    const matched = [];
+    const missing = [];
+    const seen = new Set();
+
+    rawSkills.forEach(s => {
+        const norm = String(s).toLowerCase().replace(/[^a-z0-9+]/g, '');
+        if (!seen.has(norm)) {
+            seen.add(norm);
+            if (CLAIMABLE_SKILLS.has(norm) || CLAIMABLE_SKILLS.has(String(s).toLowerCase())) {
+                matched.push(s);
+            } else {
+                missing.push(s);
+            }
+        }
+    });
+
+    const total = matched.length + missing.length;
+    const pct = total > 0 ? Math.round((matched.length / total) * 100) : 100;
+    return { matched, missing, total, pct };
+}
+
+
 function useCountdown(targetIso) {
     const [timeLeft, setTimeLeft] = useState('');
 
@@ -258,13 +292,26 @@ export default function JobRadarCard() {
                                     <p className="text-xs text-muted mt-0.5 truncate">{job.role}</p>
 
                                     {/* Skills tag snippets */}
-                                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                        {(job.skills_required || []).slice(0, 4).map((s, idx) => (
-                                             <span key={idx} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 border border-line text-subtle">
-                                                {s}
-                                            </span>
-                                        ))}
-                                    </div>
+                                    {(() => {
+                                        const gap = getSkillGapSummary(job);
+                                        return (
+                                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                                {gap.matched.slice(0, 3).map((s, idx) => (
+                                                    <span key={`m-${idx}`} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                                                        ✓ {s}
+                                                    </span>
+                                                ))}
+                                                {gap.missing.slice(0, 2).map((s, idx) => (
+                                                    <span key={`g-${idx}`} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                                                        ! {s}
+                                                    </span>
+                                                ))}
+                                                {gap.total > 5 && (
+                                                    <span className="text-[10px] font-mono text-subtle">+{gap.total - 5}</span>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 <div className="flex flex-col items-end gap-1 shrink-0">

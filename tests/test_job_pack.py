@@ -236,3 +236,51 @@ def test_unknown_job_404(client, llm):
     res = client.get("/api/jobs/999999/pack")
     assert res.status_code == 404 and res.get_json()["status"] == "error"
     assert llm.calls == []
+
+
+# ---------------- ATS Keyword Gap ----------------
+def test_skill_gap_analysis():
+    # Job asks for C++, Python (claimable) + Java, Kubernetes, AWS (not claimable)
+    job = JobOpportunity(
+        id=42,
+        company="Stripe",
+        role="Backend Engineer - Kubernetes, AWS Infrastructure",
+        location="Bengaluru",
+        skills_required=json.dumps(["C++", "Python", "Java", "Docker"]),
+        notes="Live from Greenhouse; asks for 1+ years"
+    )
+    gap = jp.skill_gap(job)
+    assert "C++" in gap["matched"]
+    assert "Python" in gap["matched"]
+    assert "Java" in gap["missing"]
+    assert "Docker" in gap["missing"]
+    # Extracted from role text "Kubernetes, AWS"
+    assert "Kubernetes" in gap["missing"]
+    assert "AWS" in gap["missing"]
+    assert gap["total_skills"] >= 6
+    assert 0.0 < gap["match_ratio"] < 1.0
+    assert 0 < gap["match_pct"] < 100
+
+
+def test_skill_gap_endpoint(client, llm):
+    job_id = _job(skills=["C++", "Kafka", "Java"])
+    res = client.get(f"/api/jobs/{job_id}/skill-gap")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["status"] == "success"
+    data = body["data"]
+    assert data["job_id"] == job_id
+    assert "C++" in data["matched"] and "Kafka" in data["matched"]
+    assert "Java" in data["missing"]
+    assert data["total_skills"] == 3
+    assert data["match_pct"] == 67
+
+    # Also verify pack endpoint includes skill_gap
+    pack_data = _pack(client, job_id)
+    assert "skill_gap" in pack_data
+    assert "Java" in pack_data["skill_gap"]["missing"]
+
+    # 404 for unknown job
+    res404 = client.get("/api/jobs/999999/skill-gap")
+    assert res404.status_code == 404
+
