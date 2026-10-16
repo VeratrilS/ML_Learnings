@@ -85,6 +85,7 @@ export default function JobRadar() {
     const [expandedJobId, setExpandedJobId] = useState(null);
     const [terminalOpen, setTerminalOpen] = useState(false);
     const [mlDrawerOpen, setMlDrawerOpen] = useState(false);
+    const [visibleCount, setVisibleCount] = useState(30);
 
     // Application Pack Drawer state
     const [packDrawerJob, setPackDrawerJob] = useState(null);
@@ -270,6 +271,10 @@ ${bullets}
             return true;
         });
     }, [jobs, minCtcFilter, statusFilter, roleTypeFilter, locationFilter, query]);
+
+    useEffect(() => {
+        setVisibleCount(30);
+    }, [query, statusFilter, minCtcFilter, roleTypeFilter, locationFilter]);
 
     // Unique Companies for the Portals Directory
     const companyPortals = useMemo(() => {
@@ -1205,7 +1210,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                 Try lowering your CTC threshold to ≥15 LPA or resetting search keywords.
                             </Empty>
                         ) : (
-                            filteredJobs.map((job) => {
+                            filteredJobs.slice(0, visibleCount).map((job) => {
                                 const isExpanded = expandedJobId === job.id;
                                 const isApplied = job.status === 'applied_confirmed' || job.status === 'manual_applied';
 
@@ -1433,6 +1438,18 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                     </Card>
                                 );
                             })
+                        )}
+
+                        {visibleCount < filteredJobs.length && (
+                            <div className="text-center pt-3 pb-2">
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => setVisibleCount((prev) => prev + 30)}
+                                    className="text-xs"
+                                >
+                                    Load More Openings ({filteredJobs.length - visibleCount} remaining)
+                                </Button>
+                            </div>
                         )}
                     </div>
                 </div>
