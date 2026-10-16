@@ -487,7 +487,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                         <span>Hourly Career Radar & Autonomous Placement Copilot</span>
                     </div>
                     <h1 className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-fg">
-                        2027 CSE Job Radar · ₹15+ to ₹65 LPA
+                        2027 CSE Job Radar · ₹15+ LPA
                     </h1>
                     <p className="text-sm text-subtle mt-1 max-w-2xl">
                         Scans 51 premier tech career portals hourly for Batch 2027 CSE openings.

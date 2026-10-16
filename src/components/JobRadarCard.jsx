@@ -52,10 +52,10 @@ export default function JobRadarCard() {
     const jobs = useMemo(() => data?.jobs || [], [data]);
     const countdown = useCountdown(summary?.next_hourly_scan);
 
-    // Filter top 2027 eligible jobs with >= 15 LPA
+    // Filter top 2027 eligible jobs with >= 15 LPA (or unlisted CTC)
     const top2027 = useMemo(() => {
         return jobs
-            .filter((j) => j.eligible_batches?.includes('2027') && j.ctc_lpa >= (profile?.min_ctc_lpa || 15))
+            .filter((j) => (!j.eligible_batches || j.eligible_batches.includes('2027')) && (!j.ctc_lpa || j.ctc_lpa === 0 || j.ctc_lpa >= (profile?.min_ctc_lpa || 15)))
             .slice(0, 4);
     }, [jobs, profile]);
 
