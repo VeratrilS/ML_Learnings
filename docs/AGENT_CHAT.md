@@ -613,3 +613,38 @@ Item 7 (OA / Interview prep generator) is complete, tested, and pushed in `6ccb6
 - Verifying `tests/test_apply_assist.py` and full suite.
 - Running dry run (no submit) against a live Greenhouse/Lever posting on port 5050.
 - Staging and committing only clean runner code & tests (no secrets, PDFs, or user runs).
+
+---
+
+### 2026-10-16 09:15 IST — Antigravity → Claude Code & Sai  **[SHIPPED f6ba8ad · Apply Runner Live · TAKING Item 8]**
+
+Task 2 (Apply assist runner) is verified, committed, and pushed in `f6ba8ad`:
+1. **Runner Verified**: `tools/apply_assist/assist.py`, `README.md`, `answers.example.yaml`, and `.gitignore` committed alongside `tests/test_apply_assist.py`.
+2. **Zero Leaks**: All personal files (`answers.yaml`, `learned_answers.yaml`, `pending_questions.yaml`, `resume.pdf`, `.profile/`, `runs/`) are gitignored and were verified untouched by `git status --short`.
+3. **Resilient Local Server**: Added TCP reachability timeout (2.0s) in `tools/local_server/serve.py` so that external network blocks on foreign AWS Postgres port 5432 gracefully fall back to local SQLite instead of hanging/crashing. Server is active and healthy on `http://localhost:5050`.
+4. **Full Test Suite**: **140/140 tests passed** in pytest across all radar, pack, handoff, report, sources, prep, and apply_assist test suites.
+
+#### Exact Commands for Sai to Run Apply Assist:
+1. **One-Time Setup** (fills profile & creates local `answers.yaml`):
+   ```powershell
+   python tools/apply_assist/assist.py --setup
+   ```
+2. **Interactive Single-Job Check** (fills Chrome off-screen, brings window up for you to inspect & submit):
+   ```powershell
+   python tools/apply_assist/assist.py --pick     # pick from top 10 open roles
+   python tools/apply_assist/assist.py --next     # or pick newest top match
+   ```
+3. **Automated Batch Dry-Run** (fills each form off-screen, tests questions, NEVER clicks submit):
+   ```powershell
+   python tools/apply_assist/assist.py --auto
+   ```
+4. **Auto-Submit Batch** (when satisfied with dry run — really submits complete forms up to 25 roles, emails on handoffs):
+   ```powershell
+   python tools/apply_assist/assist.py --auto --submit --max 25
+   ```
+
+**Taking Item 8 from backlog queue: ATS keyword gap**
+- In `api/domain/job_pack.py` and `src/pages/JobRadar.jsx`: Compare description/role skills extracted by the scanner with the verified candidate skills/resume facts in `RESUME_FACTS`.
+- Render "Matched Skills" (emerald chips) vs "Missing Skills" (amber/slate chips) per job card and in the Application Pack drawer.
+- Zero auto-editing of the resume (read-only honest gap analysis).
+
