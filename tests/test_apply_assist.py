@@ -1,0 +1,744 @@
+"""Apply assist (tools/apply_assist/assist.py): pure logic only — no network, no browser."""
+import copy
+import importlib.util
+import json
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+_spec = importlib.util.spec_from_file_location("apply_assist", ROOT / "tools" / "apply_assist" / "assist.py")
+aa = importlib.util.module_from_spec(_spec)
+sys.modules["apply_assist"] = aa  # dataclasses look the module up while the class is created
+_spec.loader.exec_module(aa)
+
+NOW = datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc)
+PROFILE = {"full_name": "Nandam Venkata Sai Raghava", "email": "sairaghava1318@gmail.com", "phone": "+91 99999 00000",
+           "college": "National Institute of Technology, Rourkela (NIT Rourkela)",
+           "degree": "Bachelor of Technology in Computer Science and Engineering", "grad_year": 2027, "cgpa": 8.99,
+           "location_pref": "Bengaluru, Hyderabad, Gurugram, Remote", "linkedin": "https://linkedin.com/in/sai",
+           "github": "https://github.com/VeratrilS"}
+
+
+def job(i, company="Acme", role="Software Engineer", **kw):
+    base = {"id": i, "company": company, "role": role, "url": f"https://jobs.lever.co/acme/{i}", "match_score": 70,
+            "role_type": "fte", "status": "discovered", "ctc_lpa": None, "est_ctc": None, "posted": "2026-10-10",
+            "discovered_at": "2026-10-16T02:00:00Z"}
+    base.update(kw)
+    return base
+
+
+def fld(aid, label, type="text", required=False, value="", **kw):
+    f = {"aid": str(aid), "frame": 0, "tag": "input", "type": type, "role": "", "label": label, "optlabel": "",
+         "aria": "", "placeholder": "", "name": kw.pop("name", f"f{aid}"), "id": kw.pop("id", f"f{aid}"),
+         "required": required, "value": value, "checked": False, "files": 0, "options": [], "in_form": True}
+    f.update(kw)
+    return f
+
+
+def ctx(answers=None, pack=None, learned=None, company="Acme", role_type="fte", resume=True):
+    answers = answers if answers is not None else {}
+    return aa.FillContext(values=aa.build_values(PROFILE, answers, role_type), company=company,
+                          custom=answers.get("custom") or [], questions=aa.QuestionBank(answers.get("questions") or {}),
+                          learned=learned or aa.QuestionBank(), pack=pack or {}, resume=resume)
+
+
+# ------------------------------------------------------------------ job selection
+def test_select_jobs_filters_and_sorts_newest_first():
+    jobs = [
+        job(1, posted="2026-10-01", match_score=90),
+        job(2, posted="2026-10-15", match_score=60),
+        job(3, posted="2026-10-15", match_score=80),
+        job(4, match_score=40),                                  # below min score
+        job(5, role_type="intern"),                              # duration not stated
+        job(6, role_type="intern_6m", posted="2026-10-12"),
+        job(7, status="manual_applied"), job(8, status="skipped"), job(9, status="applied_confirmed"),
+        job(10, ctc_lpa=10.0),                                   # known CTC below 15
+        job(11, est_ctc="40-50 LPA", posted="2026-09-01"),       # no upper bound
+        job(12, ctc_lpa=0, est_ctc=None, posted="2026-09-02"),   # unknown CTC allowed
+        job(13, status="approved", posted="2026-09-03"),         # approval not required, but allowed
+    ]
+    got = [j["id"] for j in aa.select_jobs(jobs)]
+    assert got == [3, 2, 6, 1, 13, 12, 11]
+
+
+def test_dedupe_30_days_and_within_list():
+    history = [{"company": "Acme", "role": "Software Engineer", "ts": "2026-10-01T00:00:00Z"},
+               {"company": "Old Co", "role": "SDE", "ts": "2026-08-01T00:00:00Z"}]
+    keys = aa.recent_role_keys(history, now=NOW)
+    jobs = [job(1), job(2, company="Old Co", role="SDE"), job(3, company="Beta"), job(4, company="beta", role="software  engineer")]
+    assert [j["id"] for j in aa.dedupe(jobs, keys)] == [2, 3]
+
+
+def test_plan_queue_limits():
+    jobs = [job(1, company="A"), job(2, company="A"), job(3, company="B"), job(4, company="C"), job(5, company="D")]
+    work, skipped = aa.plan_queue(jobs, max_jobs=3, per_company=1)
+    assert [j["id"] for j in work] == [1, 3, 4]
+    assert [j["id"] for j, _ in skipped] == [2]
+    work, _ = aa.plan_queue(jobs, max_jobs=10, per_company=2)
+    assert [j["id"] for j in work] == [1, 2, 3, 4, 5]
+
+
+def test_local_history_reads_submitted_runs(tmp_path):
+    d = tmp_path / "2026-10-10"
+    d.mkdir()
+    (d / "log.jsonl").write_text("\n".join(json.dumps(e) for e in [
+        {"ts": "2026-10-10T00:00:00Z", "company": "A", "role": "R", "outcome": "submitted"},
+        {"ts": "2026-10-10T00:00:00Z", "company": "B", "role": "R", "outcome": "needs-you"}]) + "\nnot json\n")
+    assert [h["company"] for h in aa.local_history(tmp_path)] == ["A"]
+
+
+# ------------------------------------------------------------------ URLs
+def test_application_urls():
+    assert aa.application_url("https://jobs.lever.co/hevodata/95ab9f01") == ("https://jobs.lever.co/hevodata/95ab9f01/apply", "lever")
+    assert aa.application_url("https://jobs.lever.co/hevodata/95ab/apply/")[0] == "https://jobs.lever.co/hevodata/95ab/apply"
+    assert aa.application_url("https://jobs.ashbyhq.com/cursor/166c") == ("https://jobs.ashbyhq.com/cursor/166c/application", "ashby")
+    assert aa.application_url("https://job-boards.greenhouse.io/singlestore/jobs/8212128") == \
+        ("https://job-boards.greenhouse.io/singlestore/jobs/8212128", "greenhouse")
+    url = "https://www.rubrik.com/company/careers/departments/job.8166537?gh_jid=8166537"
+    assert aa.application_url(url, "Rubrik", {"rubrik": "rubrik"}) == \
+        ("https://job-boards.greenhouse.io/embed/job_app?for=rubrik&token=8166537", "greenhouse")
+    assert aa.application_url(url, "Unknown", {})[1] == "other"
+    assert aa.application_url("https://cisco.wd5.myworkdayjobs.com/x/job/1") == ("https://cisco.wd5.myworkdayjobs.com/x/job/1", "other")
+
+
+def test_greenhouse_tokens_from_job_radar_lists():
+    tokens = aa.greenhouse_tokens()
+    assert tokens.get("rubrik") == "rubrik" and tokens.get("okta") == "okta"
+
+
+# ------------------------------------------------------------------ click guard
+@pytest.mark.parametrize("info", [
+    {"tag": "button", "type": "submit", "text": "Next"},
+    {"tag": "input", "type": "submit", "text": ""},
+    {"tag": "button", "type": "button", "text": "Submit application"},
+    {"tag": "a", "type": "", "text": "Apply now"},
+    {"tag": "div", "type": "", "text": "Send"},
+])
+def test_guard_refuses_submit_like_clicks(info):
+    with pytest.raises(aa.SubmitBlocked):
+        aa.check_click_allowed(info, "other")
+    with pytest.raises(aa.SubmitBlocked):
+        aa.check_click_allowed(info, "submit")  # the submit path is closed without --submit
+
+
+def test_guard_allows_safe_clicks_and_explicit_submit():
+    assert aa.check_click_allowed({"tag": "li", "type": "", "text": "Bengaluru, Karnataka, India", "role": "option"}, "pick_option")
+    assert aa.check_click_allowed({"tag": "input", "type": "radio", "text": "Yes"}, "toggle")
+    assert aa.check_click_allowed({"tag": "a", "type": "", "text": "Apply now", "in_form": False}, "open_application")
+    with pytest.raises(aa.SubmitBlocked):  # an "Apply" inside a form is the final button, not the entry link
+        aa.check_click_allowed({"tag": "button", "type": "button", "text": "Apply", "in_form": True}, "open_application")
+    with pytest.raises(aa.SubmitBlocked):
+        aa.check_click_allowed({"tag": "button", "type": "submit", "text": "Apply"}, "open_application")
+    with pytest.raises(aa.SubmitBlocked):
+        aa.check_click_allowed({"tag": "button", "type": "button", "text": "Next"}, "toggle")
+    assert aa.check_click_allowed({"tag": "button", "type": "submit", "text": "Submit application"}, "submit", submit_enabled=True)
+
+
+class _Loc:
+    def __init__(self, info):
+        self.info, self.clicked, self.checked = info, 0, 0
+
+    def evaluate(self, js):
+        return self.info
+
+    def click(self, **kw):
+        self.clicked += 1
+
+    def check(self, **kw):
+        self.checked += 1
+
+
+def test_safe_click_never_reaches_click_on_submit():
+    loc = _Loc({"tag": "button", "type": "submit", "text": "Submit"})
+    with pytest.raises(aa.SubmitBlocked):
+        aa.safe_click(loc, "pick_option")
+    assert loc.clicked == 0
+    radio = _Loc({"tag": "input", "type": "radio", "text": "Yes"})
+    aa.safe_click(radio, "toggle")
+    assert radio.checked == 1 and radio.clicked == 0
+
+
+def test_only_safe_click_calls_click_or_check():
+    src = (ROOT / "tools" / "apply_assist" / "assist.py").read_text(encoding="utf-8")
+    body = src.split("def safe_click(", 1)[1].split("\n\n\n", 1)[0]
+    outside = src.replace(body, "")
+    assert not re.search(r"\.(click|check|dblclick|tap)\(", outside)
+    assert not re.search(r"press\([\"']Enter", src)
+    for banned in ("webdriver", "stealth", "navigator.plugins", "solve_captcha"):
+        assert banned not in src.lower().replace("no stealth", "")
+
+
+# ------------------------------------------------------------------ field planning
+def form():
+    return [
+        fld(1, "First Name *", required=True),
+        fld(2, "Last Name *", required=True),
+        fld(3, "Email *", type="email", required=True),
+        fld(4, "Phone *", type="tel", required=True),
+        fld(5, "LinkedIn Profile"),
+        fld(6, "Resume/CV *", type="file", required=True),
+        fld(7, "What is your favourite colour? *", required=True),
+        fld(8, "School", value="Already typed"),
+        fld(9, "Degree", type="select", options=["Select...", "Bachelor of Technology", "Master's"]),
+        fld(10, "Cover Letter", type="textarea"),
+        fld(11, "Are you legally authorized to work in India? *", type="radio", name="auth", optlabel="Yes"),
+        fld(12, "Are you legally authorized to work in India? *", type="radio", name="auth", optlabel="No"),
+        fld(13, "Are you authorized to work in the United States? *", type="radio", name="us", optlabel="Yes"),
+        fld(14, "Are you authorized to work in the United States? *", type="radio", name="us", optlabel="No"),
+        fld(15, "I agree to the privacy policy", type="checkbox", name="gdpr", optlabel="I agree", required=True),
+    ]
+
+
+def test_plan_fills_known_and_leaves_unknown_orange():
+    answers = {"work_authorized_india": True, "accept_privacy_notice": "Yes"}
+    plan = aa.plan_fields(form(), ctx(answers, pack={"cover_note": "Dear team..."}))
+    got = {a.f["aid"]: (a.kind, a.value) for a in plan.actions}
+    assert got["1"] == ("text", "Nandam Venkata Sai") and got["2"] == ("text", "Raghava")
+    assert got["3"] == ("text", "sairaghava1318@gmail.com")
+    assert got["5"] == ("text", "https://linkedin.com/in/sai")
+    assert got["6"][0] == "file"
+    assert got["9"] == ("select", 1)
+    assert got["10"] == ("text", "Dear team...")
+    assert got["11"] == ("toggle", True)          # India work authorisation from answers.yaml
+    assert got["15"] == ("toggle", True)          # consent only because Sai opted in
+    assert "8" not in got                         # never overwrite
+    todo = {t.label for t in plan.todo}
+    assert "Phone *" in todo                      # phone only ever comes from answers.yaml, not the profile
+    assert "What is your favourite colour? *" in todo
+    assert "Are you authorized to work in the United States? *" in todo  # never guess for another country
+
+
+def test_preferred_name_is_never_guessed():
+    fields = [fld(1, "Preferred First Name")]
+    assert aa.plan_fields(fields, ctx({})).actions == []
+    assert aa.plan_fields(fields, ctx({"preferred_name": "Sai"})).actions[0].value == "Sai"
+
+
+def test_plan_phone_from_answers_and_no_consent_without_opt_in():
+    plan = aa.plan_fields(form(), ctx({"phone": "+91 90000 11111"}))
+    got = {a.f["aid"]: a.value for a in plan.actions}
+    assert got["4"] == "+91 90000 11111"
+    assert "15" not in got and any(t.label.startswith("I agree") for t in plan.todo)
+
+
+def test_required_detection_and_missing():
+    fields = [fld(1, "Name *"), fld(2, "Notes"), fld(3, "City", required=True, value="Pune"),
+              fld(4, "Pick", type="select", required=True, options=["Select...", "A"]),
+              fld(5, "Q? *", type="radio", name="q", optlabel="Yes"), fld(6, "Q? *", type="radio", name="q", optlabel="No"),
+              fld(7, "CV", type="file", required=True, files=1), fld(8, "Combo", role="combobox", required=True)]
+    assert aa.is_required(fields[0]) and not aa.is_required(fields[1])
+    assert aa.missing_required(fields) == ["Name *", "Pick", "Combo", "Q? *"]
+    fields[4]["checked"] = True
+    assert "Q? *" not in aa.missing_required(fields)
+
+
+def test_pick_form_fields_ignores_site_search_box():
+    fields = [fld(1, "Search jobs", in_form=False)] + [fld(i, f"F{i}") for i in range(2, 6)]
+    assert [f["aid"] for f in aa.pick_form_fields(fields)] == ["2", "3", "4", "5"]
+
+
+# ------------------------------------------------------------------ answers matching
+def test_option_match_rules():
+    assert aa.option_match(["Select...", "Yes", "No"], "Yes") == 1
+    assert aa.option_match(["None", "No"], "No") == 1
+    assert aa.option_match(["Yes, I am authorized", "No, I am not"], "Yes") == 0
+    assert aa.option_match(["Bachelor's", "Master's"], "B.Tech, Computer Science and Engineering") is None
+    assert aa.option_match(["Male", "Female", "Decline to self-identify"], aa.choice_targets("Prefer not to say")) == 2
+    assert aa.option_match(["Yes, I am authorized"], "Yes", strict=True) is None
+
+
+def test_custom_and_question_answers_win_over_learned():
+    learned = aa.QuestionBank({"how many years of python experience do you have":
+                               {"answer": "1", "learned_at": "2026-10-01T00:00:00Z"}})
+    answers = {"custom": [{"match": "hackerrank", "answer": "https://hackerrank.com/sai"}],
+               "questions": {"how many years of python experience do you have": {"answer": "3"}}}
+    plan = aa.plan_fields([fld(1, "HackerRank profile"), fld(2, "How many years of Python experience do you have?")],
+                          ctx(answers, learned=learned))
+    assert [a.value for a in plan.actions] == ["https://hackerrank.com/sai", "3"]
+    plan = aa.plan_fields([fld(2, "How many years of Python experience do you have?")], ctx({}, learned=learned))
+    assert plan.actions[0].value == "1" and plan.actions[0].source == "learned"
+
+
+def test_build_values_answers_win_and_start_date_by_role_type():
+    answers = {"current_city": "Rourkela", "college": "NIT Rourkela", "start_date_fte": "July 2027",
+               "start_date_internship": "January 2027", "willing_to_relocate": True}
+    v = aa.build_values(PROFILE, answers, "fte")
+    assert v["college"] == "NIT Rourkela" and v["current_city"] == "Rourkela" and v["start_date"] == "July 2027"
+    assert v["willing_to_relocate"] == "Yes" and "phone" not in v
+    assert aa.build_values(PROFILE, answers, "intern_6m")["start_date"] == "January 2027"
+    assert aa.build_values(PROFILE, {}, "fte")["current_city"] == "Bengaluru"
+
+
+# ------------------------------------------------------------------ confirmation
+def test_detect_confirmation():
+    assert aa.detect_confirmation("Thank you for applying! Your application ID: APP-12345", "u", "u") == (True, "APP-12345")
+    assert aa.detect_confirmation("We have received your application.", "u", "u")[0]
+    assert aa.detect_confirmation("Your application has been submitted", "u", "u")[0]
+    assert aa.detect_confirmation("", "https://jobs.lever.co/x/1/thanks", "https://jobs.lever.co/x/1/apply")[0]
+    assert not aa.detect_confirmation("Apply for this job", "https://a/b/apply?step=2", "https://a/b/apply")[0]
+    assert not aa.detect_confirmation("Thank you for your interest in Acme. Apply below.", "u", "u")[0]
+
+
+# ------------------------------------------------------------------ fakes for the runner
+class FakeDriver:
+    def __init__(self, fields, submit_enabled=False, confirm_on_submit=True, captcha=False, sai_fills=None,
+                 continue_result="continue"):
+        self.fields = copy.deepcopy(fields)
+        self.submit_enabled, self.confirm_on_submit, self.captcha = submit_enabled, confirm_on_submit, captcha
+        self.sai_fills, self.continue_result = sai_fills or {}, continue_result
+        self.text, self.submits, self.resets, self.shown, self.overlays = "Apply for this job", 0, 0, 0, []
+
+    def open(self, job):
+        self.fields_now = copy.deepcopy(self.fields)
+        self.text = "Apply for this job"
+        return "fake"
+
+    def url(self):
+        return "https://example.com/apply"
+
+    def scan(self):
+        return copy.deepcopy(self.fields_now)
+
+    def _set(self, aid, **kw):
+        for f in self.fields_now:
+            if f["aid"] == aid:
+                f.update(kw)
+
+    def apply(self, actions):
+        for a in actions:
+            if a.kind == "toggle":
+                self._set(a.f["aid"], checked=True)
+            elif a.kind == "file":
+                self._set(a.f["aid"], files=1)
+            elif a.kind == "select":
+                self._set(a.f["aid"], value=a.f["options"][a.value])
+            else:
+                self._set(a.f["aid"], value=a.value)
+        return list(actions), []
+
+    def mark(self, items):
+        pass
+
+    def state(self):
+        return {"url": self.url(), "captcha": self.captcha, "login": False, "errors": 0, "text": self.text}
+
+    def confirmation(self):
+        return aa.detect_confirmation(self.text, self.url(), self.url())
+
+    def overlay(self, title, items, message, cont=False):
+        self.overlays.append((title, list(items), cont))
+
+    def submit(self):
+        if not self.submit_enabled:
+            raise aa.SubmitBlocked("no")
+        self.submits += 1
+        if self.confirm_on_submit:
+            self.text = "Thank you for applying! Application ID: AB12345"
+        return True
+
+    def wait_confirmation(self, timeout_s=30):
+        return self.confirmation()
+
+    def wait_continue(self, timeout_s, tracked=()):
+        for aid, kw in self.sai_fills.items():
+            self._set(aid, **kw)
+        self.captcha = False
+        return self.continue_result, None, aa.read_answers(self.scan(), tracked)
+
+    def show(self):
+        self.shown += 1
+
+    def hide(self):
+        pass
+
+    def reset(self):
+        self.resets += 1
+
+
+class FakeApi:
+    def __init__(self, choices=("later",)):
+        self.confirmed, self.handoffs, self.choices, self.polls = [], [], list(choices), 0
+
+    def confirm_applied(self, job_id, notes, ref=None):
+        self.confirmed.append((job_id, notes, ref))
+        return True, "ok"
+
+    def create_handoff(self, job, reason, missing, url=None):
+        self.handoffs.append({"job_id": job["id"], "reason": reason, "missing": list(missing)})
+        return 7
+
+    def handoff_choice(self, hid):
+        self.polls += 1
+        return self.choices.pop(0) if self.choices else "pending"
+
+
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def runner(driver, api=None, answers=None, **kw):
+    answers = answers if answers is not None else {"phone": "+91 90000 11111"}
+    clock = Clock()
+    defaults = dict(submit=True, pending_path=None, learned_path=None, harvest_first=False,
+                    sleep=kw.pop("sleep", clock.sleep), clock=clock)
+    defaults.update(kw)
+    r = aa.Runner(api or FakeApi(), driver, lambda j: ctx(answers, company=j["company"]), **defaults)
+    r.clock_obj = clock
+    return r
+
+
+SIMPLE = [fld(1, "Full name *", required=True), fld(2, "Email *", type="email", required=True),
+          fld(3, "Phone *", type="tel", required=True), fld(4, "Resume *", type="file", required=True)]
+UNKNOWN_Q = SIMPLE + [fld(5, "Why do you like databases? *", type="select", required=True,
+                          options=["Select...", "Speed", "Safety"])]
+
+
+def test_auto_submits_only_complete_forms_and_confirms_after_confirmation_page():
+    d = FakeDriver(SIMPLE, submit_enabled=True)
+    api = FakeApi()
+    out = runner(d, api).run_job(job(1))
+    assert out["outcome"] == "submitted" and out["ref"] == "AB12345"
+    assert d.submits == 1
+    assert api.confirmed == [(1, "Submitted by auto-apply (confirmed page)", "AB12345")]
+    assert api.handoffs == []
+
+
+def test_auto_no_confirmation_means_no_confirm_applied():
+    d = FakeDriver(SIMPLE, submit_enabled=True, confirm_on_submit=False)
+    api = FakeApi()
+    out = runner(d, api).run_job(job(1))
+    assert out["outcome"] == "unconfirmed" and api.confirmed == []
+
+
+def test_auto_missing_required_hands_off_and_later_never_submits(tmp_path):
+    d = FakeDriver(UNKNOWN_Q, submit_enabled=True)
+    api = FakeApi(choices=["pending", "later"])
+    r = runner(d, api, log=aa.RunLog(tmp_path, today="2026-10-16"))
+    out = r.run_job(job(1))
+    assert out["outcome"] == "needs-you" and d.submits == 0 and api.confirmed == []
+    assert api.handoffs[0]["missing"] == ["Why do you like databases? *"]
+    assert api.polls == 2 and r.clock_obj.t == 15  # polled every 15 s
+    needs = json.loads((tmp_path / "2026-10-16" / "needs_you.json").read_text())
+    assert needs[0]["why"] == "you chose Later" and d.resets >= 1
+
+
+def test_handoff_timeout_without_answer_moves_on():
+    d = FakeDriver(UNKNOWN_Q, submit_enabled=True)
+    api = FakeApi(choices=[])  # always pending
+    r = runner(d, api, ask_timeout_s=600, poll_s=15)
+    out = r.run_job(job(1))
+    assert out["outcome"] == "needs-you" and out["why"] == "no answer to the hand-off email"
+    assert d.shown == 0 and d.submits == 0 and r.clock_obj.t >= 600
+
+
+def test_handoff_now_then_continue_submits_and_learns(tmp_path):
+    d = FakeDriver(UNKNOWN_Q, submit_enabled=True, sai_fills={"5": {"value": "Safety"}})
+    api = FakeApi(choices=["now"])
+    learned = aa.QuestionBank()
+    r = runner(d, api, learned=learned, learned_path=tmp_path / "learned.yaml")
+    out = r.run_job(job(1, company="Neon"))
+    assert d.shown == 1 and d.overlays[-1][2] is True  # overlay with the Continue button
+    assert out["outcome"] == "submitted" and d.submits == 1
+    key, e = learned.find("Why do you like databases?")
+    assert e["answer"] == "Safety" and e["options_seen"] == ["Select...", "Speed", "Safety"] and e["company"] == "Neon"
+    assert r.learned_today == [{"question": "Why do you like databases? *", "answer": "Safety"}]
+    assert (tmp_path / "learned.yaml").exists()
+
+
+def test_handoff_now_but_sai_submits_himself_marks_applied_by_sai():
+    d = FakeDriver(UNKNOWN_Q, submit_enabled=True, continue_result="confirmed")
+    api = FakeApi(choices=["now"])
+    out = runner(d, api).run_job(job(1))
+    assert out["outcome"] == "submitted" and out["by_sai"] and d.submits == 0
+    assert "Sai" in api.confirmed[0][1]
+
+
+def test_captcha_is_handed_off_not_bypassed():
+    d = FakeDriver(SIMPLE, submit_enabled=True, captcha=True)
+    api = FakeApi(choices=["later"])
+    out = runner(d, api).run_job(job(1))
+    assert out["outcome"] == "needs-you" and "CAPTCHA" in api.handoffs[0]["reason"] and d.submits == 0
+
+
+def test_pending_questions_wait_without_handoff_email():
+    d = FakeDriver(UNKNOWN_Q, submit_enabled=True)
+    api = FakeApi()
+    pending = {"why do you like databases": {"question": "Why do you like databases?", "jobs": [], "blocks": 1}}
+    out = runner(d, api, pending=pending).run_job(job(1))
+    assert out["outcome"] == "waiting-answers" and api.handoffs == [] and d.submits == 0
+
+
+def test_dry_run_never_submits():
+    d = FakeDriver(SIMPLE, submit_enabled=False)
+    r = runner(d, submit=False)
+    out = r.run_job(job(1))
+    assert out["outcome"] == "ready" and d.submits == 0
+    d2 = FakeDriver(UNKNOWN_Q, submit_enabled=False)
+    assert runner(d2, submit=False).run_job(job(2))["outcome"] == "needs-you"
+
+
+def test_pacing_and_limits():
+    sleeps = []
+    d = FakeDriver(SIMPLE, submit_enabled=True)
+    r = runner(d, max_jobs=3, per_company=1, sleep=sleeps.append, rng=__import__("random").Random(1))
+    jobs = [job(1, company="A"), job(2, company="A"), job(3, company="B"), job(4, company="C"), job(5, company="D")]
+    results = r.run(jobs)
+    outcomes = [(x["job_id"], x["outcome"]) for x in results]
+    assert outcomes == [(2, "skipped"), (1, "submitted"), (3, "submitted"), (4, "submitted")]
+    assert len(sleeps) == 2 and all(90 <= s <= 240 for s in sleeps)  # between submissions, not after the last
+
+
+# ------------------------------------------------------------------ learning
+def test_learning_never_stores_sensitive_or_huge_values():
+    qb = aa.QuestionBank()
+    assert qb.learn("Password", "hunter2", "password") is None
+    assert qb.learn("Enter the OTP sent to you", "123456", "text") is None
+    assert qb.learn("Verification code", "999", "text") is None
+    assert qb.learn("Captcha", "abcd", "text") is None
+    assert qb.learn("Credit card number", "4111", "text") is None
+    assert qb.learn("Upload transcript", "file.pdf", "file") is None
+    assert qb.learn("Tell us about yourself", "x" * 1001, "textarea") is None
+    assert qb.learn("Tell us about yourself", "I build things.", "textarea") == "tell us about yourself"
+    assert list(qb.entries) == ["tell us about yourself"]
+
+
+def test_read_answers_from_mock_form():
+    fields = [fld(1, "Years of Java? *", value="2"), fld(2, "Shift? *", type="radio", name="s", optlabel="Day", checked=True),
+              fld(3, "Shift? *", type="radio", name="s", optlabel="Night"), fld(4, "One-time password", value="1234")]
+    tracked = [{"key": aa.norm_question("Years of Java? *"), "question": "Years of Java? *", "type": "text", "options": []},
+               {"key": aa.norm_question("Shift? *"), "question": "Shift? *", "type": "radio", "options": ["Day", "Night"], "name": "s"},
+               {"key": aa.norm_question("One-time password"), "question": "One-time password", "type": "text", "options": []}]
+    got = aa.read_answers(fields, tracked)
+    assert {k: v["answer"] for k, v in got.items()} == {"years of java": "2", "shift": "Day"}
+
+
+def test_fuzzy_threshold_and_recency():
+    qb = aa.QuestionBank({
+        "how many years of professional experience do you have": {"answer": "0", "learned_at": "2026-10-01T00:00:00Z"},
+    })
+    assert qb.find("How many years of professional experience do you have?")[1]["answer"] == "0"
+    assert qb.find("How many years of professional experience do you have in total?")[1] is not None  # 8/9 tokens
+    assert qb.find("How many years of experience?")[1] is None  # overlap below 0.8
+    qb.entries["years of professional experience do you have how many"] = {"answer": "1", "learned_at": "2026-10-10T00:00:00Z"}
+    assert qb.find("How many years of professional experience do you have in total?")[1]["answer"] == "1"  # most recent
+
+
+def test_company_specific_answers_only_reused_for_that_company():
+    qb = aa.QuestionBank()
+    qb.learn("Why do you want to join Rubrik?", "Because of their backup tech.", "textarea", company="Rubrik")
+    e = qb.entries[aa.norm_question("Why do you want to join Rubrik?")]
+    assert e["company_specific"] is True
+    assert qb.find("Why do you want to join Rubrik?", company="Rubrik")[1] is not None
+    assert qb.find("Why do you want to join Rubrik?", company="Okta")[1] is None
+
+
+# ------------------------------------------------------------------ setup
+def test_setup_prefill_and_rerun_keeps_values(tmp_path):
+    path = tmp_path / "answers.yaml"
+    d = aa.setup_defaults({})
+    assert d["full_name"] == "Nandam Venkata Sai Raghava" and d["grad_year"] == 2027 and d["cgpa"] == 8.99
+    assert d["how_did_you_hear"] == "Company careers website" and d["diversity"] == "Prefer not to say"
+    assert d["phone"] == ""
+    feed = iter(["", "", "", "", "+91 90000 11111"] + [""] * 6 + ["maybe", "n"] + [""] * 100)
+    res = aa.run_setup(path, input_fn=lambda _p: next(feed), out=lambda *_: None)
+    assert res["phone"] == "+91 90000 11111" and res["active_backlogs"] == "No"
+    assert res["email"] == "sairaghava1318@gmail.com" and res["custom"] == [] and res["questions"] == {}
+    # re-run: Enter keeps everything, "-" clears one field
+    keys = [k for k, _p, _k in aa.SETUP_QUESTIONS]
+    feed2 = iter(["-" if k == "class_10" else "" for k in keys])
+    res2 = aa.run_setup(path, input_fn=lambda _p: next(feed2), out=lambda *_: None)
+    assert res2["phone"] == "+91 90000 11111" and res2["class_10"] == "" and aa.load_yaml(path)["active_backlogs"] == "No"
+
+
+def test_setup_answer_rules():
+    assert aa.setup_answer("text", "a", "") == ("a", True)
+    assert aa.setup_answer("text", "a", "-") == ("", True)
+    assert aa.setup_answer("yn", "", "Y") == ("Yes", True)
+    assert aa.setup_answer("yn", "No", "what") == ("No", False)
+
+
+def test_known_skills_match_resume_facts():
+    from api.domain.job_pack import RESUME_FACTS
+    assert aa.KNOWN["skills"] == ", ".join(RESUME_FACTS["skills"])
+
+
+# ------------------------------------------------------------------ pending questions / harvest
+def _row(i, company, missing, blockers=()):
+    return {"job": job(i, company=company), "blockers": list(blockers),
+            "missing": [{"question": q, "type": t, "options": o} for q, t, o in missing]}
+
+
+def test_collect_pending_dedupes_and_counts():
+    rows = [
+        _row(1, "A", [("Notice period? *", "text", []), ("Gender", "select", ["Select...", "Male", "Female"])]),
+        _row(2, "B", [("notice period", "text", []), ("Why do you want to join B? *", "textarea", [])]),
+        _row(3, "C", [("Gender *", "select", ["Male", "Female", "Other"]), ("Password", "text", [])], blockers=["CAPTCHA on the page"]),
+    ]
+    p = aa.collect_pending(rows)
+    assert list(p)[:2] == ["notice period", "gender"]
+    assert p["notice period"]["blocks"] == 2 and p["gender"]["blocks"] == 2
+    assert p["gender"]["options"] == ["Male", "Female", "Other"]
+    spec = p["b::why do you want to join b"]
+    assert spec["company_specific"] and spec["company"] == "B" and "pack" in spec["note"]
+    assert not any("password" in k for k in p)
+    assert [j["id"] for j in aa.unblockable_jobs(rows)] == [1, 2]
+    subject, body = aa.compose_pending_email(p, 2)
+    assert subject == "Answer these once: 3 questions (unblocks 2 applications)"
+    assert "--setup --pending" in body and "Options: Male | Female | Other" in body
+
+
+def test_answer_pending_merges_into_answers():
+    p = aa.collect_pending([_row(1, "A", [("Gender", "select", ["Male", "Female"]), ("Notice period", "text", [])])])
+    feed = iter(["2", ""])
+    pending, answers = aa.answer_pending(p, {"phone": "x"}, input_fn=lambda _p: next(feed), out=lambda *_: None)
+    assert list(pending) == ["notice period"]
+    assert answers["questions"]["gender"]["answer"] == "Female" and answers["phone"] == "x"
+    plan = aa.plan_fields([fld(1, "Gender *", type="select", required=True, options=["Select...", "Male", "Female"])], ctx(answers))
+    assert plan.actions[0].value == 2
+
+
+def test_harvest_never_submits_and_emails_once():
+    d = FakeDriver(UNKNOWN_Q, submit_enabled=False)
+    mails = []
+    r = runner(d, submit=False, emailer=lambda s, b: mails.append(s) or True)
+    pending, rows = r.harvest([job(1, company="A"), job(2, company="B")], record=True)
+    assert d.submits == 0 and len(rows) == 2
+    assert pending["why do you like databases"]["blocks"] == 2
+    assert mails == ["Answer these once: 1 questions (unblocks 2 applications)"]
+    r.harvest([job(3, company="C")])
+    assert len(mails) == 1  # nothing new: no second email
+    assert [x["outcome"] for x in r.results] == ["needs-you", "needs-you"]
+
+
+def test_submit_run_harvests_first_then_waits_for_answers():
+    d = FakeDriver(UNKNOWN_Q, submit_enabled=True)
+    api, mails = FakeApi(), []
+    r = runner(d, api, harvest_first=True, emailer=lambda s, b: mails.append(s) or True)
+    results = r.run([job(1, company="A")])
+    assert [x["outcome"] for x in results] == ["waiting-answers"]
+    assert api.handoffs == [] and d.submits == 0 and mails[0].startswith("Answer these once")
+
+
+# ------------------------------------------------------------------ summary email + runner report
+RESULTS = [
+    {"job_id": 1, "company": "A", "role": "SDE", "url": "u1", "outcome": "submitted", "ref": "R1"},
+    {"job_id": 2, "company": "B", "role": "SDE", "url": "u2", "outcome": "needs-you", "reason": "CAPTCHA on the page", "missing": []},
+    {"job_id": 3, "company": "C", "role": "SDE", "url": "u3", "outcome": "unconfirmed"},
+    {"job_id": 4, "company": "D", "role": "SDE", "url": "u4", "outcome": "failed", "reason": "timeout"},
+    {"job_id": 5, "company": "E", "role": "SDE", "url": "u5", "outcome": "waiting-answers", "reason": "pending", "missing": ["Gender"]},
+]
+LEARNED = [{"question": "Phone number", "answer": "+91 1"}, {"question": "Years of Java?", "answer": "2"},
+           {"question": "Expected CTC", "answer": "20 LPA"}, {"question": "Current address", "answer": "x"}]
+
+
+def test_summary_email():
+    subject, body = aa.compose_summary(RESULTS, LEARNED, "submit")
+    assert subject == "Apply runner: 1 submitted, 2 need you"
+    for part in ("Submitted (confirmed) (1)", "A - SDE: u1 (ref R1)", "Needs you (2)", "CAPTCHA on the page",
+                 "Submitted but no confirmation page - check these (1)", "Skipped / failed (1)", "D - SDE: timeout",
+                 "Learned from you today", "Years of Java?: 2", "--setup --pending"):
+        assert part in body
+    sent = []
+    emailer = lambda s, b: sent.append((s, b)) or True  # noqa: E731  (mock EmailClient wrapper)
+    emailer(subject, body)
+    assert sent[0][0].startswith("Apply runner:")
+
+
+def test_runner_report_redacts_personal_answers():
+    rep = aa.build_report(RESULTS, LEARNED, "submit", "s", "f")
+    assert rep["submitted"] == [{"job_id": 1, "company": "A", "role": "SDE", "url": "u1", "ref": "R1"}]
+    assert [x["job_id"] for x in rep["needs_you"]] == [2, 5] and rep["needs_you"][1]["missing"] == ["Gender"]
+    assert rep["unconfirmed"][0]["job_id"] == 3 and rep["failed"] == [{"company": "D", "role": "SDE", "reason": "timeout"}]
+    assert rep["learned"] == [{"question": "Phone number"}, {"question": "Years of Java?", "answer": "2"},
+                              {"question": "Expected CTC"}, {"question": "Current address"}]
+    assert set(rep) == {"started_at", "finished_at", "mode", "submitted", "needs_you", "unconfirmed", "failed", "learned"}
+
+
+def test_make_emailer_uses_email_client(monkeypatch):
+    sent = []
+
+    class FakeClient:
+        def __init__(self, sender, password):
+            sent.append(("init", sender))
+
+        def send_email(self, receiver, subject, body, html=None):
+            sent.append((receiver, subject))
+            return True
+
+    import api.core.clients as clients
+    monkeypatch.setattr(clients, "EmailClient", FakeClient)
+    monkeypatch.setenv("SENDER_EMAIL", "bot@example.com")
+    monkeypatch.setenv("SENDER_PASSWORD", "pw")
+    monkeypatch.setenv("RECEIVER_EMAIL", "sai@example.com")
+    assert aa.make_emailer()("Apply runner: 0 submitted, 0 need you", "body") is True
+    assert sent == [("init", "bot@example.com"), ("sai@example.com", "Apply runner: 0 submitted, 0 need you")]
+
+
+# ------------------------------------------------------------------ API client (mock HTTP)
+class _Resp:
+    def __init__(self, status=200, data=None):
+        self.status_code, self._data = status, data or {}
+        self.ok = 200 <= status < 300
+        self.headers = {"content-type": "application/json"}
+        self.text = json.dumps(self._data)
+
+    def json(self):
+        return self._data
+
+    def raise_for_status(self):
+        if not self.ok:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+class _Session:
+    def __init__(self, responses):
+        self.headers, self.calls, self.responses = {}, [], list(responses)
+
+    def get(self, url, params=None, timeout=None):
+        self.calls.append(("GET", url, params))
+        return self.responses.pop(0)
+
+    def post(self, url, json=None, timeout=None):
+        self.calls.append(("POST", url, json))
+        return self.responses.pop(0)
+
+
+def test_api_handoff_confirm_and_report(capsys):
+    s = _Session([_Resp(200, {"data": {"id": 9, "choice": "pending"}}), _Resp(200, {"data": {"choice": "now"}}),
+                  _Resp(200, {"message": "ok"}), _Resp(404), _Resp(200)])
+    api = aa.Api("http://localhost:5050", "k", session=s)
+    assert s.headers["X-App-Key"] == "k"
+    assert api.create_handoff(job(3), "CAPTCHA", ["x"]) == 9
+    assert s.calls[0][1] == "http://localhost:5050/api/jobs/handoff" and s.calls[0][2]["missing"] == ["x"]
+    assert api.handoff_choice(9) == "now"
+    assert api.confirm_applied(3, "Submitted by Sai via apply assist")[0]
+    assert s.calls[2][1].endswith("/api/jobs/confirm-applied") and s.calls[2][2] == {"job_id": 3, "notes": "Submitted by Sai via apply assist"}
+    assert api.runner_report({"mode": "dry-run"}) is False
+    assert "runner-report endpoint not live yet" in capsys.readouterr().out
+    assert api.runner_report({"mode": "dry-run"}) is True
+
+
+def test_api_base_and_key(monkeypatch):
+    monkeypatch.delenv("APPLY_API_BASE", raising=False)
+    assert aa.api_base() == "http://localhost:5050"
+    monkeypatch.setenv("APPLY_API_BASE", "http://127.0.0.1:9000/")
+    assert aa.api_base() == "http://127.0.0.1:9000"
+    assert aa.api_base("http://x") == "http://x"
+    assert aa.app_key("abc") == __import__("hashlib").sha256(b"daily:abc").hexdigest()
+
+
+def test_run_without_answers_file_says_setup_first(tmp_path):
+    with pytest.raises(SystemExit) as e:
+        aa.main(["--next", "--answers", str(tmp_path / "missing.yaml")])
+    assert "Run --setup first" in str(e.value)

@@ -26,13 +26,20 @@ LOG = ROOT / "tools" / "local_server" / "server.log"
 
 
 def _load_env():
+    import socket
     from dotenv import dotenv_values, load_dotenv
     load_dotenv(ROOT / ".env")
     prod = dotenv_values(ROOT / ".env.production.local") if (ROOT / ".env.production.local").exists() else {}
     for key in ("POSTGRES_URL", "DATABASE_URL"):
         val = (prod.get(key) or "").strip()
         if val.startswith("postgres") and not os.getenv(key):
-            os.environ[key] = val
+            try:
+                host = val.split("@")[-1].split("/")[0].split(":")[0]
+                s = socket.create_connection((host, 5432), timeout=2.0)
+                s.close()
+                os.environ[key] = val
+            except Exception:
+                pass  # Network blocks external 5432 -> fallback cleanly to SQLite
     os.environ.setdefault("APP_URL", f"http://localhost:{PORT}")
 
 

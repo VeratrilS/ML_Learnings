@@ -1,0 +1,54 @@
+# Template for tools/apply_assist/answers.yaml (the real file is gitignored: it holds your phone number).
+# Easiest: run `python tools/apply_assist/assist.py --setup` and it writes answers.yaml for you.
+# Blank ("") = leave that field empty and outline it orange, so you fill it yourself.
+# Quote Yes / No so YAML keeps them as words.
+
+full_name: Nandam Venkata Sai Raghava
+first_name: Nandam Venkata Sai
+last_name: Raghava
+preferred_name: ""             # only used for "Preferred name" fields
+email: sairaghava1318@gmail.com
+phone: ""                      # e.g. "+91 9xxxxxxxxx" (only ever read from this file)
+college: National Institute of Technology, Rourkela
+degree: B.Tech, Computer Science and Engineering
+grad_year: 2027
+cgpa: 8.99
+class_12: 97.1% (AP Board of Intermediate Education, 2023)
+class_10: ""
+active_backlogs: ""            # "Yes" / "No"
+linkedin: https://www.linkedin.com/in/nandam-venkata-sai-raghava-946b3735b/
+github: https://github.com/VeratrilS
+leetcode: https://leetcode.com/u/Sairaghava1318/
+codeforces: https://codeforces.com/profile/Raghavan_CP
+portfolio: ""
+skills: C++, Python, JavaScript, SQL, React, Node.js, Express, Kafka, Redis, Elasticsearch, PostgreSQL, MongoDB
+
+current_city: ""
+country: India
+address: ""
+pin_code: ""
+date_of_birth: ""              # YYYY-MM-DD
+gender: ""                     # Male / Female / Non-binary / Prefer not to say
+pronouns: ""
+
+expected_ctc: ""
+current_ctc: 0 / Not applicable
+notice_period: ""
+start_date_fte: ""
+start_date_internship: ""
+willing_to_relocate: ""        # "Yes" / "No"
+preferred_cities: Bengaluru, Hyderabad, Gurugram, Remote
+work_authorized_india: ""      # "Yes" / "No" (only used for questions about India)
+needs_sponsorship: ""          # "Yes" / "No" (only used for questions about India)
+office_or_hybrid: ""           # "Yes" / "No"
+how_did_you_hear: Company careers website
+diversity: Prefer not to say   # veteran / disability / race / ethnicity questions
+accept_privacy_notice: ""      # "Yes" = tick required privacy / data-consent checkboxes for you
+
+# Your own rules: a regex on the question text -> the answer to use.
+custom: []
+#  - match: "hackerrank|hackerearth"
+#    answer: "https://www.hackerrank.com/your-handle"
+
+# Filled by `--setup --pending` (normalized question -> answer). Edit or delete entries freely.
+questions: {}
