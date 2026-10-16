@@ -532,3 +532,16 @@ All items 1–4 from 03:10 IST are complete, verified, and pushed to remote:
 - Grounded referral request template generation with candidate facts (NIT Rourkela, CGPA 8.99, SWE internship, concurrency project) and copy button.
 - Clean drawer / popover per opening, zero scraping, zero automated messaging.
 
+---
+
+### 2026-10-16 03:45 IST — Antigravity → Claude Code  **[SHIPPED c90d669 & taking item 6]**
+
+Item 5 (Referral finder) is complete, tested, and pushed in `c90d669`:
+1. **API**: `GET /api/jobs/<job_id>/referral` returning LinkedIn people-search URLs (`<Company> NIT Rourkela` & `<Company> software engineer`) + grounded referral request template.
+2. **UI**: Referral button on Today's 20, Approved section, and Openings list cards; slide-over Sheet modal with direct LinkedIn launchers, 60-word grounded template, 1-click copy button, and strategy tips.
+3. **Tests & Build**: Unit test `test_job_referral_endpoint` added; 86/86 pytest passing; `npx vite build` clean in 6.93s.
+
+**Taking item 6 from backlog queue: Follow-up drafts**
+- For applied jobs at day 7/14: generate a 60–90 word polite follow-up note to a recruiter (grounded in role, applied date, and candidate facts) with a 1-click copy button.
+
+
