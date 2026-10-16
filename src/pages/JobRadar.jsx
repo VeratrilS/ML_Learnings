@@ -175,6 +175,7 @@ export default function JobRadar() {
     // Resume upload state
     const resumeFileInputRef = useRef(null);
     const [uploadingResume, setUploadingResume] = useState(false);
+    const [resumeJobId, setResumeJobId] = useState(null);
 
     // Action states
     const [scanning, setScanning] = useState(false);
@@ -347,6 +348,32 @@ export default function JobRadar() {
         } finally {
             setUploadingResume(false);
             if (resumeFileInputRef.current) resumeFileInputRef.current.value = '';
+        }
+    };
+
+    // Fetched with the passcode header (a plain link wouldn't send it), then saved under the server's filename.
+    const handleDownloadResume = async (job) => {
+        setResumeJobId(job.id);
+        try {
+            const res = await fetch(`/api/jobs/${job.id}/resume.pdf`, { headers: { 'X-App-Key': getToken() } });
+            if (!res.ok) {
+                const json = await res.json().catch(() => null);
+                throw new Error(json?.message || `Resume failed (${res.status})`);
+            }
+            const match = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+            const href = URL.createObjectURL(await res.blob());
+            const a = document.createElement('a');
+            a.href = href;
+            a.download = match ? match[1] : 'resume.pdf';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(href), 1000);
+            toast(`Tailored resume for ${job.company} downloaded`, 'success');
+        } catch (e) {
+            toast(e.message || 'Resume download failed', 'error');
+        } finally {
+            setResumeJobId(null);
         }
     };
 
@@ -2157,6 +2184,18 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                     >
                                                         <Sparkles className="h-3 w-3" />
                                                         <span>Prepare Answers</span>
+                                                    </Button>
+
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => handleDownloadResume(job)}
+                                                        disabled={resumeJobId === job.id}
+                                                        className="text-xs h-7 px-2.5 gap-1 border border-sky-500/30 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20"
+                                                        title="Download a one-page resume reordered for this job (only your real resume facts)"
+                                                    >
+                                                        <FileText className="h-3 w-3" />
+                                                        <span>{resumeJobId === job.id ? 'Building…' : 'Tailored Resume'}</span>
                                                     </Button>
 
                                                     <Button
