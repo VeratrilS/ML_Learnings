@@ -329,14 +329,18 @@ ${bullets}
                 seen.add(j.id);
             }
         }
-        const scoreRole = (r) => {
-            const title = (r || '').toLowerCase();
-            if (title.includes('fte') || title.includes('full time') || title.includes('graduate')) return 3;
-            if (title.includes('6-month') || title.includes('intern')) return 2;
+        const scoreRole = (j) => {
+            if (j.role_type === 'fte') return 4;
+            if (j.role_type === 'intern_6m') return 3;
+            if (j.role_type === 'intern') return 2;
+            const title = (j.role || '').toLowerCase();
+            if (title.includes('fte') || title.includes('full time') || title.includes('graduate')) return 4;
+            if (title.includes('6-month')) return 3;
+            if (title.includes('intern')) return 2;
             return 1;
         };
         return pool.sort((a, b) => {
-            const roleDiff = scoreRole(b.role) - scoreRole(a.role);
+            const roleDiff = scoreRole(b) - scoreRole(a);
             if (roleDiff !== 0) return roleDiff;
             const scoreA = Number(a.match_score || 0);
             const scoreB = Number(b.match_score || 0);
@@ -487,7 +491,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                     </h1>
                     <p className="text-sm text-subtle mt-1 max-w-2xl">
                         Scans 51 premier tech career portals hourly for Batch 2027 CSE openings.
-                        Generates tailored screening packets mimicking your NIT Rourkela projects, dispatches email alerts, and only records verified applications upon real portal submission.
+                        Generates grounded screening packets based on your verified NIT Rourkela projects, dispatches email alerts, and only records verified applications upon real portal submission.
                     </p>
                 </div>
 
@@ -555,7 +559,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             icon={Sparkles}
                             className="border-emerald-500/30 hover:border-emerald-500"
                         >
-                            ML Mimic Vector
+                            Skill Match Profile
                         </Button>
                         <Button
                             size="sm"
@@ -879,9 +883,35 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                             </div>
                                             <p className="text-xs text-muted font-medium mt-0.5 truncate">{job.role}</p>
                                             <div className="flex items-center gap-2 text-[11px] text-subtle mt-1 flex-wrap">
-                                                <span className="badge text-[10px] uppercase font-mono bg-surface border border-line">{job.source || 'Portal'}</span>
+                                                <span className="badge text-[10px] uppercase font-mono bg-surface border border-line">
+                                                    {job.board ? job.board.toUpperCase() : (job.source || 'Portal')}
+                                                </span>
+                                                {job.role_type === 'fte' && (
+                                                    <span className="badge text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                                        FTE
+                                                    </span>
+                                                )}
+                                                {job.role_type === 'intern_6m' && (
+                                                    <span className="badge text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                                        6-Mo Intern
+                                                    </span>
+                                                )}
+                                                {job.role_type === 'intern' && (
+                                                    <span className="badge text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                                        Intern
+                                                    </span>
+                                                )}
                                                 <span>·</span>
                                                 <span>{job.location || 'India'}</span>
+                                                {(job.posted || job.discovered_at) && (
+                                                    <>
+                                                        <span>·</span>
+                                                        <span className="text-[10px] font-mono text-muted flex items-center gap-1">
+                                                            <Clock className="h-2.5 w-2.5 text-subtle" />
+                                                            {job.posted ? `Posted ${job.posted}` : 'Discovered today'}
+                                                        </span>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
 

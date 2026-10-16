@@ -7,14 +7,13 @@ Features:
     * Batch: 2027 Graduates (B.Tech Computer Science & Engineering)
     * CTC: >= 20 LPA (including high-stipend summer internships with PPO)
     * Branch: CSE, IT, Circuit
-- Built-in ML Candidate Mimicry Model:
-    * Extracts vector weights from Sai Raghava's resume (NIT Rourkela, CGPA 8.99, LC 1709, Kafka/C++ projects).
-    * Calculates Shortlist Probability P(shortlist) and ATS match score.
-    * Synthesizes tailored answers for application screening questions mimicking Sai's authentic project experience.
-- High-Capacity Background Dispatcher:
-    * Handles 100-200 applications per day paced quietly across hourly scan intervals.
-    * "Stealth Background Mode": Operates silently without disrupting active coding, LeetCode or study sessions.
-    * Seamlessly updates the Placements Kanban pipeline and tracks application tokens.
+- Built-in Deterministic Skill Matcher:
+    * Compares verified skills from Sai Raghava's resume (NIT Rourkela, CGPA 8.99, LC 1709, Kafka/C++ projects).
+    * Calculates ATS match score based on transparent skill overlap.
+    * Integrates with verified application pack generator for authentic screening question answers.
+- Zero Auto-Submit Integrity:
+    * Sai reviews and submits on official career portals; system assists with autofill, answers, and tracking.
+    * Updates Placements board and follow-up schedules upon verified application submission.
 """
 from datetime import datetime, timedelta, timezone
 import html
@@ -179,23 +178,13 @@ def _ensure_tables(state):
     _cleanup_fake_seeds()
 
 
-# ---------------- ML Candidate Mimicry Engine ----------------
+# ---------------- Deterministic Skill Matcher ----------------
 
-class CandidateMimicMLModel:
+class SkillMatcher:
     """
-    Supervised scoring and generative mimicry engine modeled directly
-    on Nandam Venkata Sai Raghava's resume vectors.
+    Deterministic skill overlap matcher comparing job requirements
+    against Nandam Venkata Sai Raghava's verified resume skills.
     """
-
-    RESUME_VECTORS = {
-        "tier1_college": 1.0,         # NIT Rourkela
-        "high_cgpa": 0.899,           # 8.99 / 10.0
-        "cp_rating": 0.854,           # LeetCode 1709, CF Specialist 1425
-        "systems_mastery": 0.94,      # C++ TCP Cache Server, RESP, Mutexes, LRU/LFU
-        "distributed_systems": 0.96,  # 8 Microservices, Kafka 13 topics, Redis Lua, Saga
-        "fullstack_mern": 0.92,       # Maruti Suzuki MSIL Intern, 13 React pages, 120+ REST APIs
-        "llm_systems": 0.90,          # DataAnnotation.tech llama.cpp C++ inference, XTC sampling
-    }
 
     SKILL_SYNONYMS = {
         "c++": ["c++", "cpp", "systems", "concurrency", "multithreading", "tcp", "sockets", "memory"],
@@ -206,11 +195,11 @@ class CandidateMimicMLModel:
     }
 
     @classmethod
-    def compute_match(cls, job_skills, ctc_lpa, min_cgpa):
+    def compute_match(cls, job_skills, ctc_lpa=0.0, min_cgpa=0.0):
         """
-        Calculates ATS match score (0-100) and probability of shortlisting P(shortlist) in [0, 1].
+        Calculates ATS skill match score (0-100) based on verified skill overlap.
         """
-        job_skills_lower = [s.lower() for s in job_skills]
+        job_skills_lower = [s.lower() for s in (job_skills or [])]
         matched_categories = 0
         total_categories = len(cls.SKILL_SYNONYMS)
 
@@ -219,38 +208,13 @@ class CandidateMimicMLModel:
                 matched_categories += 1
 
         base_match = (matched_categories / max(1, total_categories)) * 70.0 + 25.0
-        # Boost for Sai's top CGPA (8.99) vs cutoff
-        cgpa_bonus = min(5.0, (8.99 - min_cgpa) * 4.0) if 8.99 >= min_cgpa else -20.0
-        score = min(99, max(82, int(base_match + cgpa_bonus)))
+        cgpa_bonus = min(5.0, (8.99 - (min_cgpa or 0.0)) * 4.0) if (min_cgpa and 8.99 >= min_cgpa) else 0.0
+        score = min(99, max(50, int(base_match + cgpa_bonus)))
+        return score, 0.0
 
-        # Sigmoid probability of shortlist
-        z = (score - 75.0) / 10.0 + (1.2 if 8.99 >= 8.5 else 0.5)
-        prob = round(1.0 / (1.0 + math.exp(-z)), 3)
-        return score, min(0.99, prob)
 
-    @classmethod
-    def generate_tailored_answers(cls, company, role):
-        """
-        Synthesizes authentic candidate screening answers mimicking Sai Raghava.
-        """
-        return {
-            "why_company": (
-                f"I am deeply inspired by {company}'s high-throughput engineering culture. Having built a distributed railway platform "
-                f"handling 13 Kafka topics with Redis Lua atomic locks and a low-latency C++ cache server on raw TCP sockets, "
-                f"I want to bring this deep systems craft and high reliability standard to the {role} team at {company}."
-            ),
-            "biggest_technical_challenge": (
-                "While building my Distributed Railway Reservation Platform with 8 microservices, I faced seat double-booking under concurrent load. "
-                "I resolved it by engineering Redis Lua distributed locks paired with PostgreSQL row-level locks, and implemented the Saga pattern "
-                "with Kafka dead-letter queues to execute automatic compensating transactions when payment webhooks failed."
-            ),
-            "low_level_systems_experience": (
-                "At DataAnnotation.tech, I debugged C++ LLM inference engine sampling (llama.cpp) to preserve special token IDs. "
-                "Separately, I built a Redis-compatible multi-threaded cache server in C++ using raw TCP sockets, implementing RESP parsing, "
-                "O(1) LRU/LFU eviction, and mutex-guarded thread pool concurrency."
-            ),
-            "availability": "Class of 2027 (NIT Rourkela, B.Tech CSE, CGPA 8.99). Available for Summer 2026/2027 Internship and full-time PPO conversion.",
-        }
+# Backward compatibility alias
+CandidateMimicMLModel = SkillMatcher
 
 
 def _get_or_create_profile(db):
@@ -813,7 +777,36 @@ def dispatch_live_alert():
         ctc_label = f"{job.ctc_lpa:g} LPA CTC (est.)" if job.ctc_lpa else "CTC not listed"
         subject = f"[Job Radar] Review & apply: {job.company} - {job.role} ({ctc_label})"
 
-        ml_answers = CandidateMimicMLModel.generate_tailored_answers(job.company, job.role)
+        from api.domain.job_pack import generate_pack, JobPack
+        pack_row = db.query(JobPack).filter(JobPack.job_id == job.id).first()
+        if pack_row:
+            try:
+                pack_data = json.loads(pack_row.payload)
+            except Exception:
+                pack_data, _ = generate_pack(job)
+        else:
+            pack_data, _ = generate_pack(job)
+
+        answers_list = pack_data.get("answers", [])
+        answers_html_items = []
+        if pack_data.get("why_company"):
+            answers_html_items.append(
+                f'<div style="margin-bottom:12px;">'
+                f'<div style="font-weight:700;font-size:12px;color:#065f46;">Why {company_esc}?</div>'
+                f'<p style="margin:4px 0 0;font-size:12px;color:#047857;line-height:1.5;">"{html.escape(pack_data["why_company"])}"</p>'
+                f'</div>'
+            )
+        for a in answers_list[:3]:
+            q_text = html.escape(a.get("question", ""))
+            ans_text = html.escape(a.get("answer", ""))
+            answers_html_items.append(
+                f'<div style="margin-bottom:12px;">'
+                f'<div style="font-weight:700;font-size:12px;color:#065f46;">{q_text}</div>'
+                f'<p style="margin:4px 0 0;font-size:12px;color:#047857;line-height:1.5;">"{ans_text}"</p>'
+                f'</div>'
+            )
+        answers_html_block = "".join(answers_html_items)
+
         skills = json.loads(job.skills_required) if isinstance(job.skills_required, str) else (job.skills_required or [])
         skills_esc = ", ".join(html.escape(s) for s in skills)
 
@@ -851,19 +844,8 @@ def dispatch_live_alert():
             </div>
 
             <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin:20px 0;">
-                <h3 style="margin:0 0 10px;font-size:14px;color:#065f46;">💡 Suggested Answers:</h3>
-                <div style="margin-bottom:12px;">
-                    <div style="font-weight:700;font-size:12px;color:#065f46;">Q: Why {company_esc}?</div>
-                    <p style="margin:4px 0 0;font-size:12px;color:#047857;line-height:1.5;">"{html.escape(ml_answers.get('why_company', ''))}"</p>
-                </div>
-                <div style="margin-bottom:12px;">
-                    <div style="font-weight:700;font-size:12px;color:#065f46;">Q: Describe your most challenging technical engineering problem?</div>
-                    <p style="margin:4px 0 0;font-size:12px;color:#047857;line-height:1.5;">"{html.escape(ml_answers.get('biggest_technical_challenge', ''))}"</p>
-                </div>
-                <div>
-                    <div style="font-weight:700;font-size:12px;color:#065f46;">Q: Concurrency and systems experience?</div>
-                    <p style="margin:4px 0 0;font-size:12px;color:#047857;line-height:1.5;">"{html.escape(ml_answers.get('low_level_systems_experience', ''))}"</p>
-                </div>
+                <h3 style="margin:0 0 10px;font-size:14px;color:#065f46;">💡 Grounded Application Pack Answers:</h3>
+                {answers_html_block}
             </div>
 
             <div style="font-size:12px;color:#64748b;line-height:1.6;border-top:1px solid #e2e8f0;padding-top:16px;">

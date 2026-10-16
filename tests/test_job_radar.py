@@ -8,6 +8,7 @@ from api.domain.job_radar import (
     JobOpportunity,
     JobRadarProfile,
     JobRadarScanLog,
+    SkillMatcher,
     job_radar_bp,
 )
 from api.domain.placements import Application, ApplicationEvent
@@ -223,4 +224,12 @@ def test_followups_endpoint(client):
     assert res.status_code == 200
     data = res.get_json()
     assert data["status"] in ("success", "skipped")
+
+
+def test_skill_matcher():
+    """Verifies deterministic skill overlap matching and zero fake shortlist probability."""
+    score, prob = SkillMatcher.compute_match(["C++", "Kafka", "Redis"], ctc_lpa=25.0, min_cgpa=8.0)
+    assert score >= 50
+    assert prob == 0.0  # strictly zero fake probability
+
 
