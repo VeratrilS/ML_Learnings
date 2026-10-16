@@ -350,6 +350,34 @@ def decide_route():
         db.close()
 
 
+@job_approvals_bp.route("/<int:job_id>/decide", methods=["POST"])
+def direct_decide_route(job_id):
+    """Direct UI decision (approve or skip) for a job."""
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").strip().lower()
+    if action not in ACTIONS:
+        return jsonify({"status": "error", "message": f"Action must be one of {ACTIONS}"}), 400
+    db = SessionLocal()
+    try:
+        job = db.query(JobOpportunity).filter(JobOpportunity.id == job_id).first()
+        if not job:
+            return jsonify({"status": "error", "message": "Job not found"}), 404
+        if not apply_decision(db, job, action):
+            return jsonify({
+                "status": "error",
+                "message": f"Job in status '{job.status}' cannot be changed to '{action}'"
+            }), 400
+        return jsonify({
+            "status": "success",
+            "job_id": job.id,
+            "action": action,
+            "new_status": job.status,
+            "message": f"{job.company} marked as {job.status}"
+        })
+    finally:
+        db.close()
+
+
 @job_approvals_bp.route("/approval-digest", methods=["POST"])
 def approval_digest_route():
     from api.core.clients import EmailClient

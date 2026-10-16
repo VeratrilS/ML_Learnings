@@ -5,7 +5,7 @@ import {
     Sparkles, ArrowRight, Building2, Flame, Award, Sliders, Check, Terminal,
     FileText, User, GraduationCap, Code2, Globe, Send, Play, Pause,
     Mail, Copy, BellRing, Target, BookOpen, Layers, Trophy, CheckCheck,
-    AlertCircle, Undo2, Share2, Compass, Cpu, X, Upload, Star,
+    AlertCircle, Undo2, Share2, Compass, Cpu, X, Upload, Star, Keyboard,
 } from 'lucide-react';
 import { api, getToken } from '../lib/api';
 import { useApi, navigate } from '../lib/hooks';
@@ -100,7 +100,7 @@ function useCountdown(targetIso) {
 }
 
 export default function JobRadar() {
-    const { data, loading, reload } = useApi('/jobs/radar');
+    const { data, loading, error, reload } = useApi('/jobs/radar');
     const blueprintsApi = useApi('/jobs/blueprints');
     const queueApi = useApi('/jobs/queue');
     const resumeInfoApi = useApi('/jobs/resume-file/info');
@@ -131,6 +131,10 @@ export default function JobRadar() {
     const [completingHandoffId, setCompletingHandoffId] = useState(null);
     const [settingOutcomeJobId, setSettingOutcomeJobId] = useState(null);
     const [openRunnerRunId, setOpenRunnerRunId] = useState(null);
+
+    // Keyboard navigation & shortcuts modal state
+    const [selectedJobId, setSelectedJobId] = useState(null);
+    const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
 
     // Application Pack Drawer state
     const [packDrawerJob, setPackDrawerJob] = useState(null);
@@ -228,6 +232,38 @@ export default function JobRadar() {
                 return next;
             });
             toast(err.message || 'Failed to update watchlist', 'error');
+        }
+    };
+
+    const handleApproveJob = async (job) => {
+        if (!job) return;
+        try {
+            await api(`/jobs/${job.id}/decide`, {
+                method: 'POST',
+                body: { action: 'approve' },
+            });
+            play('bell', { force: true });
+            toast(`Approved: ${job.company} (${job.role})`, 'success');
+            reload({ silent: true });
+            if (queueApi?.reload) queueApi.reload({ silent: true });
+        } catch (err) {
+            toast(err.message || 'Failed to approve job', 'error');
+        }
+    };
+
+    const handleSkipJob = async (job) => {
+        if (!job) return;
+        try {
+            await api(`/jobs/${job.id}/decide`, {
+                method: 'POST',
+                body: { action: 'skip' },
+            });
+            play('pop', { force: true });
+            toast(`Skipped: ${job.company}`, 'info');
+            reload({ silent: true });
+            if (queueApi?.reload) queueApi.reload({ silent: true });
+        } catch (err) {
+            toast(err.message || 'Failed to skip job', 'error');
         }
     };
 
@@ -587,6 +623,107 @@ ${bullets}
         }).slice(0, 20);
     }, [approvedJobs, liveJobs, jobs, isJobStarred]);
 
+    const visibleJobsList = useMemo(() => {
+        const list = [];
+        const seen = new Set();
+        if (activeTab === 'openings') {
+            for (const j of todays20Jobs) {
+                if (!seen.has(j.id)) { list.push(j); seen.add(j.id); }
+            }
+            for (const j of paginatedJobs) {
+                if (!seen.has(j.id)) { list.push(j); seen.add(j.id); }
+            }
+        } else if (activeTab === 'confirmed') {
+            return confirmedJobs;
+        }
+        return list;
+    }, [activeTab, todays20Jobs, paginatedJobs, confirmedJobs]);
+
+    useEffect(() => {
+        const onKeyDown = (e) => {
+            const tag = document.activeElement?.tagName?.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || document.activeElement?.isContentEditable) {
+                return;
+            }
+
+            const isModalOpen = packDrawerJob || referralModalJob || followupModalJob || prepModalJob || confirmModalJob || terminalOpen || mlDrawerOpen || runnerReportOpen || shortcutsModalOpen;
+
+            if (e.key === 'Escape') {
+                setPackDrawerJob(null);
+                setReferralModalJob(null);
+                setFollowupModalJob(null);
+                setPrepModalJob(null);
+                setConfirmModalJob(null);
+                setTerminalOpen(false);
+                setMlDrawerOpen(false);
+                setRunnerReportOpen(false);
+                setShortcutsModalOpen(false);
+                return;
+            }
+
+            if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+                e.preventDefault();
+                setShortcutsModalOpen((prev) => !prev);
+                return;
+            }
+
+            if (isModalOpen || visibleJobsList.length === 0) return;
+
+            const currentIdx = visibleJobsList.findIndex((j) => j.id === selectedJobId);
+
+            if (e.key === 'j' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                const nextIdx = currentIdx < 0 ? 0 : Math.min(visibleJobsList.length - 1, currentIdx + 1);
+                const target = visibleJobsList[nextIdx];
+                if (target) {
+                    setSelectedJobId(target.id);
+                    document.getElementById(`job-card-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+                return;
+            }
+
+            if (e.key === 'k' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const prevIdx = currentIdx <= 0 ? 0 : currentIdx - 1;
+                const target = visibleJobsList[prevIdx];
+                if (target) {
+                    setSelectedJobId(target.id);
+                    document.getElementById(`job-card-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+                return;
+            }
+
+            const targetJob = currentIdx >= 0 ? visibleJobsList[currentIdx] : visibleJobsList[0];
+            if (!targetJob) return;
+
+            if (e.key === 'a' || e.key === 'A') {
+                e.preventDefault();
+                handleApproveJob(targetJob);
+            } else if (e.key === 'x' || e.key === 'X') {
+                e.preventDefault();
+                handleSkipJob(targetJob);
+            } else if (e.key === 's' || e.key === 'S') {
+                e.preventDefault();
+                handleToggleStarCompany(targetJob.company);
+            } else if (e.key === 'p' || e.key === 'P') {
+                e.preventDefault();
+                handleOpenPack(targetJob);
+            } else if (e.key === 'o' || e.key === 'O' || e.key === 'Enter') {
+                e.preventDefault();
+                const url = targetJob.portal_url || targetJob.url;
+                if (url) window.open(url, '_blank', 'noopener,noreferrer');
+            } else if (e.key === 'c' || e.key === 'C') {
+                e.preventDefault();
+                setConfirmModalJob(targetJob);
+                setConfirmRefInput('');
+                setConfirmNotesInput('');
+            }
+        };
+
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [visibleJobsList, selectedJobId, packDrawerJob, referralModalJob, followupModalJob, prepModalJob, confirmModalJob, terminalOpen, mlDrawerOpen, runnerReportOpen, shortcutsModalOpen, isCompanyStarred]);
+
     // Triggers
     const handleRunScan = async () => {
         setScanning(true);
@@ -758,6 +895,71 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
         }
     };
 
+    if (error && !data) {
+        return (
+            <div className="space-y-6 animate-rise">
+                <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <div className="eyebrow flex items-center gap-1.5 text-red-400">
+                            <AlertCircle className="h-4 w-4" />
+                            <span>Connection Error</span>
+                        </div>
+                        <h1 className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-fg">
+                            2027 CSE Job Radar
+                        </h1>
+                    </div>
+                </header>
+
+                <Card className="card-pad border-red-500/30 bg-surface flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="grid place-items-center h-10 w-10 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 shrink-0">
+                            <AlertCircle className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-sm text-fg">Unable to connect to Job Radar service</h3>
+                            <p className="text-xs text-subtle mt-0.5">{error || 'Network timeout or backend server unavailable.'}</p>
+                        </div>
+                    </div>
+                    <Button variant="primary" icon={RefreshCw} onClick={() => reload()}>
+                        Retry Connection
+                    </Button>
+                </Card>
+            </div>
+        );
+    }
+
+    if (loading && !data) {
+        return (
+            <div className="space-y-6 animate-rise">
+                <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <Skeleton className="h-4 w-48 mb-2" />
+                        <Skeleton className="h-8 w-72 mb-2" />
+                        <Skeleton className="h-4 w-96" />
+                    </div>
+                </header>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    {[0, 1, 2, 3].map((i) => (
+                        <Card key={i} className="card-pad space-y-2">
+                            <Skeleton className="h-3 w-20" />
+                            <Skeleton className="h-7 w-16" />
+                            <Skeleton className="h-3 w-28" />
+                        </Card>
+                    ))}
+                </div>
+                <div className="space-y-3">
+                    {[0, 1, 2].map((i) => (
+                        <Card key={i} className="card-pad space-y-3">
+                            <Skeleton className="h-5 w-48" />
+                            <Skeleton className="h-3 w-72" />
+                            <Skeleton className="h-8 w-full" />
+                        </Card>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6 animate-rise">
             {/* Header / Hero */}
@@ -777,6 +979,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShortcutsModalOpen(true)}
+                        className="text-subtle hover:text-fg text-xs font-mono border border-line"
+                        title="View keyboard shortcuts (?)"
+                    >
+                        <Keyboard className="h-3.5 w-3.5 mr-1" />
+                        Keys (?)
+                    </Button>
+
                     <Button
                         variant="secondary"
                         onClick={handleToggleAutoApply}
@@ -1111,8 +1324,8 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
             {/* TAB 1: 2027 CSE OPPORTUNITIES */}
             {activeTab === 'openings' && (
                 <div className="space-y-4">
-                    {/* Control Bar & Filters */}
-                    <div className="p-3.5 rounded-2xl bg-surface border border-line space-y-3">
+                    {/* Control Bar & Filters (Sticky for mobile and high-speed scrolling) */}
+                    <div className="p-3.5 rounded-2xl bg-surface border border-line space-y-3 sticky top-14 z-10 backdrop-blur-md bg-surface/95 shadow-sm">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-subtle" />
@@ -1227,10 +1440,19 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {todays20Jobs.map((job) => (
-                                    <div key={job.id} className={cx(
-                                        "p-3.5 rounded-xl bg-surface-2 border transition-all flex flex-col justify-between gap-3",
-                                        isJobStarred(job) ? "border-amber-500/40 shadow-sm" : "border-line hover:border-amber-500/40"
-                                    )}>
+                                    <div
+                                        key={job.id}
+                                        id={`job-card-${job.id}`}
+                                        onClick={() => setSelectedJobId(job.id)}
+                                        className={cx(
+                                            "p-3.5 rounded-xl bg-surface-2 border transition-all flex flex-col justify-between gap-3 cursor-pointer",
+                                            selectedJobId === job.id
+                                                ? "ring-2 ring-emerald-500 shadow-md border-emerald-500"
+                                                : isJobStarred(job)
+                                                ? "border-amber-500/40 shadow-sm"
+                                                : "border-line hover:border-amber-500/40"
+                                        )}
+                                    >
                                         <div>
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="flex items-center gap-1.5 min-w-0">
@@ -1416,7 +1638,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {approvedJobs.map((job) => (
-                                    <div key={job.id} className="p-3.5 rounded-xl bg-surface-2 border border-emerald-500/30 flex flex-col justify-between gap-3">
+                                    <div
+                                        key={job.id}
+                                        id={`job-card-${job.id}`}
+                                        onClick={() => setSelectedJobId(job.id)}
+                                        className={cx(
+                                            "p-3.5 rounded-xl bg-surface-2 border flex flex-col justify-between gap-3 transition-all cursor-pointer",
+                                            selectedJobId === job.id
+                                                ? "ring-2 ring-emerald-500 shadow-md border-emerald-500"
+                                                : "border-emerald-500/30"
+                                        )}
+                                    >
                                         <div>
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="flex items-center gap-1.5 min-w-0">
@@ -1691,10 +1923,39 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                         {filteredJobs.length === 0 ? (
                             <Empty
                                 icon={Briefcase}
-                                title="No matching 2027 openings"
-                                action={<Button size="sm" onClick={() => { setQuery(''); setMinCtcFilter(15); setStatusFilter('all'); setRoleTypeFilter('all'); }}>Reset filters</Button>}
+                                title={
+                                    statusFilter === 'starred'
+                                        ? "No starred companies on watchlist"
+                                        : statusFilter === 'applied'
+                                        ? "No confirmed applications logged"
+                                        : statusFilter === 'approved'
+                                        ? "No approved roles awaiting submission"
+                                        : statusFilter === 'skipped'
+                                        ? "No skipped openings"
+                                        : "No matching 2027 openings"
+                                }
+                                action={
+                                    <Button
+                                        size="sm"
+                                        onClick={() => {
+                                            setQuery('');
+                                            setMinCtcFilter(15);
+                                            setStatusFilter('all');
+                                            setRoleTypeFilter('all');
+                                            setLocationFilter('all');
+                                        }}
+                                    >
+                                        Reset all filters
+                                    </Button>
+                                }
                             >
-                                Try lowering your CTC threshold to ≥15 LPA or resetting search keywords.
+                                {statusFilter === 'starred'
+                                    ? "Click the ⭐ star icon on any company or job card to pin and prioritize it on your watchlist."
+                                    : statusFilter === 'applied'
+                                    ? "Once you submit genuine applications on official portals, click 'I Applied' to track them here."
+                                    : statusFilter === 'approved'
+                                    ? "Approve promising openings from Today's 20 to curate your ready-to-submit pipeline."
+                                    : "Try lowering your CTC filter to ≥15 LPA or clearing your search keywords."}
                             </Empty>
                         ) : (
                             paginatedJobs.map((job) => {
@@ -1704,9 +1965,15 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                 return (
                                     <Card
                                         key={job.id}
+                                        id={`job-card-${job.id}`}
+                                        onClick={() => setSelectedJobId(job.id)}
                                         className={cx(
-                                            'card-pad transition-all border',
-                                            isApplied ? 'border-emerald-500/30 bg-surface' : 'border-line hover:border-line-strong',
+                                            'card-pad transition-all border cursor-pointer',
+                                            selectedJobId === job.id
+                                                ? 'ring-2 ring-emerald-500 shadow-md border-emerald-500'
+                                                : isApplied
+                                                ? 'border-emerald-500/30 bg-surface'
+                                                : 'border-line hover:border-line-strong',
                                         )}
                                     >
                                         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -3437,6 +3704,42 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             )}
                         </>
                     )}
+                </div>
+            </Sheet>
+
+            {/* Keyboard Shortcuts Modal */}
+            <Sheet
+                open={shortcutsModalOpen}
+                onClose={() => setShortcutsModalOpen(false)}
+                title="Job Radar Keyboard Shortcuts"
+                size="sm"
+            >
+                <div className="space-y-4 text-xs">
+                    <p className="text-subtle">
+                        Power through openings at high velocity. Keep your hands on the keyboard.
+                    </p>
+
+                    <div className="space-y-2">
+                        {[
+                            { key: 'J / ↓', desc: 'Select next opening' },
+                            { key: 'K / ↑', desc: 'Select previous opening' },
+                            { key: 'A', desc: 'Approve opening (moves to Approved queue)' },
+                            { key: 'X', desc: 'Skip / dismiss opening' },
+                            { key: 'S', desc: 'Star / unstar company in Watchlist' },
+                            { key: 'P', desc: 'Open 1-click Application Pack drawer' },
+                            { key: 'O / ↵', desc: 'Open official careers portal in new tab' },
+                            { key: 'C', desc: 'Confirm real application submission' },
+                            { key: '?', desc: 'Toggle keyboard shortcuts guide' },
+                            { key: 'Esc', desc: 'Close open drawers & modals' },
+                        ].map((s) => (
+                            <div key={s.key} className="flex items-center justify-between p-2 rounded-lg bg-surface-2 border border-line">
+                                <span className="text-fg font-medium">{s.desc}</span>
+                                <kbd className="px-2 py-0.5 rounded bg-surface border border-line text-emerald-400 font-mono font-bold text-[11px] shadow-xs">
+                                    {s.key}
+                                </kbd>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </Sheet>
         </div>

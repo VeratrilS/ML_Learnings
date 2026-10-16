@@ -319,3 +319,22 @@ def test_queue_lists_approved_jobs(client, pack_builder):
     assert data[0]["id"] == b  # most recently approved first
     assert all(d["status"] == "approved" and d["pack_ready"] and d["approved_at"] for d in data)
     assert data[0]["url"] == "https://boards.example.com/acme/1"
+
+
+def test_direct_decide_endpoint(client):
+    j1 = make_job(status="discovered")
+    res = client.post(f"/api/jobs/{j1}/decide", json={"action": "approve"})
+    assert res.status_code == 200
+    assert res.get_json()["new_status"] == "approved"
+
+    j2 = make_job(status="discovered", company="Gamma")
+    res = client.post(f"/api/jobs/{j2}/decide", json={"action": "skip"})
+    assert res.status_code == 200
+    assert res.get_json()["new_status"] == "skipped"
+
+    res = client.post(f"/api/jobs/{j1}/decide", json={"action": "invalid"})
+    assert res.status_code == 400
+
+    res = client.post("/api/jobs/99999/decide", json={"action": "approve"})
+    assert res.status_code == 404
+
