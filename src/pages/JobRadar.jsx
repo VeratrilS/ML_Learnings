@@ -69,11 +69,13 @@ export default function JobRadar() {
     const blueprintsApi = useApi('/jobs/blueprints');
     const queueApi = useApi('/jobs/queue');
     const resumeInfoApi = useApi('/jobs/resume-file/info');
+    const handoffsApi = useApi('/jobs/handoffs');
+    const runnerReportApi = useApi('/jobs/runner-report?limit=5');
     const [liveMinCtc15, setLiveMinCtc15] = useState(true);
     const liveApi = useApi(`/jobs/live?min_score=50${liveMinCtc15 ? '&min_ctc=15' : ''}`);
     const toast = useToast();
 
-    // Tab state: 'openings' | 'portals' | 'confirmed' | 'blueprints'
+    // Tab state: 'openings' | 'portals' | 'confirmed' | 'needs_you' | 'blueprints'
     const [activeTab, setActiveTab] = useState('openings');
 
     // Filter states
@@ -86,6 +88,14 @@ export default function JobRadar() {
     const [terminalOpen, setTerminalOpen] = useState(false);
     const [mlDrawerOpen, setMlDrawerOpen] = useState(false);
     const [visibleCount, setVisibleCount] = useState(30);
+    const [page, setPage] = useState(1);
+    const PAGE_SIZE = 50;
+
+    // Runner report & handoff state
+    const [runnerReportOpen, setRunnerReportOpen] = useState(false);
+    const [completingHandoffId, setCompletingHandoffId] = useState(null);
+    const [settingOutcomeJobId, setSettingOutcomeJobId] = useState(null);
+    const [openRunnerRunId, setOpenRunnerRunId] = useState(null);
 
     // Application Pack Drawer state
     const [packDrawerJob, setPackDrawerJob] = useState(null);
@@ -122,6 +132,20 @@ export default function JobRadar() {
         }
         return jobs.filter((j) => j.status === 'approved');
     }, [queueApi.data, jobs]);
+
+    const pendingHandoffs = useMemo(() => {
+        const list = handoffsApi.data?.data || [];
+        return list.filter((h) => h.choice !== 'done');
+    }, [handoffsApi.data]);
+
+    const OUTCOME_CONFIG = {
+        oa: { label: 'OA Received', color: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30' },
+        interview: { label: 'Interview Scheduled', color: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
+        offer: { label: 'Offer Received 🎉', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
+        rejected: { label: 'Rejected', color: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30' },
+        no_response: { label: 'No Response', color: 'bg-surface-2 text-subtle border-line' },
+    };
+
     const countdown = useCountdown(summary?.next_hourly_scan);
 
     const profileWithResume = useMemo(() => {
@@ -274,7 +298,14 @@ ${bullets}
 
     useEffect(() => {
         setVisibleCount(30);
+        setPage(1);
     }, [query, statusFilter, minCtcFilter, roleTypeFilter, locationFilter]);
+
+    const totalPages = Math.ceil(filteredJobs.length / PAGE_SIZE) || 1;
+    const paginatedJobs = useMemo(() => {
+        const start = (page - 1) * PAGE_SIZE;
+        return filteredJobs.slice(start, start + PAGE_SIZE);
+    }, [filteredJobs, page]);
 
     // Unique Companies for the Portals Directory
     const companyPortals = useMemo(() => {
@@ -479,6 +510,40 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
             if (queueApi?.reload) queueApi.reload({ silent: true });
         } catch (e) {
             toast(e.message || 'Failed to reset status', 'error');
+        }
+    };
+
+    const handleSetOutcome = async (jobId, outcome, notes = '') => {
+        setSettingOutcomeJobId(jobId);
+        try {
+            const res = await api(`/jobs/${jobId}/outcome`, {
+                method: 'POST',
+                body: { outcome, notes },
+            });
+            play('combo', { force: true });
+            toast(res?.message || `Recorded outcome: ${outcome}`, 'success');
+            reload({ silent: true });
+        } catch (e) {
+            toast(e.message || 'Failed to update outcome', 'error');
+        } finally {
+            setSettingOutcomeJobId(null);
+        }
+    };
+
+    const handleDoneHandoff = async (handoffId) => {
+        setCompletingHandoffId(handoffId);
+        try {
+            const res = await api(`/jobs/handoff/${handoffId}/done`, {
+                method: 'POST',
+                body: { choice: 'done' },
+            });
+            play('pop', { force: true });
+            toast('Handoff marked as done!', 'success');
+            if (handoffsApi?.reload) handoffsApi.reload({ silent: true });
+        } catch (e) {
+            toast(e.message || 'Failed to complete handoff', 'error');
+        } finally {
+            setCompletingHandoffId(null);
         }
     };
 
@@ -692,6 +757,64 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                 </Card>
             </div>
 
+            {/* Interview Callback Funnel & Runner Diagnostics Bar */}
+            <Card className="card-pad border-line bg-gradient-to-r from-surface via-surface to-surface-2/40">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold uppercase tracking-wider text-subtle">
+                                Interview Callback Funnel
+                            </span>
+                            <span className="badge text-[10px] font-mono bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                                Goal: 1–2 callbacks in 1–2 weeks
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-4 sm:gap-6 mt-2 flex-wrap font-mono">
+                            <div>
+                                <span className="text-xs text-subtle block">Applied</span>
+                                <span className="text-xl font-bold text-fg tabular-nums">{summary?.applied_total ?? confirmedJobs.length}</span>
+                            </div>
+                            <span className="text-subtle text-lg hidden sm:inline">→</span>
+                            <div>
+                                <span className="text-xs text-subtle block">OA Received</span>
+                                <span className="text-xl font-bold text-cyan-400 tabular-nums">{summary?.oa_total ?? 0}</span>
+                            </div>
+                            <span className="text-subtle text-lg hidden sm:inline">→</span>
+                            <div>
+                                <span className="text-xs text-subtle block">Interviews</span>
+                                <span className="text-xl font-bold text-purple-400 tabular-nums">{summary?.interview_total ?? 0}</span>
+                            </div>
+                            <span className="text-subtle text-lg hidden sm:inline">→</span>
+                            <div>
+                                <span className="text-xs text-subtle block">Offers</span>
+                                <span className="text-xl font-bold text-emerald-400 tabular-nums">{summary?.offer_total ?? 0}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-line">
+                        <div className="text-xs font-mono text-subtle">
+                            {summary?.days_since_last_callback !== null && summary?.days_since_last_callback !== undefined ? (
+                                <span className="text-emerald-400 font-semibold">
+                                    {summary.days_since_last_callback === 0 ? '🎉 Callback today!' : `⚡ ${summary.days_since_last_callback}d since last callback`}
+                                </span>
+                            ) : (
+                                <span>Awaiting first callback</span>
+                            )}
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="secondary"
+                            icon={Bot}
+                            onClick={() => setRunnerReportOpen(true)}
+                            className="text-xs border-line hover:border-fg"
+                        >
+                            Runner Reports ({runnerReportApi.data?.data?.length || 0})
+                        </Button>
+                    </div>
+                </div>
+            </Card>
+
             {/* Navigation Tabs */}
             <div className="border-b border-line flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
                 <div className="flex items-center gap-2 sm:gap-4">
@@ -735,6 +858,27 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                     >
                         <CheckCheck className="h-4 w-4" />
                         <span>Confirmed Submissions ({confirmedJobs.length})</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('needs_you')}
+                        className={cx(
+                            'pb-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap',
+                            activeTab === 'needs_you'
+                                ? 'border-amber-500 text-fg'
+                                : 'border-transparent text-subtle hover:text-fg',
+                        )}
+                    >
+                        <AlertCircle className="h-4 w-4 text-amber-400" />
+                        <span>Needs You</span>
+                        {pendingHandoffs.length > 0 ? (
+                            <span className="badge text-[10px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                {pendingHandoffs.length}
+                            </span>
+                        ) : (
+                            <span className="text-xs text-subtle">(0)</span>
+                        )}
                     </button>
 
                     <button
@@ -1210,7 +1354,7 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                 Try lowering your CTC threshold to ≥15 LPA or resetting search keywords.
                             </Empty>
                         ) : (
-                            filteredJobs.slice(0, visibleCount).map((job) => {
+                            paginatedJobs.map((job) => {
                                 const isExpanded = expandedJobId === job.id;
                                 const isApplied = job.status === 'applied_confirmed' || job.status === 'manual_applied';
 
@@ -1284,11 +1428,20 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                         </button>
                                                     </div>
                                                 ) : isApplied ? (
-                                                    <div className="flex flex-col sm:items-end gap-1">
+                                                    <div className="flex flex-col sm:items-end gap-1.5">
                                                         <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 rounded-full">
                                                             <CheckCheck className="h-3.5 w-3.5" /> Confirmed Real Application
                                                         </div>
                                                         <div className="flex items-center gap-2">
+                                                            {job.outcome ? (
+                                                                <span className={cx('badge text-[10px] font-mono font-semibold border', OUTCOME_CONFIG[job.outcome]?.color || 'bg-surface-2 text-subtle')}>
+                                                                    {OUTCOME_CONFIG[job.outcome]?.label || job.outcome}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="badge text-[10px] font-mono text-subtle bg-surface-2 border border-line">
+                                                                    Awaiting Callback
+                                                                </span>
+                                                            )}
                                                             {job.application_ref && (
                                                                 <span className="font-mono text-[10px] text-subtle">
                                                                     Your ref: #{job.application_ref}
@@ -1302,6 +1455,25 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                             >
                                                                 Undo
                                                             </button>
+                                                        </div>
+                                                        {/* Quick outcome buttons */}
+                                                        <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                                            {['oa', 'interview', 'offer', 'rejected'].map((out) => (
+                                                                <button
+                                                                    key={out}
+                                                                    type="button"
+                                                                    disabled={settingOutcomeJobId === job.id}
+                                                                    onClick={() => handleSetOutcome(job.id, out)}
+                                                                    className={cx(
+                                                                        'text-[10px] font-mono px-2 py-0.5 rounded border transition-all',
+                                                                        job.outcome === out
+                                                                            ? 'bg-emerald-500 text-black font-bold border-emerald-500'
+                                                                            : 'bg-surface-2 border-line text-subtle hover:text-fg hover:border-line-strong',
+                                                                    )}
+                                                                >
+                                                                    {out === 'oa' ? 'Got OA' : out === 'interview' ? 'Interview' : out === 'offer' ? 'Offer' : 'Rejected'}
+                                                                </button>
+                                                            ))}
                                                         </div>
                                                     </div>
                                                 ) : (
@@ -1440,15 +1612,34 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             })
                         )}
 
-                        {visibleCount < filteredJobs.length && (
-                            <div className="text-center pt-3 pb-2">
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => setVisibleCount((prev) => prev + 30)}
-                                    className="text-xs"
-                                >
-                                    Load More Openings ({filteredJobs.length - visibleCount} remaining)
-                                </Button>
+                        {totalPages > 1 && (
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-line pt-4 px-1 text-xs">
+                                <div className="text-subtle font-mono">
+                                    Showing {Math.min((page - 1) * PAGE_SIZE + 1, filteredJobs.length)}–{Math.min(page * PAGE_SIZE, filteredJobs.length)} of {filteredJobs.length} openings
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                        disabled={page <= 1}
+                                        className="text-xs"
+                                    >
+                                        Previous
+                                    </Button>
+                                    <span className="font-mono text-xs text-fg px-2">
+                                        Page {page} of {totalPages}
+                                    </span>
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                        disabled={page >= totalPages}
+                                        className="text-xs"
+                                    >
+                                        Next
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1601,6 +1792,46 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                         <p className="text-xs text-subtle leading-relaxed">
                                             Role: <strong>{cj.role}</strong> · {cj.location}
                                         </p>
+
+                                        {/* Callback Outcome Status & Quick Action Buttons */}
+                                        <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-line text-xs">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] text-subtle font-medium uppercase tracking-wider">Callback:</span>
+                                                {cj.outcome ? (
+                                                    <span className={cx('badge text-[10px] font-mono font-semibold border', OUTCOME_CONFIG[cj.outcome]?.color || 'bg-surface-2 text-subtle')}>
+                                                        {OUTCOME_CONFIG[cj.outcome]?.label || cj.outcome}
+                                                    </span>
+                                                ) : (
+                                                    <span className="badge text-[10px] font-mono text-subtle bg-surface-2 border border-line">
+                                                        Awaiting Callback
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {cj.outcome_at && (
+                                                <span className="text-[10px] font-mono text-subtle">
+                                                    {new Date(cj.outcome_at).toLocaleDateString()}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1 flex-wrap mt-2">
+                                            {['oa', 'interview', 'offer', 'rejected'].map((out) => (
+                                                <button
+                                                    key={out}
+                                                    type="button"
+                                                    disabled={settingOutcomeJobId === cj.id}
+                                                    onClick={() => handleSetOutcome(cj.id, out)}
+                                                    className={cx(
+                                                        'text-[10px] font-mono px-2 py-0.5 rounded border transition-all',
+                                                        cj.outcome === out
+                                                            ? 'bg-emerald-500 text-black font-bold border-emerald-500'
+                                                            : 'bg-surface-2 border-line text-subtle hover:text-fg hover:border-line-strong',
+                                                    )}
+                                                >
+                                                    {out === 'oa' ? 'Got OA' : out === 'interview' ? 'Interview' : out === 'offer' ? 'Offer' : 'Rejected'}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
 
                                     <div className="mt-4 pt-3 border-t border-line flex items-center justify-between gap-2">
@@ -1621,6 +1852,90 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                         >
                                             Reset Status
                                         </button>
+                                    </div>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* TAB: NEEDS YOU (RUNNER HANDOFFS) */}
+            {activeTab === 'needs_you' && (
+                <div className="space-y-4">
+                    <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-950/15 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <AlertCircle className="h-5 w-5 text-amber-400 shrink-0" />
+                            <div>
+                                <h3 className="font-bold text-sm text-fg">Runner Handoffs · Action Needed</h3>
+                                <p className="text-xs text-subtle">
+                                    Applications where the local apply runner required human interaction (CAPTCHA, MFA, custom question). Complete them and click Done.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {pendingHandoffs.length === 0 ? (
+                        <Empty
+                            icon={CheckCircle2}
+                            title="No pending handoffs"
+                            action={<Button size="sm" onClick={() => setActiveTab('openings')}>Browse 2027 Openings</Button>}
+                        >
+                            The local apply runner has not encountered any roadblocks. All applications either submitted or waiting.
+                        </Empty>
+                    ) : (
+                        <div className="grid sm:grid-cols-2 gap-4">
+                            {pendingHandoffs.map((h) => (
+                                <Card key={h.id} className="card-pad border-amber-500/30 flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex items-start justify-between gap-2 mb-2">
+                                            <div>
+                                                <h4 className="font-bold text-sm text-fg">{h.company}</h4>
+                                                <div className="text-xs text-subtle">{h.role}</div>
+                                            </div>
+                                            <span className="badge text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                                {h.choice === 'now' ? 'Pending Now' : h.choice === 'later' ? 'Saved for Later' : 'Action Required'}
+                                            </span>
+                                        </div>
+
+                                        <div className="p-2.5 rounded-xl bg-surface-2 border border-line my-2.5 text-xs">
+                                            <div className="font-semibold text-amber-400 mb-1">Roadblock Reason:</div>
+                                            <p className="text-fg">{h.reason || 'Manual submission or verification needed'}</p>
+                                        </div>
+
+                                        {h.missing && h.missing.length > 0 && (
+                                            <div className="text-xs mb-3">
+                                                <div className="font-semibold text-subtle mb-1">Missing / Unanswered Fields:</div>
+                                                <ul className="list-disc list-inside space-y-0.5 text-subtle">
+                                                    {h.missing.map((m, idx) => (
+                                                        <li key={idx}>{m}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-3 pt-3 border-t border-line flex items-center justify-between gap-2">
+                                        <a
+                                            href={h.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="btn btn-secondary btn-sm text-xs gap-1.5"
+                                        >
+                                            <span>Open Job Page</span>
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                        </a>
+
+                                        <Button
+                                            size="sm"
+                                            variant="primary"
+                                            loading={completingHandoffId === h.id}
+                                            onClick={() => handleDoneHandoff(h.id)}
+                                            icon={Check}
+                                            className="text-xs bg-emerald-500 hover:bg-emerald-400 text-black font-semibold"
+                                        >
+                                            Mark Done
+                                        </Button>
                                     </div>
                                 </Card>
                             ))}
@@ -2109,6 +2424,124 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                             </div>
                         </div>
                     ) : null}
+                </div>
+            </Sheet>
+
+            {/* Sheet 4: Local Apply Runner Reports & Diagnostics */}
+            <Sheet
+                open={runnerReportOpen}
+                onClose={() => setRunnerReportOpen(false)}
+                title="Apply Runner Run Reports & Diagnostics"
+            >
+                <div className="p-4 space-y-4">
+                    <p className="text-xs text-subtle">
+                        Live run logs and diagnostics posted by your local apply runner running on your laptop. Shows submitted applications, human handoffs, and learned form rules.
+                    </p>
+
+                    {(!runnerReportApi.data?.data || runnerReportApi.data.data.length === 0) ? (
+                        <Empty
+                            icon={Bot}
+                            title="No runner runs recorded yet"
+                        >
+                            When the local apply runner executes and finishes a batch of applications, diagnostic summaries will appear here.
+                        </Empty>
+                    ) : (
+                        <div className="space-y-3">
+                            {runnerReportApi.data.data.map((r) => {
+                                const isExpanded = openRunnerRunId === r.id;
+                                const rSummary = r.summary || {};
+                                return (
+                                    <Card key={r.id} className="card-pad border-line">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1">
+                                                <div className="font-bold text-sm text-fg flex items-center gap-2">
+                                                    <Bot className="h-4 w-4 text-emerald-400" />
+                                                    <span>Run #{r.id}</span>
+                                                    <span className="text-xs text-subtle font-mono">
+                                                        {r.created_at ? new Date(r.created_at).toLocaleString() : ''}
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-4 gap-2 mt-2 font-mono text-center text-xs">
+                                                    <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                                                        <div className="font-bold text-base">{r.submitted_count}</div>
+                                                        <div className="text-[9px] uppercase">Submitted</div>
+                                                    </div>
+                                                    <div className="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                                                        <div className="font-bold text-base">{r.needs_you_count}</div>
+                                                        <div className="text-[9px] uppercase">Needs You</div>
+                                                    </div>
+                                                    <div className="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                                                        <div className="font-bold text-base">{r.unconfirmed_count}</div>
+                                                        <div className="text-[9px] uppercase">Unconfirmed</div>
+                                                    </div>
+                                                    <div className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                                                        <div className="font-bold text-base">{r.failed_count}</div>
+                                                        <div className="text-[9px] uppercase">Failed</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-3 pt-2 border-t border-line flex justify-end">
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => setOpenRunnerRunId(isExpanded ? null : r.id)}
+                                                className="text-xs"
+                                            >
+                                                {isExpanded ? 'Hide Details' : 'View Run Details & Learned Rules'}
+                                            </Button>
+                                        </div>
+
+                                        {isExpanded && (
+                                            <div className="mt-3 pt-3 border-t border-line space-y-3 text-xs">
+                                                {rSummary.submitted && rSummary.submitted.length > 0 && (
+                                                    <div>
+                                                        <div className="font-semibold text-emerald-400 mb-1">Submitted Applications:</div>
+                                                        <ul className="list-disc list-inside space-y-0.5 text-subtle font-mono">
+                                                            {rSummary.submitted.map((s, idx) => (
+                                                                <li key={idx}>{typeof s === 'object' ? `${s.company} — ${s.role}` : String(s)}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                                {rSummary.needs_you && rSummary.needs_you.length > 0 && (
+                                                    <div>
+                                                        <div className="font-semibold text-amber-400 mb-1">Handoffs (Needs You):</div>
+                                                        <ul className="list-disc list-inside space-y-0.5 text-subtle font-mono">
+                                                            {rSummary.needs_you.map((s, idx) => (
+                                                                <li key={idx}>{typeof s === 'object' ? `${s.company} — ${s.reason}` : String(s)}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                                {rSummary.failed && rSummary.failed.length > 0 && (
+                                                    <div>
+                                                        <div className="font-semibold text-rose-400 mb-1">Failed Submissions:</div>
+                                                        <ul className="list-disc list-inside space-y-0.5 text-subtle font-mono">
+                                                            {rSummary.failed.map((s, idx) => (
+                                                                <li key={idx}>{typeof s === 'object' ? `${s.company} — ${s.error || s.reason}` : String(s)}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                                {rSummary.learned && rSummary.learned.length > 0 && (
+                                                    <div>
+                                                        <div className="font-semibold text-cyan-400 mb-1">Learned Form Rules:</div>
+                                                        <ul className="list-disc list-inside space-y-0.5 text-subtle font-mono">
+                                                            {rSummary.learned.map((l, idx) => (
+                                                                <li key={idx}>{typeof l === 'object' ? JSON.stringify(l) : String(l)}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </Sheet>
         </div>

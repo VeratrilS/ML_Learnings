@@ -201,26 +201,40 @@ export default function JobRadarCard() {
                 </div>
             </div>
 
-            {/* Quick Metrics Bar: Applied This Week & Streak */}
+            {/* Quick Metrics Bar: Interview Callback Funnel */}
             <div className="grid grid-cols-4 border-b border-line divide-x divide-line bg-surface-2/30 text-center py-2 text-xs">
                 <div>
-                    <div className="font-mono text-base font-bold tabular-nums text-fg">{summary?.applied_this_week ?? 0}</div>
-                    <div className="text-[10px] text-subtle uppercase tracking-wider">Applied This Week</div>
+                    <div className="font-mono text-base font-bold tabular-nums text-fg">{summary?.applied_total ?? summary?.confirmed_applied_count ?? 0}</div>
+                    <div className="text-[10px] text-subtle uppercase tracking-wider">Applied</div>
                 </div>
                 <div>
-                    <div className="font-mono text-base font-bold tabular-nums text-amber-400 flex items-center justify-center gap-1">
-                        <Flame className="h-3.5 w-3.5 fill-amber-400/20" />
-                        <span>{summary?.applied_streak_days ?? 0}d</span>
-                    </div>
-                    <div className="text-[10px] text-subtle uppercase tracking-wider">Confirmed Streak</div>
+                    <div className="font-mono text-base font-bold tabular-nums text-cyan-400 font-bold">{summary?.oa_total ?? 0}</div>
+                    <div className="text-[10px] text-subtle uppercase tracking-wider">OA Received</div>
                 </div>
                 <div>
-                    <div className="font-mono text-base font-bold tabular-nums text-emerald-400">{summary?.confirmed_applied_count ?? 0}</div>
-                    <div className="text-[10px] text-subtle uppercase tracking-wider">Total Confirmed</div>
+                    <div className="font-mono text-base font-bold tabular-nums text-purple-400 font-bold">{summary?.interview_total ?? 0}</div>
+                    <div className="text-[10px] text-subtle uppercase tracking-wider">Interviews</div>
                 </div>
                 <div>
-                    <div className="font-mono text-base font-bold tabular-nums text-cyan-400">{summary?.eligible_2027_count || 0}</div>
-                    <div className="text-[10px] text-subtle uppercase tracking-wider">Eligible 2027</div>
+                    <div className="font-mono text-base font-bold tabular-nums text-emerald-400 font-bold">{summary?.offer_total ?? 0}</div>
+                    <div className="text-[10px] text-subtle uppercase tracking-wider">Offers</div>
+                </div>
+            </div>
+
+            {/* Callback & Activity Status Strip */}
+            <div className="px-3.5 py-1.5 bg-surface border-b border-line flex items-center justify-between text-[11px] text-subtle font-mono">
+                <div className="flex items-center gap-1 text-amber-400 font-semibold">
+                    <Flame className="h-3 w-3 fill-amber-400/20" />
+                    <span>{summary?.applied_streak_days ?? 0}d apply streak</span>
+                </div>
+                <div>
+                    {summary?.days_since_last_callback !== null && summary?.days_since_last_callback !== undefined ? (
+                        <span className="text-emerald-400 font-medium">
+                            {summary.days_since_last_callback === 0 ? 'Callback today!' : `${summary.days_since_last_callback}d since last callback`}
+                        </span>
+                    ) : (
+                        <span>Goal: 1–2 callbacks in 1–2 weeks</span>
+                    )}
                 </div>
             </div>
 
