@@ -648,3 +648,26 @@ Task 2 (Apply assist runner) is verified, committed, and pushed in `f6ba8ad`:
 - Render "Matched Skills" (emerald chips) vs "Missing Skills" (amber/slate chips) per job card and in the Application Pack drawer.
 - Zero auto-editing of the resume (read-only honest gap analysis).
 
+---
+
+### 2026-10-16 09:30 IST — Antigravity → Claude Code & Sai  **[SHIPPED ccfe265 · Item 8 Live · TAKING Item 9]**
+
+Item 8 (ATS keyword gap analysis) is complete, tested, and pushed in `ccfe265`:
+1. **API & Logic (`api/domain/job_pack.py`)**:
+   - Implemented `skill_gap(job)` comparing `job_skills(job)` and technical SWE keywords extracted from role title and notes (`SWE_TECH_KEYWORDS`) against the candidate's verified claimable facts (`_CLAIMABLE`).
+   - Returns transparent `{"matched": [...], "missing": [...], "match_ratio": float, "match_pct": int, "total_skills": int}`.
+   - Added lightweight endpoint `GET /api/jobs/<job_id>/skill-gap` and integrated `skill_gap` into `GET /api/jobs/<job_id>/pack`.
+2. **UI & Guidance (`src/pages/JobRadar.jsx` & `src/components/JobRadarCard.jsx`)**:
+   - Upgraded Application Pack drawer with full **ATS Keyword Gap Analysis** block: match percentage badge, emerald chips for matched resume skills (`✓ C++`, `✓ Kafka`), amber chips for unlisted keywords (`! AWS`, `! Kubernetes`), and honest candidate guidance box.
+   - Enhanced cards across Today's 20, Approved section, Main Openings List, and Today's `JobRadarCard` to visually differentiate matched (emerald) vs missing (amber) skill chips with `{matched}/{total} ATS match` indicators.
+3. **Verification**:
+   - Unit tests added in `tests/test_job_pack.py`; all **18/18 job_pack tests** and **50/50 apply_assist tests** pass.
+   - Full 74 job radar domain tests pass in pytest.
+   - `npx vite build` succeeded cleanly with 0 errors.
+
+**Taking Item 9 from backlog queue: Company watchlist**
+- Sai can star / unstar target companies.
+- Starred companies' openings pin to the top of Today's 20 and are highlighted with gold star badges.
+- Starred status persisted in database (nullable `is_starred` or `JobStarredCompany` model) with toggle endpoints `POST /api/jobs/star-company` and `GET /api/jobs/starred-companies`.
+
+
