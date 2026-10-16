@@ -119,6 +119,58 @@ def build_report(db, weeks_ago=0):
     sheet_total = _optional(db, lambda: db.query(SheetProblem).count(), 0)
     lesson_total = _optional(db, lambda: db.query(Lesson).count(), 0)
 
+    def _get_job_search():
+        from api.domain.job_radar import JobOpportunity
+        all_jobs = db.query(JobOpportunity).all()
+        applied_in_week = [j for j in all_jobs if j.status in ("manual_applied", "applied_confirmed") and in_week(_day(j.applied_at))]
+        oa_in_week = [j for j in all_jobs if (j.outcome == "oa" or (j.outcome_note and "oa" in str(j.outcome_note).lower())) and in_week(_day(j.outcome_at))]
+        interviews_in_week = [j for j in all_jobs if j.outcome == "interview" and in_week(_day(j.outcome_at))]
+        offers_in_week = [j for j in all_jobs if j.outcome == "offer" and in_week(_day(j.outcome_at))]
+        total_applied = sum(1 for j in all_jobs if j.status in ("manual_applied", "applied_confirmed"))
+
+        open_matches = [
+            j for j in all_jobs
+            if j.status not in ("manual_applied", "applied_confirmed", "skipped")
+            and (not j.eligible_batches or "2027" in str(j.eligible_batches))
+        ]
+        open_matches.sort(
+            key=lambda j: (
+                1 if getattr(j, "starred", False) else 0,
+                float(j.match_score or 0),
+                float(j.ctc_lpa or 0)
+            ),
+            reverse=True
+        )
+
+        top5 = [{
+            "id": j.id,
+            "company": j.company,
+            "role": j.role,
+            "ctc_lpa": j.ctc_lpa,
+            "match_score": j.match_score or 90,
+            "location": j.location or "India",
+            "portal_url": j.portal_url or f"{APP_URL}#/job-radar",
+            "starred": bool(getattr(j, "starred", False))
+        } for j in open_matches[:5]]
+
+        return {
+            "applied": len(applied_in_week),
+            "oa": len(oa_in_week),
+            "interviews": len(interviews_in_week),
+            "offers": len(offers_in_week),
+            "applied_total": total_applied,
+            "top_matches": top5,
+        }
+
+    job_search = _optional(db, _get_job_search, {
+        "applied": 0,
+        "oa": 0,
+        "interviews": 0,
+        "offers": 0,
+        "applied_total": 0,
+        "top_matches": [],
+    })
+
     best = max(days, key=lambda d: (per_day.get(d, 0), d))
     return {
         "start": start.isoformat(),
@@ -151,6 +203,7 @@ def build_report(db, weeks_ago=0):
         "episodes": count(episodes, in_week),
         "streak": streak["streak"],
         "best_streak": streak["best_streak"],
+        "job_search": job_search,
         "next": {
             "lesson": {"title": next_lesson.title, "position": next_lesson.position} if next_lesson else None,
             "sheet": {"title": next_sheet.title, "leetcode_id": next_sheet.leetcode_id, "difficulty": next_sheet.difficulty,
@@ -223,6 +276,34 @@ def render_email(r):
                "color:#6b7280\">Pick up next week</h3><ul style=\"margin:0;padding-left:18px;font:15px/1.5 system-ui,sans-serif;"
                f"color:#111827\">{''.join(f'<li style=\"margin:0 0 6px\">{x}</li>' for x in nxt)}</ul>") if nxt else ""
 
+    job_section = ""
+    js = r.get("job_search")
+    if js and (js.get("applied") or js.get("applied_total") or js.get("top_matches")):
+        items_html = "".join([
+            f'<li style="margin:0 0 6px">{"⭐ " if m.get("starred") else ""}<b>{e(m["company"])}</b> · {e(m["role"])} '
+            f'<span style="color:#16a34a;font-weight:600">₹{m["ctc_lpa"]} LPA</span> '
+            f'<span style="color:#6b7280">({m["match_score"]}% match)</span> '
+            f'<a href="{e(m["portal_url"])}" style="color:#2563eb;text-decoration:none">Apply ↗</a></li>'
+            for m in js.get("top_matches", [])
+        ])
+        top_block = (
+            f'<div style="font:600 12px system-ui,sans-serif;color:#374151;margin:10px 0 4px">Top Open Matches for 2027:</div>'
+            f'<ul style="margin:0;padding-left:18px;font:14px/1.5 system-ui,sans-serif;color:#111827">{items_html}</ul>'
+        ) if items_html else ""
+        job_section = (
+            f'<h3 style="margin:22px 0 8px;font:600 12px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">'
+            f'Job Search This Week</h3>'
+            f'<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin-bottom:10px">'
+            f'<div style="font:600 14px system-ui,sans-serif;color:#111827">'
+            f'<b>{js.get("applied", 0)}</b> applications submitted · <b>{js.get("oa", 0)}</b> OAs · <b>{js.get("interviews", 0)}</b> interviews'
+            f'</div>'
+            f'<div style="font:12px system-ui,sans-serif;color:#6b7280;margin-top:3px">'
+            f'{js.get("applied_total", 0)} total applications logged to date · '
+            f'<a href="{APP_URL}#/job-radar" style="color:#2563eb;text-decoration:none">Open Job Radar ↗</a></div>'
+            f'</div>'
+            f'{top_block}'
+        )
+
     return (f'<!doctype html><html><body style="margin:0;background:#f5f5f7;padding:24px 12px">'
             f'<div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:28px">'
             f'<div style="font:600 12px system-ui,sans-serif;color:#6b7280">Weekly report · {_fmt_range(r)}</div>'
@@ -232,6 +313,7 @@ def render_email(r):
             f'{grid}'
             f'<table cellspacing="0" cellpadding="0" style="margin:22px auto 0"><tr>{bars}</tr></table>'
             f'<ul style="margin:22px 0 0;padding-left:18px;font:15px/1.5 system-ui,sans-serif;color:#111827">{stats}</ul>'
+            f'{job_section}'
             f'{up_next}'
             f'<p style="margin:26px 0 0"><a href="{APP_URL}#/weekly" style="display:inline-block;background:#111827;color:#fff;'
             f'padding:11px 18px;border-radius:10px;font:600 14px system-ui,sans-serif;text-decoration:none">Open full report</a></p>'

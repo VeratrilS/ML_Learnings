@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Apple, CalendarRange, ChevronLeft, ChevronRight, CircleCheck, ExternalLink, ListChecks, Mail, MonitorPlay, RotateCw, Timer } from 'lucide-react';
+import { Apple, Briefcase, CalendarRange, ChevronLeft, ChevronRight, CircleCheck, ExternalLink, ListChecks, Mail, MonitorPlay, RotateCw, Timer } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { Button, Card, CardHeader, DifficultyBadge, Skeleton, cx, useToast } from '../components/ui';
@@ -208,6 +208,84 @@ function NextUp({ next }) {
     );
 }
 
+function JobSearchWeeklySection({ jobSearch }) {
+    if (!jobSearch) return null;
+    const { applied = 0, oa = 0, interviews = 0, applied_total = 0, top_matches = [] } = jobSearch;
+    if (applied === 0 && oa === 0 && interviews === 0 && applied_total === 0 && top_matches.length === 0) {
+        return null;
+    }
+
+    return (
+        <Card className="card-pad min-w-0">
+            <CardHeader
+                title="Job search this week"
+                subtitle={`${applied_total} total applications logged · 2027 off-campus campaign`}
+                icon={Briefcase}
+                action={
+                    <a href="#/job-radar" className="btn btn-secondary btn-sm text-xs gap-1">
+                        Open Job Radar ↗
+                    </a>
+                }
+            />
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-3">
+                <div className="p-3 rounded-xl bg-surface-2 border border-line">
+                    <span className="text-xs text-subtle font-medium">Applied this week</span>
+                    <div className="text-xl font-bold text-fg mt-1 tabular-nums">{applied}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-surface-2 border border-line">
+                    <span className="text-xs text-subtle font-medium">OAs received</span>
+                    <div className="text-xl font-bold text-cyan-400 mt-1 tabular-nums">{oa}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-surface-2 border border-line">
+                    <span className="text-xs text-subtle font-medium">Interviews</span>
+                    <div className="text-xl font-bold text-purple-400 mt-1 tabular-nums">{interviews}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-surface-2 border border-line">
+                    <span className="text-xs text-subtle font-medium">Total logged</span>
+                    <div className="text-xl font-bold text-emerald-400 mt-1 tabular-nums">{applied_total}</div>
+                </div>
+            </div>
+
+            {top_matches && top_matches.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-line">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="text-xs font-semibold text-fg tracking-tight">Top Open Matches for 2027</span>
+                        <span className="text-[11px] text-subtle font-mono">1-click apply pack ready</span>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                        {top_matches.map((m) => (
+                            <div key={m.id} className="p-2.5 rounded-lg bg-surface border border-line flex items-center justify-between gap-2 hover:border-line-strong transition-all">
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        {m.starred && <span title="Starred in Watchlist">⭐</span>}
+                                        <span className="font-bold text-xs text-fg truncate">{m.company}</span>
+                                        <span className="badge text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 font-bold">
+                                            ₹{m.ctc_lpa}L
+                                        </span>
+                                        <span className="badge text-[10px] font-mono bg-surface-2 border border-line text-subtle">
+                                            {m.match_score}%
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-muted truncate mt-0.5">{m.role}</p>
+                                </div>
+                                <a
+                                    href={m.portal_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-ghost btn-sm text-xs shrink-0"
+                                >
+                                    Apply ↗
+                                </a>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </Card>
+    );
+}
+
 function WeeklySkeleton() {
     return (
         <div className="space-y-4 lg:space-y-6">
@@ -329,6 +407,8 @@ export default function Weekly() {
                             <Details data={data} />
                         </div>
                     </div>
+
+                    <JobSearchWeeklySection jobSearch={data.job_search} />
 
                     <NextUp next={data.next} />
                 </div>

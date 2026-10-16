@@ -412,3 +412,64 @@ def test_render_email_deltas(client):
     assert "−1 vs last week" in out  # 1 solved vs 2
     assert "+90 min vs last week" in out and "1.5h" in out
     assert "Pick up next week" not in out
+
+
+def test_weekly_report_job_search_section(client):
+    from api.domain.job_radar import JobOpportunity
+    JobOpportunity.__table__.create(bind=engine, checkfirst=True)
+    db = SessionLocal()
+    try:
+        j1 = JobOpportunity(
+            external_id="stripe-test-1",
+            company="Stripe",
+            role="Software Engineer (2027)",
+            ctc_lpa=32.0,
+            skills_required="[]",
+            match_score=95,
+            eligible_batches="2027",
+            status="manual_applied",
+            applied_at=_utc(2),
+            portal_url="https://stripe.com/jobs/123",
+            outcome="oa",
+            outcome_at=_utc(1),
+            starred=True
+        )
+        j2 = JobOpportunity(
+            external_id="uber-test-1",
+            company="Uber",
+            role="Backend Engineer Intern",
+            ctc_lpa=28.0,
+            skills_required="[]",
+            match_score=92,
+            eligible_batches="2027",
+            status="discovered",
+            portal_url="https://uber.com/jobs/456",
+            starred=True
+        )
+        db.add_all([j1, j2])
+        db.commit()
+
+        rep = build_report(db)
+        js = rep.get("job_search")
+        assert js is not None
+        assert js["applied"] == 1
+        assert js["oa"] == 1
+        assert js["applied_total"] == 1
+        assert len(js["top_matches"]) == 1
+        assert js["top_matches"][0]["company"] == "Uber"
+
+        html_out = render_email(rep)
+        assert "Job Search This Week" in html_out
+        assert "1</b> applications submitted" in html_out
+        assert "1</b> OAs" in html_out
+        assert "Uber" in html_out
+        assert "https://uber.com/jobs/456" in html_out
+    finally:
+        db.rollback()
+        try:
+            db.query(JobOpportunity).delete()
+            db.commit()
+        except Exception:
+            pass
+        db.close()
+
