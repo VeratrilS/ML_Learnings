@@ -114,6 +114,19 @@ export default function JobRadar() {
     const [followupData, setFollowupData] = useState(null);
     const [followupLoading, setFollowupLoading] = useState(false);
 
+    // OA / Interview Prep Plan state
+    const [prepModalJob, setPrepModalJob] = useState(null);
+    const [prepPlanData, setPrepPlanData] = useState(null);
+    const [prepLoading, setPrepLoading] = useState(false);
+    const [activePrepDay, setActivePrepDay] = useState(1);
+    const [prepCompletedMap, setPrepCompletedMap] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem('job_radar_prep_done') || '{}');
+        } catch {
+            return {};
+        }
+    });
+
     // Confirm Application Modal state
     const [confirmModalJob, setConfirmModalJob] = useState(null);
     const [confirmRefInput, setConfirmRefInput] = useState('');
@@ -309,6 +322,48 @@ ${bullets}
             toast(e.message || 'Failed to load follow-up drafts', 'error');
         } finally {
             setFollowupLoading(false);
+        }
+    };
+
+    const handleOpenPrepPlan = async (job) => {
+        setPrepModalJob(job);
+        setPrepLoading(true);
+        setActivePrepDay(1);
+        try {
+            const res = await api(`/jobs/${job.id}/prep`);
+            setPrepPlanData(res);
+        } catch (e) {
+            toast(e.message || 'Failed to load prep plan', 'error');
+        } finally {
+            setPrepLoading(false);
+        }
+    };
+
+    const handleTogglePrepDone = (slug) => {
+        setPrepCompletedMap((prev) => {
+            const updated = { ...prev, [slug]: !prev[slug] };
+            try {
+                localStorage.setItem('job_radar_prep_done', JSON.stringify(updated));
+            } catch {}
+            return updated;
+        });
+    };
+
+    const handleCopyPrepPlan = () => {
+        if (!prepPlanData || !prepPlanData.days) return;
+        let text = `# 7-Day OA / Interview Prep Plan: ${prepPlanData.company} (${prepPlanData.role})\n`;
+        text += `Source: ${prepPlanData.source}\n\n`;
+        for (const d of prepPlanData.days) {
+            text += `## Day ${d.day}: ${d.focus}\n`;
+            for (const p of d.problems) {
+                text += `- [ ] [${p.difficulty}] ${p.title} (${p.url})\n`;
+            }
+            text += `\n`;
+        }
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text);
+            play('pop', { force: true });
+            toast('Copied 7-day preparation plan to clipboard!', 'success');
         }
     };
 
@@ -571,6 +626,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
             play('combo', { force: true });
             toast(res?.message || `Recorded outcome: ${outcome}`, 'success');
             reload({ silent: true });
+
+            // Automatically open prep plan when OA or Interview is recorded
+            if (outcome === 'oa' || outcome === 'interview') {
+                const target =
+                    jobs.find((j) => j.id === jobId) ||
+                    approvedJobs.find((j) => j.id === jobId) ||
+                    confirmedJobs.find((j) => j.id === jobId);
+                if (target) {
+                    handleOpenPrepPlan(target);
+                }
+            }
         } catch (e) {
             toast(e.message || 'Failed to update outcome', 'error');
         } finally {
@@ -1158,6 +1224,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
 
                                             <Button
                                                 size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleOpenPrepPlan(job)}
+                                                className="text-xs py-1.5 px-2.5 border border-purple-500/30 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20"
+                                                title="7-Day OA and Interview Preparation Plan"
+                                            >
+                                                <BookOpen className="h-3 w-3 mr-1" />
+                                                Prep Plan
+                                            </Button>
+
+                                            <Button
+                                                size="sm"
                                                 variant="primary"
                                                 onClick={() => {
                                                     setConfirmModalJob(job);
@@ -1260,6 +1337,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                             >
                                                 <Share2 className="h-3 w-3 mr-1" />
                                                 Referral
+                                            </Button>
+
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleOpenPrepPlan(job)}
+                                                className="text-xs py-1.5 px-2.5 border border-purple-500/30 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20"
+                                                title="7-Day OA and Interview Preparation Plan"
+                                            >
+                                                <BookOpen className="h-3 w-3 mr-1" />
+                                                Prep Plan
                                             </Button>
 
                                             <Button
@@ -1599,6 +1687,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                                         <span>Find Referral</span>
                                                     </Button>
 
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => handleOpenPrepPlan(job)}
+                                                        className="text-xs h-7 px-2.5 gap-1 border border-purple-500/30 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20"
+                                                        title="7-Day OA and Interview Preparation Plan"
+                                                    >
+                                                        <BookOpen className="h-3 w-3" />
+                                                        <span>Prep Plan</span>
+                                                    </Button>
+
                                                     <button
                                                         type="button"
                                                         onClick={() => handleCopyFullPacket(job)}
@@ -1936,6 +2035,17 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                             >
                                                 <Mail className="h-3 w-3" />
                                                 <span>Follow-up Draft</span>
+                                            </Button>
+
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleOpenPrepPlan(cj)}
+                                                className="text-xs h-7 px-2 gap-1 text-purple-400 hover:text-purple-300 border border-purple-500/25 bg-purple-500/10"
+                                                title="7-Day OA and Interview Preparation Plan"
+                                            >
+                                                <BookOpen className="h-3 w-3" />
+                                                <span>Prep Plan</span>
                                             </Button>
                                         </div>
 
@@ -2843,6 +2953,210 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                                     {countWords(followupData?.draft_14d)} words · ~55s read
                                 </div>
                             </Card>
+                        </>
+                    )}
+                </div>
+            </Sheet>
+
+            {/* Sheet 7: OA & Interview Preparation Plan */}
+            <Sheet
+                open={Boolean(prepModalJob)}
+                onClose={() => setPrepModalJob(null)}
+                title={prepModalJob ? `7-Day Prep Plan · ${prepModalJob.company}` : 'Interview Preparation'}
+            >
+                <div className="p-4 space-y-4">
+                    {prepModalJob && (
+                        <>
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-line">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-base text-fg">{prepModalJob.company}</h3>
+                                        <span className="badge text-[10px] font-mono text-purple-400 bg-purple-500/10 border border-purple-500/30">
+                                            {prepPlanData?.source || 'Common patterns for SWE OAs (Striver A2Z)'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-subtle mt-0.5">
+                                        Role: <strong>{prepModalJob.role}</strong> · 4 problems/day (28 total, Medium/Hard weighted)
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {prepPlanData?.difficulty_breakdown && (
+                                        <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                                Easy: {prepPlanData.difficulty_breakdown.easy}
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                                Medium: {prepPlanData.difficulty_breakdown.medium}
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                                Hard: {prepPlanData.difficulty_breakdown.hard}
+                                            </span>
+                                        </div>
+                                    )}
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        icon={Copy}
+                                        onClick={handleCopyPrepPlan}
+                                        className="text-xs h-7 gap-1"
+                                    >
+                                        Copy Syllabus
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {prepLoading ? (
+                                <div className="p-8 text-center text-subtle font-mono text-xs">
+                                    Generating grounded 7-day preparation taper...
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Day Tabs */}
+                                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                                        {[1, 2, 3, 4, 5, 6, 7].map((d) => {
+                                            const dayObj = prepPlanData?.days?.find((x) => x.day === d);
+                                            const dayDoneCount = (dayObj?.problems || []).filter((p) => prepCompletedMap[p.title_slug]).length;
+                                            const isCurrent = activePrepDay === d;
+                                            return (
+                                                <button
+                                                    key={d}
+                                                    type="button"
+                                                    onClick={() => setActivePrepDay(d)}
+                                                    className={cx(
+                                                        'px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 border',
+                                                        isCurrent
+                                                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                                            : 'bg-surface-2 text-subtle border-line hover:text-fg hover:border-line-strong'
+                                                    )}
+                                                >
+                                                    <span>Day {d}</span>
+                                                    {dayDoneCount > 0 && (
+                                                        <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] flex items-center justify-center font-bold">
+                                                            {dayDoneCount}
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Active Day Card */}
+                                    {(() => {
+                                        const currentDay = prepPlanData?.days?.find((d) => d.day === activePrepDay);
+                                        if (!currentDay) return null;
+                                        return (
+                                            <Card className="card-pad border-line space-y-3 bg-surface-2/40">
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-line">
+                                                    <div>
+                                                        <span className="text-xs font-mono font-bold text-purple-400">DAY {currentDay.day} FOCUS</span>
+                                                        <h4 className="text-sm font-bold text-fg">{currentDay.focus}</h4>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 flex-wrap">
+                                                        {(currentDay.topics || []).map((t, idx) => (
+                                                            <span key={idx} className="badge text-[10px] font-mono bg-surface border border-line text-subtle">
+                                                                {t}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Problem List */}
+                                                <div className="space-y-2">
+                                                    {(currentDay.problems || []).map((prob, pIdx) => {
+                                                        const isDone = Boolean(prepCompletedMap[prob.title_slug]);
+                                                        const diffColor =
+                                                            prob.difficulty === 'Easy'
+                                                                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                                                                : prob.difficulty === 'Hard'
+                                                                ? 'text-rose-400 bg-rose-500/10 border-rose-500/30'
+                                                                : 'text-amber-400 bg-amber-500/10 border-amber-500/30';
+
+                                                        return (
+                                                            <div
+                                                                key={prob.title_slug || pIdx}
+                                                                className={cx(
+                                                                    'p-3 rounded-xl border flex items-center justify-between gap-3 transition-all',
+                                                                    isDone ? 'bg-surface/40 border-line text-muted' : 'bg-surface border-line-strong text-fg'
+                                                                )}
+                                                            >
+                                                                <div className="flex items-center gap-3 min-w-0">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isDone}
+                                                                        onChange={() => handleTogglePrepDone(prob.title_slug)}
+                                                                        className="w-4 h-4 rounded border-line accent-purple-500 cursor-pointer"
+                                                                    />
+                                                                    <div className="min-w-0">
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            <span className={cx('text-xs font-bold truncate', isDone && 'line-through text-muted')}>
+                                                                                #{prob.frontend_id || pIdx + 1} {prob.title}
+                                                                            </span>
+                                                                            <span className={cx('badge text-[9px] font-mono border', diffColor)}>
+                                                                                {prob.difficulty}
+                                                                            </span>
+                                                                        </div>
+                                                                        {prob.topic && (
+                                                                            <span className="text-[10px] text-muted font-mono">{prob.topic}</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                <a
+                                                                    href={prob.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="btn btn-ghost btn-sm text-xs gap-1 text-cyan-400 hover:text-cyan-300 shrink-0"
+                                                                >
+                                                                    <span>Solve</span>
+                                                                    <ExternalLink className="h-3 w-3" />
+                                                                </a>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </Card>
+                                        );
+                                    })()}
+
+                                    {/* All 7-Days Overview Accordion */}
+                                    <div className="pt-2">
+                                        <details className="group border border-line rounded-xl bg-surface-2/30 p-3">
+                                            <summary className="cursor-pointer font-bold text-xs text-fg flex items-center justify-between select-none">
+                                                <span>Complete 7-Day Curriculum (All 28 Problems)</span>
+                                                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180 text-subtle" />
+                                            </summary>
+                                            <div className="mt-3 space-y-3 pt-2 border-t border-line text-xs font-mono">
+                                                {(prepPlanData?.days || []).map((d) => (
+                                                    <div key={d.day} className="space-y-1">
+                                                        <div className="font-bold text-purple-300">
+                                                            Day {d.day}: {d.focus}
+                                                        </div>
+                                                        <div className="pl-3 space-y-1">
+                                                            {d.problems.map((p, idx) => (
+                                                                <div key={idx} className="flex items-center justify-between text-subtle">
+                                                                    <span>
+                                                                        • [{p.difficulty}] #{p.frontend_id} {p.title}
+                                                                    </span>
+                                                                    <a
+                                                                        href={p.url}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="text-cyan-400 hover:underline inline-flex items-center gap-1"
+                                                                    >
+                                                                        <span>LeetCode</span>
+                                                                        <ExternalLink className="h-2.5 w-2.5" />
+                                                                    </a>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </details>
+                                    </div>
+                                </>
+                            )}
                         </>
                     )}
                 </div>
