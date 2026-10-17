@@ -12,6 +12,7 @@ import { useApi, navigate } from '../lib/hooks';
 import { Button, Card, CardHeader, Empty, Segmented, Sheet, Skeleton, useToast, cx } from '../components/ui';
 import { play } from '../lib/sfx';
 import { buildBookmarklet, autofillSnippet } from '../lib/autofill';
+import ApplicationDesk from '../components/ApplicationDesk';
 
 function fmtCtc(val) {
     if (!val || Number(val) === 0) return 'CTC not listed';
@@ -1265,6 +1266,8 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
                     </div>
                 </div>
             </Card>
+
+            <ApplicationDesk jobs={confirmedJobs} onOpenTracker={() => setActiveTab('confirmed')} />
 
             {/* Navigation Tabs */}
             <div className="border-b border-line flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
