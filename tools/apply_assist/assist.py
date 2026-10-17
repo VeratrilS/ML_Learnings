@@ -1217,8 +1217,10 @@ class Api:
     def resume_url(self):
         return (self._get("/api/jobs/resume-file/info").get("data") or {}).get("url")
 
-    def confirm_applied(self, job_id, notes, ref=None):
+    def confirm_applied(self, job_id, notes, ref=None, applied_at=None):
         body = {"job_id": job_id, "notes": notes}
+        if applied_at:
+            body["applied_at"] = applied_at
         if ref:
             body["confirmation_ref"] = ref
         r = self.http.post(self.base + "/api/jobs/confirm-applied", json=body, timeout=60)
@@ -1397,17 +1399,17 @@ class Inbox:
         self.imap_factory = imap_factory or (lambda: imaplib.IMAP4_SSL("imap.gmail.com", timeout=15))
         self.used = set()
 
-    def _recent(self, max_age_s):
-        """[(sender, subject, body)] of job-site mail from the last max_age_s seconds, newest first."""
+    def _recent(self, max_age_s, senders=CODE_SENDERS):
+        """[(sender, subject, body, epoch)] of job-site mail from the last max_age_s seconds, newest first."""
         import imaplib
         m = self.imap_factory()
         out = []
         try:
             m.login(self.user, self.password)
             m.select("INBOX", readonly=True)
-            since = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
+            since = (datetime.now() - timedelta(seconds=max_age_s + 86400)).strftime("%d-%b-%Y")
             nums = []
-            for sender in CODE_SENDERS:
+            for sender in senders:
                 _typ, data = m.search(None, f'(SINCE "{since}" FROM "{sender}")')
                 nums += (data[0] or b"").split()
             for num in sorted(set(nums), key=int, reverse=True)[:30]:
@@ -1415,9 +1417,10 @@ class Inbox:
                 meta = next((p[0] for p in parts if isinstance(p, tuple)), b"")
                 raw = next((p[1] for p in parts if isinstance(p, tuple)), b"")
                 t = imaplib.Internaldate2tuple(meta)
-                if t and self.now() - time.mktime(t) > max_age_s:
+                ts = time.mktime(t) if t else self.now()
+                if self.now() - ts > max_age_s:
                     continue
-                out.append(_email_parts(raw))
+                out.append(_email_parts(raw) + (ts,))
         finally:
             try:
                 m.logout()
@@ -1427,7 +1430,7 @@ class Inbox:
 
     def code_for(self, company, max_age_s=900):
         """Newest unused security code from an email that names this company (last 15 minutes)."""
-        for sender, subject, body in self._recent(max_age_s):
+        for sender, subject, body, _ts in self._recent(max_age_s):
             if company and company.lower() not in f"{sender} {subject} {body}".lower():
                 continue
             code = code_in_mail(body)
@@ -1437,12 +1440,58 @@ class Inbox:
         return None
 
     def verify_link(self, tenant, max_age_s=3600):
-        for _sender, _subject, body in self._recent(max_age_s):
+        for _sender, _subject, body, _ts in self._recent(max_age_s):
             links = [u for u in verify_links(body, tenant) if u not in self.used]
             if links:
                 self.used.add(links[0])
                 return links[0]
         return None
+
+
+    def confirmations(self, max_age_s=7 * 86400):
+        """[(subject, epoch)] of 'thank you for applying' / 'application received' emails, newest first."""
+        out = []
+        for sender, subject, body, ts in self._recent(max_age_s, senders=CODE_SENDERS + CONFIRM_SENDERS):
+            if CONFIRM_MAIL.search(subject) and not re.search(r"security code|verify", subject, re.I):
+                out.append((subject, ts))
+        return out
+
+
+CONFIRM_SENDERS = ("workday", "icims", "taleo", "successfactors", "eightfold", "amazon", "careers", "jobs", "talent")
+CONFIRM_MAIL = re.compile(r"thank(s| you) for (applying|your application|your interest)|application (received|submitted|"
+                          r"confirmation)|we('ve| have) received your application|your application (to|for|has been)", re.I)
+
+
+def confirmed_by_email(confirmations, jobs):
+    """Match confirmation emails to jobs by company name in the subject. -> [(job, epoch, subject)], one per job."""
+    out, seen = [], set()
+    for job in jobs:
+        name = _norm(job.get("company"))
+        if not name or job.get("id") in seen:
+            continue
+        for subject, ts in confirmations:
+            if not CONFIRM_MAIL.search(subject) or re.search(r"security code|verify", subject, re.I):
+                continue
+            if f" {name} " in f" {_norm(subject)} ":
+                out.append((job, ts, subject))
+                seen.add(job.get("id"))
+                break
+    return out
+
+
+def sync_email_confirmations(api, inbox, jobs, log=None):
+    """Mark jobs applied in Job Radar from the companies' confirmation emails, dated by the email. Returns count."""
+    n = 0
+    for job, ts, subject in confirmed_by_email(inbox.confirmations(), jobs):
+        when = datetime.fromtimestamp(ts, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        ok, msg = api.confirm_applied(job.get("id"), f"Confirmed by email: {subject[:120]}", applied_at=when)
+        if ok and msg != "already recorded":
+            n += 1
+            print(f"  marked applied from email: {job.get('company')} ({when[:10]})")
+            if log:
+                log.write({"job_id": job.get("id"), "company": job.get("company"), "role": job.get("role"),
+                           "url": job.get("url"), "outcome": "email-confirmed", "applied_at": when})
+    return n
 
 
 def make_inbox(email_addr):
@@ -2884,6 +2933,29 @@ def _resume_name(profile, answers):
     return re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_") + "_Resume.pdf"
 
 
+def attempted_from_logs(days=7, runs_dir=RUNS_DIR, now=None):
+    """Jobs the runner submitted or tried to submit in the last `days` days (latest entry per job id)."""
+    now, out = now or _now(), {}
+    for log in sorted(Path(runs_dir).glob("*/log.jsonl")):
+        for line in log.read_text(encoding="utf-8").splitlines():
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            ts = _parse_ts(e.get("ts"))
+            if e.get("job_id") and ts and now - ts <= timedelta(days=days) and                     e.get("outcome") in ("submitted", "unconfirmed", "needs-you"):
+                out[e["job_id"]] = {"id": e["job_id"], "company": e.get("company"), "role": e.get("role"), "url": e.get("url")}
+    return list(out.values())
+
+
+def run_sync_email(api, answers):
+    inbox = make_inbox(_s(answers.get("email")) or "sairaghava1318@gmail.com")
+    if not inbox:
+        sys.exit("Add GMAIL_APP_PASSWORD to .env first.")
+    n = sync_email_confirmations(api, inbox, attempted_from_logs(), RunLog())
+    print(f"{n} application(s) marked applied from confirmation emails.")
+
+
 def run_batch(args, api, answers, learned, mode):
     from playwright.sync_api import sync_playwright
     jobs = select_jobs(api.live_jobs(args.min_score, args.min_ctc), args.min_score, args.min_ctc)
@@ -2924,6 +2996,14 @@ def run_batch(args, api, answers, learned, mode):
         else:
             runner.run(jobs)
         ctx.close()
+    if inbox and mode == "submit":
+        attempted = [{"id": r.get("job_id"), "company": r.get("company"), "role": r.get("role"), "url": r.get("url")}
+                     for r in runner.results if r.get("outcome") in ("unconfirmed", "needs-you")]
+        try:
+            n = sync_email_confirmations(api, inbox, attempted, runner.log)
+            print(f"Confirmation emails: {n} more application(s) marked applied.")
+        except Exception as e:
+            print(f"(confirmation-email check failed: {str(e)[:80]})")
     if mode != "harvest":
         subject, body = runner.summary(mode)
         print("\n" + subject + "\n" + body)
@@ -2944,6 +3024,8 @@ def main(argv=None):
     g.add_argument("--job", type=int, help="open this Job Radar job id")
     g.add_argument("--next", action="store_true", help="open the best open job")
     g.add_argument("--auto", action="store_true", help="work through many jobs (dry run unless --submit)")
+    g.add_argument("--sync-email", action="store_true",
+                   help="mark applied the jobs whose 'thank you for applying' email is in your Gmail")
     g.add_argument("--harvest", action="store_true", help="collect unanswered questions from many forms, email them")
     ap.add_argument("--pending", action="store_true", help="with --setup: answer only the pending questions")
     ap.add_argument("--submit", action="store_true", help="with --auto: really submit complete forms")
@@ -2992,7 +3074,9 @@ def main(argv=None):
     answers = load_yaml(answers_path)
     learned = QuestionBank(load_yaml(LEARNED_PATH))
     api = Api.from_env(args.api)
-    if args.auto:
+    if args.sync_email:
+        run_sync_email(api, answers)
+    elif args.auto:
         run_batch(args, api, answers, learned, "submit" if args.submit else "dry-run")
     elif args.harvest:
         run_batch(args, api, answers, learned, "harvest")

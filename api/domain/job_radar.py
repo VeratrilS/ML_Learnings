@@ -593,8 +593,17 @@ def confirm_applied():
 
         now = _utcnow()
         ref = confirmation_ref if confirmation_ref else None
+        applied = now
+        try:  # the date of the company's confirmation email, when the runner confirms from Gmail (past 30 days only)
+            given = datetime.fromisoformat(str(data.get("applied_at")).replace("Z", "+00:00"))
+            if given.tzinfo:
+                given = given.astimezone(timezone.utc).replace(tzinfo=None)
+            if now - timedelta(days=30) <= given <= now:
+                applied = given
+        except (TypeError, ValueError):
+            pass
         job.status = "manual_applied"
-        job.applied_at = now
+        job.applied_at = applied
         job.application_ref = ref
         job.follow_up_7d_at = now + timedelta(days=7)
         job.follow_up_14d_at = now + timedelta(days=14)

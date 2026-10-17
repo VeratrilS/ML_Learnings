@@ -560,6 +560,35 @@ def test_combined_code_source_prefers_file_and_throttles_inbox(tmp_path):
     assert code_for(job(1)) == "Zz9Yy8Xx" and len(calls) == 2
 
 
+def test_confirmation_emails_mark_the_attempted_job_with_email_date():
+    confirmations = [("Thank you for applying to SingleStore!", 1792240000.0),
+                     ("Security code for your application to Okta", 1792240100.0),
+                     ("Your application to HackerRank Careers has been received", 1792230000.0)]
+    jobs = [{"id": 224, "company": "SingleStore", "role": "SWE"}, {"id": 1, "company": "Okta", "role": "SRE"},
+            {"id": 10, "company": "HackerRank", "role": "Intern"}]
+    got = {(j["id"], ts) for j, ts, _s in aa.confirmed_by_email(confirmations, jobs)}
+    assert got == {(224, 1792240000.0), (10, 1792230000.0)}  # Okta's security-code mail isn't a confirmation
+
+    class In:
+        def confirmations(self):
+            return [(s, t) for s, t in confirmations if aa.CONFIRM_MAIL.search(s)]
+    api = FakeApi()
+    calls = []
+    api.confirm_applied = lambda job_id, notes, ref=None, applied_at=None: calls.append((job_id, applied_at)) or (True, "ok")
+    assert aa.sync_email_confirmations(api, In(), jobs) == 2
+    assert (224, "2026-10-17T12:26:40Z") in calls
+
+
+def test_attempted_from_logs(tmp_path):
+    d = tmp_path / "2026-10-16"
+    d.mkdir()
+    (d / "log.jsonl").write_text("\n".join(json.dumps(e) for e in [
+        {"ts": "2026-10-16T10:00:00Z", "job_id": 5, "company": "Zscaler", "outcome": "unconfirmed"},
+        {"ts": "2026-10-16T10:01:00Z", "job_id": 6, "company": "Rubrik", "outcome": "skipped"},
+        {"ts": "2026-09-01T10:00:00Z", "job_id": 7, "company": "Old", "outcome": "needs-you"}]), encoding="utf-8")
+    assert [j["id"] for j in aa.attempted_from_logs(runs_dir=tmp_path, now=NOW)] == [5]
+
+
 def test_unsupported_site_is_listed_not_handed_off():
     d = FakeDriver([fld(1, "Search jobs")], submit_enabled=True)
     api = FakeApi()
