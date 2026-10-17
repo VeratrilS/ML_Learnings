@@ -497,6 +497,14 @@ def test_security_code_after_submit_hands_off_instead_of_unconfirmed():
     assert d.shown == 1 and d.overlays[-1][0].startswith("Security code needed") and api.confirmed == []
 
 
+def test_unsupported_site_is_listed_not_handed_off():
+    d = FakeDriver([fld(1, "Search jobs")], submit_enabled=True)
+    api = FakeApi()
+    out = runner(d, api, attended=True).run_job(job(1))
+    assert out["outcome"] == "needs-you" and "No application form" in out["reason"]
+    assert d.shown == 0 and api.handoffs == [] and d.submits == 0
+
+
 def test_attended_mode_brings_window_up_without_email():
     d = FakeDriver(SIMPLE, submit_enabled=True, captcha=True)
     api = FakeApi()

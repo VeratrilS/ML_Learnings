@@ -2235,6 +2235,9 @@ def ensure_workday_password(answers, path=ANSWERS_PATH):
 # =====================================================================================================
 # Runner: --auto (dry run or --submit) and --harvest
 # =====================================================================================================
+NO_HANDOFF = re.compile(r"No application form found|Doesn't look like an application form|blocked this browser|"
+                        r"down for maintenance|Workday sign-in failed|Workday refused|Workday sent you a verification|"
+                        r"Workday needs an account|More than \d+ pages|Couldn't find Save and Continue", re.I)
 SUBMITTED_NOTE = "Submitted by auto-apply (confirmed page)"
 SAI_SUBMITTED_NOTE = "Submitted by Sai after an apply-runner hand-off (confirmed page)"
 
@@ -2362,6 +2365,10 @@ class Runner:
             self.d.reset()
             return self._record(job, "waiting-answers", reason="pending questions: " + "; ".join(missing),
                                 missing=missing, filled=filled_n)
+        if reasons and not missing and all(NO_HANDOFF.search(r) for r in reasons):
+            # Nothing Sai can fix in the window (unsupported site, blocked, Workday down/sign-in): list it and move on.
+            self.d.reset()
+            return self._record(job, "needs-you", reason="; ".join(reasons), filled=filled_n)
         clicks = 0
         while True:
             if reasons or missing:
