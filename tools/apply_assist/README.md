@@ -72,6 +72,20 @@ The runner sees the "thank you" page, marks the job applied, and moves on to the
 minutes per code. You can also paste a code into `security_codes.yaml` under the job's id (for example
 `'224': AbC12345`). `--only 5,1,10` limits a run to those Job Radar ids.
 
+## Run it every day
+
+Run these two commands once, in a normal (non-admin) terminal. They make the runner apply every day at 10:30 and
+19:30 (after the morning job scan). The laptop has to be on, and on a network where Gmail works (a hotspot, not campus
+Wi-Fi):
+
+```
+schtasks /Create /TN "ApplyRunner 10-30" /TR "C:\desktop\Sem-7\ML_Fun\tools\apply_assist\daily_run.cmd" /SC DAILY /ST 10:30
+schtasks /Create /TN "ApplyRunner 19-30" /TR "C:\desktop\Sem-7\ML_Fun\tools\apply_assist\daily_run.cmd" /SC DAILY /ST 19:30
+```
+
+To stop them: `schtasks /Delete /TN "ApplyRunner 10-30" /F` (and the same for 19-30). Each run's output goes to
+`tools\apply_assist\runs\daily.log`. Results also appear in Job Radar's Application desk.
+
 ## What the runner has learned (site playbook, 2026-10-17)
 
 | Site | What happens | What the runner does |
