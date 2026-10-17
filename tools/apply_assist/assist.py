@@ -1521,19 +1521,54 @@ BROWSER_ARGS = ["--disable-renderer-backgrounding", "--disable-background-timer-
 OFFSCREEN_ARGS = ["--window-position=-32000,-32000", "--start-minimized"]
 
 
+def close_leftover_browsers(profile=PROFILE_DIR):
+    """Stop Chrome processes still holding this tool's own profile (left by a crashed run). Never touches Sai's
+    normal Chrome: only processes whose command line names this profile folder. Returns how many were stopped."""
+    try:
+        import psutil
+    except ImportError:
+        return 0
+    needle = str(Path(profile)).lower()
+    procs = []
+    for p in psutil.process_iter(["cmdline", "ppid"]):
+        try:
+            if needle in " ".join(p.info["cmdline"] or []).lower():
+                procs.append(p)
+        except (psutil.Error, OSError):
+            continue
+    pids = {p.pid for p in procs}
+    roots = [p for p in procs if p.info["ppid"] not in pids]
+    if any(psutil.pid_exists(p.info["ppid"]) for p in roots):
+        return 0  # the run that started it is still alive: another run is using the profile, leave it alone
+    n = 0
+    for p in procs:
+        try:
+            p.kill()
+            n += 1
+        except (psutil.Error, OSError):
+            continue
+    return n
+
+
 def launch(pw, headless=False, visible=False):
     """Normal Playwright Chrome with a persistent profile. Off-screen + minimized unless --visible/--headless."""
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     args = BROWSER_ARGS + ([] if headless or visible else OFFSCREEN_ARGS)
     opts = dict(headless=headless, args=args, viewport={"width": 1280, "height": 900}, accept_downloads=False)
     last = None
-    for channel in ("chrome", None):  # installed Chrome first, Playwright's Chromium as a fallback
-        try:
-            if channel:
-                return pw.chromium.launch_persistent_context(str(PROFILE_DIR), channel=channel, **opts)
-            return pw.chromium.launch_persistent_context(str(PROFILE_DIR), **opts)
-        except Exception as e:
-            last = e
+    for attempt in (1, 2):
+        for channel in ("chrome", None):  # installed Chrome first, Playwright's Chromium as a fallback
+            try:
+                if channel:
+                    return pw.chromium.launch_persistent_context(str(PROFILE_DIR), channel=channel, **opts)
+                return pw.chromium.launch_persistent_context(str(PROFILE_DIR), **opts)
+            except Exception as e:
+                last = e
+        if attempt == 1 and "existing browser session" in str(last) and close_leftover_browsers():
+            print("Closed a leftover browser from an earlier run; retrying.")
+            time.sleep(2)
+            continue
+        break
     raise last
 
 
