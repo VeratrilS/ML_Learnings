@@ -15,6 +15,10 @@ import { buildBookmarklet, autofillSnippet } from '../lib/autofill';
 import ApplicationDesk from '../components/ApplicationDesk';
 import RecruiterContacts from '../components/RecruiterContacts';
 
+// These endpoints are read as whole responses below (`.jobs`, `.data`, `.blueprints`), so skip useApi's
+// default `.data` unwrap: /jobs/radar has no `data` key and the rest would be unwrapped twice.
+const RAW = { select: (d) => d };
+
 function fmtCtc(val) {
     if (!val || Number(val) === 0) return 'CTC not listed';
     return `₹${Number(val).toFixed(1)} LPA (est.)`;
@@ -102,14 +106,14 @@ function useCountdown(targetIso) {
 }
 
 export default function JobRadar() {
-    const { data, loading, error, reload } = useApi('/jobs/radar');
-    const blueprintsApi = useApi('/jobs/blueprints');
-    const queueApi = useApi('/jobs/queue');
-    const resumeInfoApi = useApi('/jobs/resume-file/info');
-    const handoffsApi = useApi('/jobs/handoffs');
-    const runnerReportApi = useApi('/jobs/runner-report?limit=5');
+    const { data, loading, error, reload } = useApi('/jobs/radar', RAW);
+    const blueprintsApi = useApi('/jobs/blueprints', RAW);
+    const queueApi = useApi('/jobs/queue', RAW);
+    const resumeInfoApi = useApi('/jobs/resume-file/info', RAW);
+    const handoffsApi = useApi('/jobs/handoffs', RAW);
+    const runnerReportApi = useApi('/jobs/runner-report?limit=5', RAW);
     const [liveMinCtc15, setLiveMinCtc15] = useState(true);
-    const liveApi = useApi(`/jobs/live?min_score=50${liveMinCtc15 ? '&min_ctc=15' : ''}`);
+    const liveApi = useApi(`/jobs/live?min_score=50${liveMinCtc15 ? '&min_ctc=15' : ''}`, RAW);
     const toast = useToast();
 
     // Tab state: 'openings' | 'portals' | 'confirmed' | 'needs_you' | 'blueprints'
