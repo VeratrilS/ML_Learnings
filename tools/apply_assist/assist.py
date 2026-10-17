@@ -2193,14 +2193,20 @@ def fill_workday(driver, fc, email, password, max_pages=8):
 CODES_PATH = HERE / "security_codes.yaml"
 
 
-def make_code_reader(path=CODES_PATH):
-    """code_for(job): the security code Sai pasted into security_codes.yaml for this Job Radar id (used once)."""
-    def code_for(job):
-        codes = load_yaml(path)
-        code = _s(codes.pop(str(job.get("id")), ""))
-        if code:
-            save_yaml(path, codes, "# Security codes the sites emailed after Submit, by Job Radar id. Used once.")
-        return code or None
+def make_code_reader(path=CODES_PATH, sleep=time.sleep, clock=time.monotonic):
+    """code_for(job, wait_s): the security code Sai pasted into security_codes.yaml for this Job Radar id (used
+    once). Waits up to wait_s seconds for one to appear, so the form can stay open while the email arrives."""
+    def code_for(job, wait_s=0):
+        deadline = clock() + wait_s
+        while True:
+            codes = load_yaml(path)
+            code = _s(codes.pop(str(job.get("id")), ""))
+            if code:
+                save_yaml(path, codes, "# Security codes the sites emailed after Submit, by Job Radar id. Used once.")
+                return code
+            if clock() >= deadline:
+                return None
+            sleep(5)
     return code_for
 
 
@@ -2254,10 +2260,11 @@ class Runner:
                  handoff_wait_s=1800, ask_timeout_s=600, poll_s=15, pending=None, pending_path=PENDING_PATH,
                  learned=None, learned_path=LEARNED_PATH, harvest_first=True, emailer=None, log=None,
                  sleep=time.sleep, clock=time.monotonic, rng=None, pace=(90, 240), confirm_wait_s=30,
-                 workday_password="", code_for=None):
+                 workday_password="", code_for=None, code_wait_s=600):
         self.api, self.d, self.context_for = api, driver, context_for
         self.workday_password = workday_password
-        self.code_for = code_for  # code_for(job) -> the security code the site emailed, or None
+        self.code_for = code_for  # code_for(job, wait_s) -> the security code the site emailed, or None
+        self.code_wait_s = code_wait_s
         self.submit, self.max_jobs, self.per_company = submit, max_jobs, per_company
         self.handoff_wait_s, self.ask_timeout_s, self.poll_s = handoff_wait_s, ask_timeout_s, poll_s
         self.pending = pending if pending is not None else {}
@@ -2384,9 +2391,22 @@ class Runner:
             st = self.d.state()
             if SECURITY_CODE.search(st.get("text") or ""):
                 # Greenhouse emails a code after Submit; the application only goes through once it's typed in.
-                code = self.code_for(job) if self.code_for else None
-                if code and hasattr(self.d, "enter_security_code") and self.d.enter_security_code(code):
-                    print(f"  entered the emailed security code for {job.get('company')}")
+                # A code saved earlier may be stale (each Submit emails a new one): if it's rejected, keep the form
+                # open and wait for the fresh code to be pasted into security_codes.yaml.
+                for wait in (0, self.code_wait_s, self.code_wait_s):
+                    if not (self.code_for and hasattr(self.d, "enter_security_code")):
+                        break
+                    if wait:
+                        print(f"  WAITING up to {wait // 60} min for the security code {job.get('company')} just emailed "
+                              f"you (job id {job.get('id')} in security_codes.yaml)", flush=True)
+                    code = self.code_for(job, wait_s=wait)
+                    if not code:
+                        if wait:
+                            break
+                        continue
+                    if not self.d.enter_security_code(code):
+                        break
+                    print(f"  entered a security code for {job.get('company')}", flush=True)
                     if self.d.submit():
                         ok, ref = self.d.wait_confirmation(self.confirm_wait_s)
                         if ok:

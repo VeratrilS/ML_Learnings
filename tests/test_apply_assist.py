@@ -515,6 +515,26 @@ def test_security_code_from_file_is_entered_and_confirmed(tmp_path):
     assert aa.load_yaml(codes) == {}  # used once
 
 
+def test_stale_code_rejected_then_waits_for_fresh_code(tmp_path):
+    d = FakeDriver(SIMPLE, submit_enabled=True, confirm_on_submit=False)
+    orig, entered = d.submit, []
+
+    def submit():
+        orig()
+        ok = entered and entered[-1] == "Fresh123"
+        d.text = "Thank you for applying!" if ok else "Invalid code. Enter the security code sent to you"
+        return True
+    d.submit = submit
+    d.enter_security_code = lambda code: entered.append(code) or True
+    codes = tmp_path / "codes.yaml"
+    codes.write_text('"1": "Stale999"\n', encoding="utf-8")
+
+    def sleep(_s):  # Sai pastes the fresh code while the runner waits
+        codes.write_text('"1": "Fresh123"\n', encoding="utf-8")
+    out = runner(d, FakeApi(), code_for=aa.make_code_reader(codes, sleep=sleep)).run_job(job(1))
+    assert entered == ["Stale999", "Fresh123"] and out["outcome"] == "submitted"
+
+
 def test_unconfirmed_records_what_the_page_said():
     d = FakeDriver(SIMPLE, submit_enabled=True, confirm_on_submit=False)
     out = runner(d, FakeApi()).run_job(job(1))
