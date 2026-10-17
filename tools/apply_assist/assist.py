@@ -917,6 +917,8 @@ CONFIRM_TEXT = re.compile(
     r"(submitted|received)|we('ve| have) received your application|application received|successfully (submitted|applied)|"
     r"your application is (complete|submitted)", re.I)
 CONFIRM_URL = re.compile(r"/(thanks|thank-you|thank_you|thankyou|confirmation|confirmed|success|submitted|applied)\b", re.I)
+SECURITY_CODE = re.compile(r"security code|verification code|enter the (\d+[- ]character )?code|"
+                           r"code (was|has been) sent|sent a code", re.I)
 REF = re.compile(r"(?:application|reference|confirmation|candidate)\s*(?:id|number|no\.?|#|code)\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{3,})", re.I)
 
 
@@ -2302,13 +2304,28 @@ class Runner:
             if ok:
                 return self._confirmed(job, ref)
             st = self.d.state()
+            if SECURITY_CODE.search(st.get("text") or ""):
+                # Greenhouse emails a code after Submit; the application only goes through once it's typed in.
+                reasons, missing = ["The site emailed you a security code: type it in the window, then press Submit"], []
+                continue
             if st.get("captcha") or st.get("errors"):
                 reasons = (["CAPTCHA appeared after Submit"] if st.get("captcha") else []) + \
                           (["The site flagged errors after Submit"] if st.get("errors") else [])
                 missing = []
                 continue
+            page = self._evidence(job, st)
             self.d.reset()
-            return self._record(job, "unconfirmed", reason="no confirmation page after Submit", filled=filled_n)
+            return self._record(job, "unconfirmed", reason="no confirmation page after Submit", filled=filled_n,
+                                page=page)
+
+    def _evidence(self, job, st):
+        """What the page showed after Submit (text excerpt; screenshot saved next to the run log)."""
+        if self.log and hasattr(self.d, "screenshot"):
+            try:
+                self.d.screenshot(self.log.dir / f"after_submit_{job.get('id')}.png")
+            except Exception:
+                pass
+        return re.sub(r"\s+", " ", st.get("text") or "").strip()[:400]
 
     def _confirmed(self, job, ref, by_sai=False):
         ok, msg = self.api.confirm_applied(job.get("id"), SAI_SUBMITTED_NOTE if by_sai else SUBMITTED_NOTE, ref)

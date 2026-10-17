@@ -482,6 +482,27 @@ def test_api_falls_back_to_production_when_local_database_fails():
         remote.live_jobs()
 
 
+def test_security_code_after_submit_hands_off_instead_of_unconfirmed():
+    d = FakeDriver(SIMPLE, submit_enabled=True, confirm_on_submit=False)
+    orig = d.submit
+
+    def submit():
+        orig()
+        d.text = "Enter the 8-character security code sent to your email"
+        return True
+    d.submit = submit
+    api = FakeApi()
+    out = runner(d, api).run_job(job(1))
+    assert out["outcome"] == "needs-you" and "security code" in out["reason"]
+    assert api.handoffs and api.confirmed == []
+
+
+def test_unconfirmed_records_what_the_page_said():
+    d = FakeDriver(SIMPLE, submit_enabled=True, confirm_on_submit=False)
+    out = runner(d, FakeApi()).run_job(job(1))
+    assert out["outcome"] == "unconfirmed" and out["page"] == "Apply for this job"
+
+
 def test_education_dates_degree_and_languages():
     answers = {"edu_start_month": "August", "edu_start_year": "2023", "edu_end_month": "May", "edu_end_year": "2027",
                "languages": "Hindi, Telugu", "degree": "B.Tech, Computer Science and Engineering"}
