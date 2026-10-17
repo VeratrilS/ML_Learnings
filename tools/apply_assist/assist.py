@@ -1792,9 +1792,26 @@ class PlaywrightDriver:
         except SubmitBlocked as e:
             return f"failed:{e}"
 
+    WD_AUTH = 'input[type="password"], [data-automation-id="createAccountLink"], [data-automation-id="signInLink"]'
+
+    def _wd_wait_state(self, timeout_s=30):
+        """Workday renders late: wait until the page shows a sign-in form ("auth") or an application page ("app")."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if self._visible(self.WD_AUTH) is not None:
+                return "auth"
+            step = self.workday_step()
+            if step and not re.search(r"create account|sign in", step, re.I) and self._next_button() is not None:
+                return "app"
+            self.page.wait_for_timeout(1000)
+        return "unknown"
+
     def _workday_account(self, email, password):
-        if self._visible('input[type="password"]') is None and self._visible('[data-automation-id="createAccountLink"]') is None:
-            return "ok"  # already signed in (persistent Chrome profile) or no account step
+        state = self._wd_wait_state()
+        if state == "app":
+            return "ok"  # already signed in (persistent Chrome profile)
+        if state == "unknown":
+            return "failed:the Workday page didn't finish loading"
         if not password:
             return "no-password"
         creating = self._visible('[data-automation-id="verifyPassword"]') is not None
@@ -1804,6 +1821,9 @@ class PlaywrightDriver:
             self._settle()
             creating = self._visible('[data-automation-id="verifyPassword"]') is not None
         result = self._wd_credentials(email, password, creating)
+        if creating and result.startswith("failed:") and self._visible('[data-automation-id="verifyPassword"]') is None:
+            # Account created; Workday moved to its Sign In page: sign in with the new account.
+            result = self._wd_credentials(email, password, creating=False)
         if result == "exists":
             link = self._visible('[data-automation-id="signInLink"]')
             if link is None:
@@ -1831,15 +1851,17 @@ class PlaywrightDriver:
         safe_click(btn, "account")
         page.wait_for_timeout(2500)
         self._settle()
+        self._wd_wait_state(timeout_s=20)
         text = self.page_text()
         if re.search(r"already (exists|in use|registered)|account with this email", text, re.I):
             return "exists"
-        if re.search(r"verify your (email|account)|verification (email|link)|check your (email|inbox)", text, re.I):
+        if re.search(r"verify your (email|account)|verification (email|link)|check your (email|inbox)|"
+                     r"(email|account) (is )?not (yet )?verified|activate your account", text, re.I):
             return "verify-email"
         if self._visible('input[type="password"]') is not None:
-            err = self._visible('[data-automation-id="errorMessage"], [role="alert"]')
-            why = (err.inner_text(timeout=1000) if err is not None else "still on the sign-in page")[:120]
-            return f"failed:{why}"
+            err = self._visible('[data-automation-id="errorMessage"], [data-automation-id="inputAlert"], [role="alert"]')
+            why = (err.inner_text(timeout=1000) if err is not None else "") or "still on the sign-in page"
+            return "failed:" + re.sub(r"\s+", " ", why).strip()[:160]
         return "ok"
 
     def workday_step(self):
@@ -2044,6 +2066,9 @@ def fill_workday(driver, fc, email, password, max_pages=8):
     account = driver.workday_account(email, password)
     if account != "ok":
         reason = WD_ACCOUNT_REASONS.get(account) or f"Workday sign-in failed ({account.split(':', 1)[-1]})"
+        if re.search(r"wrong email address or password", account, re.I):
+            reason = ("Workday refused the sign-in. Usually the account still needs its email verified: click the link "
+                      "in the company's 'verify your account' email, then run this job again")
         return FillResult([], [], [], []), [reason], [], []
     filled, steps, fill = [], [], FillResult([], [], [], [])
     for _ in range(max_pages):
