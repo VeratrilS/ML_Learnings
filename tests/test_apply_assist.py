@@ -589,6 +589,26 @@ def test_attempted_from_logs(tmp_path):
     assert [j["id"] for j in aa.attempted_from_logs(runs_dir=tmp_path, now=NOW)] == [5]
 
 
+def test_unfamiliar_site_is_never_auto_submitted():
+    d = FakeDriver(SIMPLE, submit_enabled=True)
+    api = FakeApi()
+    out = runner(d, api, attended=True).run_job(job(1, company="Qualcomm", url="https://careers.qualcomm.com/careers/job/1"))
+    assert d.submits == 0 and api.confirmed == [] and d.shown >= 1
+    assert out["outcome"] == "needs-you"
+    assert aa.known_ats(job(2)) and aa.known_ats(job(3, url="https://job-boards.greenhouse.io/x/jobs/1"))
+    assert not aa.known_ats(job(4, url="https://careers.qualcomm.com/careers/job/1"))
+
+
+def test_unmarked_job_leaves_local_history(tmp_path):
+    d = tmp_path / "2026-10-17"
+    d.mkdir()
+    (d / "log.jsonl").write_text("\n".join(json.dumps(e) for e in [
+        {"ts": "2026-10-17T10:00:00Z", "job_id": 443, "company": "Qualcomm", "role": "Eng", "outcome": "submitted"},
+        {"ts": "2026-10-17T11:00:00Z", "job_id": 5, "company": "Zscaler", "role": "SDE", "outcome": "submitted"},
+        {"ts": "2026-10-17T12:00:00Z", "job_id": 443, "company": "Qualcomm", "outcome": "unmarked"}]), encoding="utf-8")
+    assert [h["company"] for h in aa.local_history(tmp_path)] == ["Zscaler"]
+
+
 def test_unsupported_site_is_listed_not_handed_off():
     d = FakeDriver([fld(1, "Search jobs")], submit_enabled=True)
     api = FakeApi()

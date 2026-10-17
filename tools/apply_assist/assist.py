@@ -165,7 +165,9 @@ def local_history(runs_dir=RUNS_DIR):
             except ValueError:
                 continue
             if e.get("outcome") in ("submitted", "unconfirmed"):
-                out.append({"company": e.get("company"), "role": e.get("role"), "ts": e.get("ts")})
+                out.append({"company": e.get("company"), "role": e.get("role"), "ts": e.get("ts"), "id": e.get("job_id")})
+            elif e.get("outcome") == "unmarked":  # Sai said it wasn't really submitted: may be applied to again
+                out = [h for h in out if h.get("id") != e.get("job_id")]
     return out
 
 
@@ -2452,6 +2454,16 @@ def ensure_workday_password(answers, path=ANSWERS_PATH):
 # =====================================================================================================
 # Runner: --auto (dry run or --submit) and --harvest
 # =====================================================================================================
+AUTO_SUBMIT_BOARDS = {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"}
+
+
+def known_ats(job):
+    """True for application systems the runner knows how to submit and confirm (it may press Submit there)."""
+    url = job.get("url") or ""
+    kind = application_url(url, job.get("company"), {})[1] if url else "other"
+    return kind in AUTO_SUBMIT_BOARDS or (job.get("board") or "").lower() in AUTO_SUBMIT_BOARDS or         "myworkdayjobs.com" in url or "smartrecruiters.com" in url
+
+
 NO_HANDOFF = re.compile(r"No application form found|Doesn't look like an application form|blocked this browser|"
                         r"down for maintenance|Workday sign-in failed|Workday refused|Workday sent you a verification|"
                         r"Workday needs an account|More than \d+ pages|Couldn't find Save and Continue", re.I)
@@ -2582,6 +2594,9 @@ class Runner:
             self.d.reset()
             return self._record(job, "waiting-answers", reason="pending questions: " + "; ".join(missing),
                                 missing=missing, filled=filled_n)
+        if not reasons and not missing and not known_ats(job):
+            # Unfamiliar site: a "thank you" can come from a talent-network or job-alert form. Sai submits it himself.
+            reasons = ["Unfamiliar application site: check the form and press Submit yourself"]
         if reasons and not missing and all(NO_HANDOFF.search(r) for r in reasons):
             # Nothing Sai can fix in the window (unsupported site, blocked, Workday down/sign-in): list it and move on.
             self.d.reset()
@@ -2598,6 +2613,10 @@ class Runner:
                 ok, ref = self.d.confirmation()
                 if ok:
                     return self._confirmed(job, ref, by_sai=True)
+                if not known_ats(job):  # only Sai presses Submit on an unfamiliar site
+                    self.d.reset()
+                    return self._record(job, "needs-you", filled=filled_n,
+                                        reason="unfamiliar site: no application confirmation after you continued")
                 reasons, missing, _st = check_page(self.d)
                 if reasons or missing:
                     self.d.reset()
