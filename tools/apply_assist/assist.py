@@ -925,7 +925,10 @@ def blockers(state, fields):
         reasons.append("CAPTCHA on the page")
     if state.get("login"):
         reasons.append("Login or account needed")
-    if re.match(r"\s*(access denied|403 forbidden|request blocked)", state.get("text") or "", re.I):
+    if "maintenance-page" in (state.get("url") or "") or re.search(
+            r"workday is currently unavailable|experiencing a service interruption", state.get("text") or "", re.I):
+        reasons.append("Workday is down for maintenance right now: run this job again later")
+    elif re.match(r"\s*(access denied|403 forbidden|request blocked)", state.get("text") or "", re.I):
         reasons.append("The site blocked this browser (Access Denied): open the link yourself")
     elif len(fields) < 2 and not state.get("login"):
         reasons.append("No application form found (unknown flow)")
@@ -1711,7 +1714,8 @@ class PlaywrightDriver:
             pass
         return False
 
-    OPTION_SEL = '[role="option"], [data-automation-id="promptOption"]'
+    # Visible options only: pages hide hundreds of other options (e.g. a phone country-code picker's 240 countries).
+    OPTION_SEL = '[role="option"]:visible, [data-automation-id="promptOption"]:visible'
 
     def _pick_option(self, frame, a):
         """Click the visible dropdown option that best matches the action's targets. False if none matches."""

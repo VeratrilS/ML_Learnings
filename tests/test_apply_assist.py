@@ -448,6 +448,14 @@ def test_fill_workday_stops_on_unknown_required_and_on_account_problems():
     assert "verification email" in reasons[0]
 
 
+def test_blockers_name_maintenance_and_blocked_sites():
+    down = {"url": "https://static.community.workday.com/maintenance-page.html",
+            "text": "Workday is currently unavailable. We are experiencing a service interruption."}
+    assert aa.blockers(down, []) == ["Workday is down for maintenance right now: run this job again later"]
+    denied = {"url": "https://lowes.wd5.myworkdayjobs.com/x", "text": "\nAccess Denied\nYou don't have permission"}
+    assert aa.blockers(denied, [])[0].startswith("The site blocked this browser")
+
+
 def test_pick_option_allows_confirm_wording_in_dropdown_options():
     assert aa.check_click_allowed({"tag": "div", "type": "", "text": "Yes, I confirm", "role": "option"}, "pick_option")
     with pytest.raises(aa.SubmitBlocked):
