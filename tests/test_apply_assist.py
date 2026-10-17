@@ -292,6 +292,13 @@ def test_answers_yaml_overrides_defaults():
     assert plan.actions[0].value == "DataAnnotation"
 
 
+def test_own_address_drops_campus_pin_and_state():
+    assert aa.build_values(PROFILE, {})["pin_code"] == "769008"
+    v = aa.build_values(PROFILE, {"address": "Kasturi Nagar, Nellore, Andhra Pradesh, India"})
+    assert v["address"].startswith("Kasturi Nagar") and "pin_code" not in v and "state" not in v
+    assert aa.build_values(PROFILE, {"address": "Nellore", "state": "Andhra Pradesh"})["state"] == "Andhra Pradesh"
+
+
 def test_ai_answers_unusual_required_questions_only():
     calls = []
 

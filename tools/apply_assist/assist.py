@@ -655,6 +655,7 @@ AUTO_DEFAULTS = {
     "pin_code": "769008",
     "state": "Odisha",
 }
+ADDRESS_DEFAULT_KEYS = ("pin_code", "state")
 
 
 def build_values(profile, answers, role_type=None):
@@ -663,7 +664,11 @@ def build_values(profile, answers, role_type=None):
     p, a = profile or {}, answers or {}
     full = _s(a.get("full_name")) or _s(p.get("full_name"))
     parts = full.split()
-    a = {**{k: d for k, d in AUTO_DEFAULTS.items() if not _s(a.get(k))}, **{k: x for k, x in a.items() if _s(x)}}
+    defaults = dict(AUTO_DEFAULTS)
+    if _s(a.get("address")):  # Sai's own address: the campus PIN / state no longer belong with it
+        for k in ADDRESS_DEFAULT_KEYS:
+            defaults.pop(k, None)
+    a = {**{k: d for k, d in defaults.items() if not _s(a.get(k))}, **{k: x for k, x in a.items() if _s(x)}}
     v = {k: _s(val) for k, val in a.items() if not isinstance(val, (list, dict))}
     v.update({
         "full_name": full,
