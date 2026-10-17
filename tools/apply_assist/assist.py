@@ -1336,6 +1336,141 @@ def make_ai_answerer(values, generate=None, path=AI_PATH):
     return ai
 
 
+# ---------------- Sai's inbox, read-only: security codes and Workday verification links ----------------
+WD_LINK = re.compile(r"https://[a-z0-9.-]+\.(?:myworkdayjobs|myworkdaysite|myworkday)\.com/[^\s\"'<>)\]]+", re.I)
+VERIFY_HINT = re.compile(r"activat|verif", re.I)
+CODE_IN_MAIL = re.compile(r"(?:security|verification|one[- ]time)\s+code", re.I)
+CODE_SENDERS = ("greenhouse", "lever", "ashby", "smartrecruiters", "myworkday")
+
+
+def workday_tenant(url):
+    """'https://barclays.wd3.myworkdayjobs.com/...' -> 'barclays'."""
+    host = urlparse(url or "").netloc.lower()
+    return host.split(".")[0] if "myworkday" in host else ""
+
+
+def verify_links(text, tenant=None):
+    """Workday verify / activate links in an email body (only this company's when `tenant` is given)."""
+    import html as _html
+    out = []
+    for url in WD_LINK.findall(_html.unescape(text or "")):
+        url = url.rstrip(".,;")
+        if VERIFY_HINT.search(url) and (not tenant or tenant.lower() in url.lower()):
+            out.append(url)
+    return list(dict.fromkeys(out))
+
+
+def code_in_mail(text):
+    """The security code in an application email ('...security code field on your application: Ab12Cd34')."""
+    import html as _html
+    plain = re.sub(r"<[^>]+>", " ", _html.unescape(text or ""))
+    for m in CODE_IN_MAIL.finditer(plain):
+        for code in re.findall(r"\b[A-Za-z0-9]{6,10}\b", plain[m.end():m.end() + 250]):
+            if re.search(r"\d", code) or (re.search(r"[a-z]", code) and re.search(r"[A-Z]", code)):
+                return code  # real codes mix cases / digits; plain words ("application", "below") don't
+    return None
+
+
+def _email_parts(raw):
+    import email as _email
+    from email.header import decode_header, make_header
+    msg = _email.message_from_bytes(raw)
+    subject = str(make_header(decode_header(msg.get("Subject") or "")))
+    sender = msg.get("From") or ""
+    out = []
+    for p in (msg.walk() if msg.is_multipart() else [msg]):
+        if p.get_content_type() in ("text/plain", "text/html"):
+            try:
+                out.append(p.get_payload(decode=True).decode(p.get_content_charset() or "utf-8", "replace"))
+            except Exception:
+                continue
+    return sender, subject, "\n".join(out)
+
+
+class Inbox:
+    """Sai's Gmail over IMAP, read-only: the mailbox is opened read-only and bodies are fetched with BODY.PEEK, so
+    nothing is marked read, moved or sent. Only mail from job-application senders is looked at."""
+
+    def __init__(self, user, password, imap_factory=None, now=time.time):
+        import imaplib
+        self.user, self.password, self.now = user, password, now
+        self.imap_factory = imap_factory or (lambda: imaplib.IMAP4_SSL("imap.gmail.com", timeout=15))
+        self.used = set()
+
+    def _recent(self, max_age_s):
+        """[(sender, subject, body)] of job-site mail from the last max_age_s seconds, newest first."""
+        import imaplib
+        m = self.imap_factory()
+        out = []
+        try:
+            m.login(self.user, self.password)
+            m.select("INBOX", readonly=True)
+            since = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
+            nums = []
+            for sender in CODE_SENDERS:
+                _typ, data = m.search(None, f'(SINCE "{since}" FROM "{sender}")')
+                nums += (data[0] or b"").split()
+            for num in sorted(set(nums), key=int, reverse=True)[:30]:
+                _typ, parts = m.fetch(num, "(INTERNALDATE BODY.PEEK[])")
+                meta = next((p[0] for p in parts if isinstance(p, tuple)), b"")
+                raw = next((p[1] for p in parts if isinstance(p, tuple)), b"")
+                t = imaplib.Internaldate2tuple(meta)
+                if t and self.now() - time.mktime(t) > max_age_s:
+                    continue
+                out.append(_email_parts(raw))
+        finally:
+            try:
+                m.logout()
+            except Exception:
+                pass
+        return out
+
+    def code_for(self, company, max_age_s=900):
+        """Newest unused security code from an email that names this company (last 15 minutes)."""
+        for sender, subject, body in self._recent(max_age_s):
+            if company and company.lower() not in f"{sender} {subject} {body}".lower():
+                continue
+            code = code_in_mail(body)
+            if code and code not in self.used:
+                self.used.add(code)
+                return code
+        return None
+
+    def verify_link(self, tenant, max_age_s=3600):
+        for _sender, _subject, body in self._recent(max_age_s):
+            links = [u for u in verify_links(body, tenant) if u not in self.used]
+            if links:
+                self.used.add(links[0])
+                return links[0]
+        return None
+
+
+def make_inbox(email_addr):
+    """GMAIL_APP_PASSWORD in .env (an app password of Sai's own Gmail) lets the runner read codes / links itself."""
+    password = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "")
+    if not password:
+        return None
+    return Inbox(os.getenv("GMAIL_IMAP_USER") or email_addr, password)
+
+
+def combine_code_sources(file_reader, inbox, every_s=20, clock=time.monotonic):
+    """code_for(job, wait_s): a code pasted into security_codes.yaml, else one from the inbox (checked every 20 s)."""
+    last = {"t": -1e9}
+
+    def code_for(job, wait_s=0):
+        code = file_reader(job, wait_s=0) if file_reader else None
+        if code or not inbox or clock() - last["t"] < every_s:
+            return code
+        last["t"] = clock()
+        try:
+            return inbox.code_for(job.get("company"))
+        except Exception as e:  # e.g. campus Wi-Fi blocks Gmail's IMAP port: stop trying for this run
+            print(f"  (inbox not reachable, paste codes instead: {str(e)[:80]})")
+            last["t"] = 1e18
+            return None
+    return code_for
+
+
 def make_emailer():
     """send(subject, body) -> bool via api.core.clients.EmailClient (SENDER_EMAIL / SENDER_PASSWORD / RECEIVER_EMAIL)."""
     def send(subject, body):
@@ -1585,6 +1720,7 @@ class PlaywrightDriver:
         self.start_url = None
         self._frames = {}
         self._overlay_args = None
+        self.inbox = None  # Inbox: Workday verification links from Sai's Gmail (read-only)
 
     # ---- window: off-screen while working, on-screen only when Sai is needed ----
     def _window(self, bounds):
@@ -1856,9 +1992,41 @@ class PlaywrightDriver:
     def workday_account(self, email, password):
         """Create the candidate account (or sign in if it exists). -> ok | no-password | verify-email | failed:<why>."""
         try:
-            return self._workday_account(email, password)
+            result = self._workday_account(email, password)
+            if self.inbox and (result == "verify-email" or re.search(r"wrong email address or password", result, re.I)):
+                result = self._verify_from_inbox(email, password) or result
+            return result
         except SubmitBlocked as e:
             return f"failed:{e}"
+
+    def _verify_from_inbox(self, email, password, wait_s=240):
+        """Open this company's Workday verification link from Sai's inbox, come back and sign in. None if no link."""
+        apply_url = self.url()
+        tenant = workday_tenant(apply_url)
+        print(f"  looking in your inbox for {tenant}'s Workday verification email...", flush=True)
+        deadline = time.monotonic() + wait_s
+        link = None
+        while not link and time.monotonic() < deadline:
+            try:
+                link = self.inbox.verify_link(tenant)
+            except Exception as e:
+                print(f"  (inbox check failed: {str(e)[:80]})")
+                return None
+            if not link:
+                self.page.wait_for_timeout(20000)
+        if not link:
+            return None
+        self._goto(link)  # opening the link verifies the account
+        self.page.wait_for_timeout(3000)
+        self._goto(apply_url)
+        if self._wd_wait_state() != "auth":
+            return None
+        if self._visible('[data-automation-id="verifyPassword"]') is not None:
+            sign_in = self._visible('[data-automation-id="signInLink"]')
+            if sign_in is not None:
+                safe_click(sign_in, "account")
+                self._settle()
+        return self._wd_credentials(email, password, creating=False)
 
     WD_AUTH = 'input[type="password"], [data-automation-id="createAccountLink"], [data-automation-id="signInLink"]'
 
@@ -2732,11 +2900,15 @@ def run_batch(args, api, answers, learned, mode):
     resume = ensure_resume(api)
     emailer = make_emailer()
     pending = load_yaml(PENDING_PATH)
+    inbox = None if args.no_inbox else make_inbox(_s(answers.get("email")) or "sairaghava1318@gmail.com")
+    if inbox:
+        print("Reading security codes and Workday verification links from your Gmail (read-only).")
     with sync_playwright() as pw:
         ctx = launch(pw, headless=args.headless, visible=args.visible)
         d = PlaywrightDriver(ctx, headless=args.headless, visible=args.visible, resume=resume,
                              resume_name=_resume_name(profile, answers), submit_enabled=(mode == "submit"),
                              gh_tokens=greenhouse_tokens())
+        d.inbox = inbox
         d.hide()
         runner = Runner(api, d, _fill_context_factory(api, profile, answers, learned, resume, use_ai=not args.no_ai),
                         submit=(mode == "submit"), max_jobs=limit, per_company=args.per_company,
@@ -2744,7 +2916,7 @@ def run_batch(args, api, answers, learned, mode):
                         pending=pending, learned=learned, harvest_first=not args.no_harvest,
                         emailer=emailer, log=RunLog(),
                         workday_password=ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH),
-                        code_for=make_code_reader(), attended=args.attended)
+                        code_for=combine_code_sources(make_code_reader(), inbox), attended=args.attended)
         if mode == "harvest":
             work, _skipped = plan_queue(jobs, limit, args.per_company)
             pend, _rows = runner.harvest(work, record=True)
@@ -2788,6 +2960,7 @@ def main(argv=None):
     ap.add_argument("--api", help=f"app base URL (default $APPLY_API_BASE or {DEFAULT_API})")
     ap.add_argument("--min-score", type=int, default=MIN_SCORE)
     ap.add_argument("--min-ctc", type=float, default=MIN_CTC)
+    ap.add_argument("--no-inbox", action="store_true", help="don't read codes / verification links from Gmail")
     ap.add_argument("--attended", action="store_true",
                     help="you're at the laptop: CAPTCHAs / missing answers bring the window straight up (no email)")
     ap.add_argument("--only", default=None, help="only these Job Radar ids, comma-separated (e.g. 5,1,10)")

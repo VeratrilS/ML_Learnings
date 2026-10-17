@@ -497,6 +497,69 @@ def test_security_code_after_submit_hands_off_instead_of_unconfirmed():
     assert d.shown == 1 and d.overlays[-1][0].startswith("Security code needed") and api.confirmed == []
 
 
+GH_MAIL = ("<p>Copy and paste this code into the security code field on your application:</p>"
+           "<h1>Ab3dEf7H</h1><p>Okta</p>")
+
+
+def test_code_and_link_parsing_from_emails():
+    assert aa.code_in_mail(GH_MAIL) == "Ab3dEf7H"
+    assert aa.code_in_mail("Enter the security code field below") is None
+    body = ('Verify: <a href="https://barclays.wd3.myworkdayjobs.com/External/activate/abc123?x=1">here</a> '
+            'https://cisco.wd5.myworkdayjobs.com/Cisco/activate/zzz https://barclays.wd3.myworkdayjobs.com/job/1')
+    assert aa.verify_links(body, "barclays") == ["https://barclays.wd3.myworkdayjobs.com/External/activate/abc123?x=1"]
+    assert aa.workday_tenant("https://barclays.wd3.myworkdayjobs.com/en-US/x") == "barclays"
+
+
+class FakeImap:
+    def __init__(self, mails):
+        self.mails, self.calls = mails, []
+
+    def login(self, user, pw):
+        self.calls.append("login")
+
+    def select(self, box, readonly=False):
+        assert readonly is True  # never opens the mailbox read-write
+        self.calls.append("select")
+
+    def search(self, charset, query):
+        return "OK", [b" ".join(str(i + 1).encode() for i in range(len(self.mails)))]
+
+    def fetch(self, num, what):
+        assert "PEEK" in what  # never marks mail read
+        sender, subject, body = self.mails[int(num) - 1]
+        raw = f"From: {sender}\r\nSubject: {subject}\r\nContent-Type: text/html\r\n\r\n{body}".encode()
+        return "OK", [(b'1 (INTERNALDATE "17-Oct-2026 15:00:00 +0530" BODY[] {9}', raw)]
+
+    def logout(self):
+        pass
+
+
+def test_inbox_reads_company_code_once_readonly():
+    mails = [("no-reply@us.greenhouse-mail.io", "Security code for your application to Okta", GH_MAIL)]
+    inbox = aa.Inbox("me@x", "pw", imap_factory=lambda: FakeImap(mails), now=lambda: 1792249200)
+    assert inbox.code_for("Okta", max_age_s=10 ** 9) == "Ab3dEf7H"
+    assert inbox.code_for("Okta", max_age_s=10 ** 9) is None  # same code never used twice
+    assert inbox.code_for("Zscaler", max_age_s=10 ** 9) is None
+
+
+def test_combined_code_source_prefers_file_and_throttles_inbox(tmp_path):
+    calls = []
+
+    class In:
+        def code_for(self, company):
+            calls.append(company)
+            return "Zz9Yy8Xx"
+    t = {"now": 0.0}
+    codes = tmp_path / "c.yaml"
+    codes.write_text('"1": "File1234"\n', encoding="utf-8")
+    code_for = aa.combine_code_sources(aa.make_code_reader(codes), In(), every_s=20, clock=lambda: t["now"])
+    assert code_for(job(1)) == "File1234" and calls == []
+    assert code_for(job(1)) == "Zz9Yy8Xx" and calls == ["Acme"]
+    assert code_for(job(1)) is None  # throttled: no second IMAP call within 20 s
+    t["now"] = 30
+    assert code_for(job(1)) == "Zz9Yy8Xx" and len(calls) == 2
+
+
 def test_unsupported_site_is_listed_not_handed_off():
     d = FakeDriver([fld(1, "Search jobs")], submit_enabled=True)
     api = FakeApi()
