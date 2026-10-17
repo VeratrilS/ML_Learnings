@@ -171,6 +171,20 @@ def local_history(runs_dir=RUNS_DIR):
     return out
 
 
+def expired_ids(runs_dir=RUNS_DIR):
+    """Job Radar ids whose posting the runner found closed (never tried again)."""
+    out = set()
+    for log in sorted(Path(runs_dir).glob("*/log.jsonl")):
+        for line in log.read_text(encoding="utf-8").splitlines():
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if e.get("outcome") == "expired" and e.get("job_id") is not None:
+                out.add(e["job_id"])
+    return out
+
+
 def server_history(radar_jobs):
     return [{"company": j.get("company"), "role": j.get("role"), "ts": j.get("applied_at")}
             for j in radar_jobs or [] if j.get("status") in APPLIED_STATUSES]
@@ -933,12 +947,20 @@ def detect_confirmation(text, url, start_url=None):
     return ok, (m.group(1) if m else None)
 
 
+EXPIRED = re.compile(r"this job (has expired|is no longer (available|accepting))|job (posting )?(has expired|is closed|"
+                     r"no longer available)|position (has been filled|is no longer available)|no longer accepting "
+                     r"applications|this (position|role|requisition) (has been )?closed|the job you are looking for "
+                     r"(is no longer|does not exist)", re.I)
+
+
 def blockers(state, fields):
     reasons = []
     if state.get("captcha"):
         reasons.append("CAPTCHA on the page")
     if state.get("login"):
         reasons.append("Login or account needed")
+    if EXPIRED.search((state.get("text") or "")[:3000]):
+        return ["Posting closed (expired or no longer accepting applications)"]
     if "maintenance-page" in (state.get("url") or "") or re.search(
             r"workday is currently unavailable|experiencing a service interruption", state.get("text") or "", re.I):
         reasons.append("Workday is down for maintenance right now: run this job again later")
@@ -2582,6 +2604,9 @@ class Runner:
             return self._record(job, "failed", reason=f"could not open the page ({str(e)[:80]})")
         fill, reasons, missing = self._fill_and_check(job)
         filled_n = len(fill.filled)
+        if any(r.startswith("Posting closed") for r in reasons):
+            self.d.reset()
+            return self._record(job, "expired", reason=reasons[0])
         if not self.submit:  # dry run: report only, never press Submit
             self.rows.append(self._row(job, fill, reasons, missing))
             self.d.reset()
@@ -2597,6 +2622,9 @@ class Runner:
         if not reasons and not missing and not known_ats(job):
             # Unfamiliar site: a "thank you" can come from a talent-network or job-alert form. Sai submits it himself.
             reasons = ["Unfamiliar application site: check the form and press Submit yourself"]
+        if any(r.startswith("Posting closed") for r in reasons):
+            self.d.reset()
+            return self._record(job, "expired", reason=reasons[0])
         if reasons and not missing and all(NO_HANDOFF.search(r) for r in reasons):
             # Nothing Sai can fix in the window (unsupported site, blocked, Workday down/sign-in): list it and move on.
             self.d.reset()
@@ -2984,7 +3012,9 @@ def run_batch(args, api, answers, learned, mode):
         jobs = [j for j in jobs if str(j.get("id")) in wanted]
     radar = api.radar() or {}
     done = recent_role_keys(local_history() + server_history(radar.get("jobs")))
-    jobs = dedupe(jobs, () if args.only else done)  # --only: Sai picked these ids (e.g. finishing an unconfirmed submit)
+    jobs = dedupe(jobs, () if args.only else done)
+    gone = expired_ids()
+    jobs = [j for j in jobs if j.get("id") not in gone]  # --only: Sai picked these ids (e.g. finishing an unconfirmed submit)
     limit = args.max or (40 if mode == "harvest" else 25)
     print(f"{len(jobs)} open jobs after filters and 30-day dedupe; working through up to {limit}.")
     profile = radar.get("profile") or {}

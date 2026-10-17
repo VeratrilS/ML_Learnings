@@ -599,6 +599,19 @@ def test_unfamiliar_site_is_never_auto_submitted():
     assert not aa.known_ats(job(4, url="https://careers.qualcomm.com/careers/job/1"))
 
 
+def test_expired_posting_is_recorded_and_never_retried(tmp_path):
+    st = {"url": "u", "text": "Software Dev Engineer I This job has expired Sorry, this job has expired"}
+    assert aa.blockers(st, []) == ["Posting closed (expired or no longer accepting applications)"]
+    d = FakeDriver([fld(1, "Search")], submit_enabled=True)
+    d.text = st["text"]
+    d.open = lambda job: "fake"
+    d.fields_now = [fld(1, "Search")]
+    log = aa.RunLog(tmp_path, today="2026-10-17")
+    out = runner(d, FakeApi(), log=log).run_job(job(252, company="Swiggy"))
+    assert out["outcome"] == "expired" and d.submits == 0
+    assert aa.expired_ids(tmp_path) == {252}
+
+
 def test_unmarked_job_leaves_local_history(tmp_path):
     d = tmp_path / "2026-10-17"
     d.mkdir()
