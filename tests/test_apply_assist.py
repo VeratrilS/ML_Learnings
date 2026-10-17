@@ -448,6 +448,40 @@ def test_fill_workday_stops_on_unknown_required_and_on_account_problems():
     assert "verification email" in reasons[0]
 
 
+def test_api_falls_back_to_production_when_local_database_fails():
+    import requests
+
+    class Resp:
+        def __init__(self, code, data=None):
+            self.status_code, self.ok, self._data = code, code < 400, data or {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(str(self.status_code))
+
+        def json(self):
+            return self._data
+
+    class Http:
+        headers = {}
+
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, params=None, timeout=None):
+            self.urls.append(url)
+            if url.startswith("http://localhost"):
+                raise requests.ReadTimeout("db down")
+            return Resp(200, {"data": [{"id": 1}]})
+
+    api = aa.Api("http://localhost:5050", "k", session=Http())
+    assert api.live_jobs() == [{"id": 1}] and api.base == aa.PROD_API
+    remote = aa.Api("https://example.com", "k", session=Http())
+    remote.http.get = lambda *a, **k: (_ for _ in ()).throw(requests.ReadTimeout("x"))
+    with pytest.raises(requests.ReadTimeout):
+        remote.live_jobs()
+
+
 def test_blockers_name_maintenance_and_blocked_sites():
     down = {"url": "https://static.community.workday.com/maintenance-page.html",
             "text": "Workday is currently unavailable. We are experiencing a service interruption."}

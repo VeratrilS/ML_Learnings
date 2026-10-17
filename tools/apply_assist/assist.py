@@ -1166,10 +1166,25 @@ class Api:
         except Exception:
             return False
 
+    def _local(self):
+        return urlparse(self.base).hostname in ("localhost", "127.0.0.1")
+
     def _get(self, path, timeout=60, **params):
-        r = self.http.get(self.base + path, params=params, timeout=timeout)
-        r.raise_for_status()
-        return r.json()
+        import requests
+        try:
+            r = self.http.get(self.base + path, params=params, timeout=timeout)
+            if r.status_code < 500 or not self._local():
+                r.raise_for_status()
+                return r.json()
+            why = f"HTTP {r.status_code}"
+        except (requests.Timeout, requests.ConnectionError) as e:
+            if not self._local():
+                raise
+            why = type(e).__name__
+        # The laptop's app often can't reach the database on campus Wi-Fi; production has the same data.
+        print(f"Local app failed ({why}): switching to {PROD_API}")
+        self.base = PROD_API
+        return self._get(path, timeout=timeout, **params)
 
     def live_jobs(self, min_score=MIN_SCORE, min_ctc=MIN_CTC, role_types=ROLE_TYPES):
         return self._get("/api/jobs/live", min_score=min_score, min_ctc=min_ctc, role_type=",".join(role_types)).get("data") or []
