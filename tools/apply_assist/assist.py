@@ -218,6 +218,9 @@ class SubmitBlocked(RuntimeError):
 SUBMIT_WORDS = re.compile(r"\b(submit|apply|send|finish|complete|confirm)\b", re.I)
 APPLY_ENTRY = (r"apply|apply now|apply for this (job|role|position)|apply here|apply online|apply to this job|"
                r"apply manually|start (your )?application|i.?m interested")
+ACCOUNT_BUTTONS = r"create account|sign in"
+WD_BUTTON_IDS = {"Create Account": "createAccountSubmitButton", "Sign In": "signInSubmitButton"}
+NEXT_BUTTONS = r"save and continue|next|continue"
 
 
 def is_submit_like(info):
@@ -242,8 +245,19 @@ def check_click_allowed(info, purpose, submit_enabled=False):
         if t != "submit" and not info.get("in_form") and re.fullmatch(rf"\s*({APPLY_ENTRY})\s*", text, re.I):
             return True
         raise SubmitBlocked(f"Refusing to click {text!r}: not a plain 'Apply' entry button.")
-    if purpose == "pick_option" and info.get("role") == "option" and info.get("tag") not in ("button", "input", "a"):
+    if purpose == "pick_option" and info.get("tag") not in ("button", "input", "a") and (
+            info.get("role") == "option" or info.get("wdid") in ("promptOption", "promptLeafNode")):
         return True  # a dropdown option ("Yes, I confirm") can't submit the form
+    if purpose in ("account", "next_page"):
+        # Workday: "Create Account" / "Sign In" and "Save and Continue" / "Next". The label may repeat (text + aria-label).
+        words = ACCOUNT_BUTTONS if purpose == "account" else NEXT_BUTTONS
+        if re.fullmatch(rf"\s*(?:{words})(?:\s+(?:{words}))*\s*", text, re.I) and not SUBMIT_WORDS.search(text):
+            return True
+        raise SubmitBlocked(f"Refusing to click {text or t!r} as a {purpose} button.")
+    if purpose == "open_dropdown":
+        if info.get("haspopup") == "listbox" and t != "submit" and not SUBMIT_WORDS.search(text):
+            return True
+        raise SubmitBlocked(f"Refusing to click {text or t!r}: not a dropdown.")
     if is_submit_like(info):
         raise SubmitBlocked(f"Refusing to click {text or t!r}: looks like a submit/apply/send control.")
     return True
@@ -252,8 +266,26 @@ def check_click_allowed(info, purpose, submit_enabled=False):
 ELEMENT_INFO_JS = """(el) => ({
   tag: el.tagName.toLowerCase(), type: (el.type || el.getAttribute('type') || '').toLowerCase(),
   role: (el.getAttribute('role') || '').toLowerCase(), in_form: !!el.closest('form'), href: el.tagName === 'A' ? el.href : '',
+  haspopup: (el.getAttribute('aria-haspopup') || '').toLowerCase(), wdid: el.getAttribute('data-automation-id') || '',
   text: ((el.innerText || '') + ' ' + (el.tagName === 'INPUT' ? (el.value || '') : '') + ' ' + (el.getAttribute('aria-label') || ''))
         .replace(/\\s+/g, ' ').trim().slice(0, 200)})"""
+
+
+SEARCH_INPUT_JS = """(el) => ({uxi: (el.dataset && el.dataset.uxiWidgetType) || '', in_form: !!el.closest('form'),
+  tag: el.tagName.toLowerCase()})"""
+
+
+def check_enter_allowed(info):
+    """Enter can submit a form, so it's only pressed inside a Workday search picker that isn't in a <form>."""
+    if info.get("uxi") == "selectinput" and info.get("tag") == "input" and not info.get("in_form"):
+        return True
+    raise SubmitBlocked("Refusing to press Enter outside a Workday search picker.")
+
+
+def search_enter(locator):
+    """The only place in this file that presses Enter."""
+    check_enter_allowed(locator.evaluate(SEARCH_INPUT_JS))
+    locator.press("Enter")
 
 
 def safe_click(locator, purpose, submit_enabled=False, info=None):
@@ -280,6 +312,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"last\s*name|surname|family\s*name|^last$", "last_name"),
     (r"^(full\s*)?name\s*\*?$|your (full )?name|_systemfield_name|legal name|candidate name|^full name", "full_name"),
     (r"e-?mail", "email"),
+    (r"phone device type|device type", "phone_device_type"),
+    (r"country phone code|phone (country )?code|dialing code|country code", "phone_country_code"),
     (r"phone|mobile|contact number|whatsapp", "phone"),
     (r"linked\s*in", "linkedin"),
     (r"git\s*hub", "github"),
@@ -295,7 +329,10 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"backlog", "active_backlogs"),
     (r"date of birth|\bdob\b|birth\s*date", "date_of_birth"),
     (r"pin\s*code|postal code|\bzip\b", "pin_code"),
+    (r"address line 1|street address|^street", "address_line1"),
+    (r"address line 2", "address_line2"),  # never filled
     (r"address", "address"),
+    (r"^city\W*$|^town\W*$", "address_city"),  # the bare "City" of an address block
     (r"expected (ctc|salary|compensation|pay)|salary expectation|desired (salary|compensation)", "expected_ctc"),
     (r"current (ctc|salary|compensation)|present (ctc|salary)", "current_ctc"),
     (r"notice period", "notice_period"),
@@ -346,6 +383,8 @@ EXTRA_TARGETS = {
                          "Website", "Job board", "Online job board", "LinkedIn", "Other"],
     "notice_period": ["Immediate", "Immediately", "0 days", "Not applicable", "N/A", "Less than 15 days", "None"],
     "current_ctc": ["Not applicable", "N/A", "0"],
+    "phone_country_code": ["India (+91)", "India", "+91"],
+    "phone_device_type": ["Mobile", "Mobile Phone", "Cell"],
 }
 DECLINE_KEYS = ("gender", "pronouns", "diversity")  # unanswered -> pick a decline option if the field offers one
 RESUME_FIELD = re.compile(r"resume|\bcv\b|curriculum", re.I)
@@ -654,6 +693,8 @@ AUTO_DEFAULTS = {
     "address": "NIT Rourkela, Sector 1, Rourkela, Odisha 769008, India",
     "pin_code": "769008",
     "state": "Odisha",
+    "phone_device_type": "Mobile",
+    "phone_country_code": "India (+91)",
 }
 ADDRESS_DEFAULT_KEYS = ("pin_code", "state")
 
@@ -682,7 +723,16 @@ def build_values(profile, answers, role_type=None):
     v["preferred_cities"] = _s(a.get("preferred_cities")) or _s(p.get("location_pref"))
     intern = (role_type or "").startswith("intern")
     v["start_date"] = _s(a.get("start_date_internship" if intern else "start_date_fte")) or _s(a.get("start_date"))
+    # Address blocks split into line 1 / city: default to the whole address and the current city.
+    v["address_line1"] = _s(a.get("address_line1")) or _s(v.get("address"))
+    v["address_city"] = _s(a.get("address_city")) or v["current_city"]
+    v.pop("workday_password", None)  # passed to the Workday sign-in only, never to a form field or the AI
     return {k: val for k, val in v.items() if val}
+
+
+def national_number(phone):
+    """'+91 91103 07856' -> '9110307856' (for forms with a separate country-code dropdown)."""
+    return re.sub(r"\D", "", re.sub(r"^\s*\+?91[\s-]*", "", phone or ""))
 
 
 def pack_answer(text, pack, company=""):
@@ -745,6 +795,7 @@ def _ask_ai(fc, label, ftype, options):
 def plan_fields(fields, fc):
     actions, todo = [], []
     files = [f for f in fields if f.get("type") == "file"]
+    has_code = any(rule_key(x) == "phone_country_code" for x in fields)
     for f in fields:
         t, label = f.get("type"), question_text(f)
         if t in ("radio", "checkbox"):
@@ -761,8 +812,10 @@ def plan_fields(fields, fc):
             continue
         if has_value(f):
             continue  # never overwrite what's already there
-        is_combo = f.get("role") == "combobox"
+        is_combo = f.get("role") in ("combobox", "listbox")
         val, src = resolve(f, fc, choice=t == "select" or is_combo)
+        if val and src == "profile" and has_code and rule_key(f) == "phone":
+            val = national_number(val)
         strict = src in ("question", "learned")
         targets = targets_for(rule_key(f), val, strict=strict)
         src = src or ("default" if targets else None)  # e.g. "Decline to self-identify"
@@ -1204,7 +1257,7 @@ AI_SYSTEM = (
     "how you'd design X) always get an answer: 1-3 plain first-person sentences built from the facts and sound CS "
     "knowledge.\n"
     'Return JSON: {"answer": "<text>"} or {"answer": null}.')
-AI_PRIVATE_KEYS = {"phone", "address", "pin_code", "date_of_birth", "email"}
+AI_PRIVATE_KEYS = {"phone", "address", "address_line1", "pin_code", "date_of_birth", "email", "workday_password"}
 
 
 def ai_facts(values):
@@ -1310,21 +1363,25 @@ SCAN_JS = r"""() => {
     if (el.value) return el.value;
     let n = el.parentElement;
     for (let i = 0; n && i < 5; i++, n = n.parentElement) {
-      const v = n.querySelector('[class*="single-value"], [class*="singleValue"], [class*="multi-value__label"], [class*="multiValue"]');
+      const v = n.querySelector('[class*="single-value"], [class*="singleValue"], [class*="multi-value__label"], [class*="multiValue"], '
+        + '[data-automation-id="selectedItem"]');
       if (v) return txt(v);
     }
     return '';
   };
+  // Workday: styled radios / check boxes are often transparent inputs under a visible label.
+  const boxShown = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+    return r.width > 1 && r.height > 1 && s.visibility !== 'hidden' && s.display !== 'none'; };
   const out = [];
   for (const el of document.querySelectorAll('input, textarea, select')) {
     if (el.closest('#aa-overlay')) continue;
     const t = (el.type || '').toLowerCase();
     if (['hidden', 'submit', 'button', 'reset', 'image'].includes(t) || el.disabled) continue;
     const isFile = t === 'file';
-    if (!isFile && (!shown(el) || el.getAttribute('aria-hidden') === 'true')) continue;
-    if (!el.dataset.aaId) el.dataset.aaId = String(window.__aaNext++);
-    const role = (el.getAttribute('role') || '').toLowerCase();
     const choice = t === 'radio' || t === 'checkbox';
+    if (!isFile && (!(choice ? boxShown(el) : shown(el)) || el.getAttribute('aria-hidden') === 'true')) continue;
+    if (!el.dataset.aaId) el.dataset.aaId = String(window.__aaNext++);
+    const role = (el.getAttribute('role') || (el.dataset.uxiWidgetType === 'selectinput' ? 'combobox' : '')).toLowerCase();
     const sel = el.tagName === 'SELECT';
     out.push({
       aid: el.dataset.aaId, tag: el.tagName.toLowerCase(),
@@ -1336,6 +1393,20 @@ SCAN_JS = r"""() => {
              : (choice ? el.value : (el.value || ''))),
       checked: !!el.checked, files: isFile && el.files ? el.files.length : 0,
       options: sel ? [...el.options].map((o) => o.text.trim()) : [], in_form: !!el.closest('form'),
+    });
+  }
+  // Workday dropdowns are buttons ("Select One") that open a listbox.
+  for (const el of document.querySelectorAll('button[aria-haspopup="listbox"]')) {
+    if (el.closest('#aa-overlay') || el.disabled || !shown(el)) continue;
+    if (!el.dataset.aaId) el.dataset.aaId = String(window.__aaNext++);
+    const aria = el.getAttribute('aria-label') || '';
+    const v = txt(el);
+    out.push({
+      aid: el.dataset.aaId, tag: 'button', type: 'listbox', role: 'listbox',
+      label: labelOf(el) || aria.replace(/\s*(select one|required)\s*/gi, ' ').trim(), optlabel: '', aria, placeholder: '',
+      name: el.name || '', id: el.id || '',
+      required: el.getAttribute('aria-required') === 'true' || /\brequired\b/i.test(aria),
+      value: /^select one$/i.test(v) ? '' : v, checked: false, files: 0, options: [], in_form: !!el.closest('form'),
     });
   }
   return out;
@@ -1592,6 +1663,9 @@ class PlaywrightDriver:
                 elif a.kind == "file":
                     loc.set_input_files({"name": self.resume_name, "mimeType": "application/pdf", "buffer": self.resume},
                                         timeout=10000)
+                elif a.kind == "combo" and a.f.get("role") == "listbox":
+                    if not self._listbox(loc, a):
+                        raise ValueError(f"no option matches {a.value!r}")
                 elif a.kind == "combo" and not self._combo(loc, a):
                     raise ValueError(f"no option matches {a.value!r}")
                 filled.append(a)
@@ -1604,30 +1678,21 @@ class PlaywrightDriver:
         """Search-as-you-type dropdown: type each search term and pick a matching option; if typing finds nothing
         (e.g. the answer is "Yes" but the options say "I acknowledge"), open the full list and match against it."""
         frame = self._frames[a.f["frame"]]
-        strict = a.source in ("question", "learned")
-        targets = a.targets or choice_targets(a.value)
-
-        def pick():
-            opts = frame.locator('[role="option"]')
-            seen = []
-            for i in range(min(opts.count(), 80)):
-                try:
-                    if opts.nth(i).is_visible():
-                        seen.append((i, opts.nth(i).inner_text(timeout=1000)))
-                except Exception:
-                    continue
-            idx = option_match([t for _, t in seen], targets, strict=strict)
-            if idx is None:
-                return False
-            safe_click(opts.nth(seen[idx][0]), "pick_option")
-            self.page.wait_for_timeout(400)
-            return True
+        pick = lambda: self._pick_option(frame, a)  # noqa: E731
 
         for term in combo_terms(a.value):
             loc.fill(term, timeout=5000)
             self.page.wait_for_timeout(1200)
             if pick():
                 return True
+            if a.f.get("role") == "combobox" and self.is_workday():
+                try:
+                    search_enter(loc)  # Workday search pickers only search on Enter
+                except SubmitBlocked:
+                    continue
+                self.page.wait_for_timeout(1500)
+                if pick():
+                    return True
         try:
             loc.fill("", timeout=3000)
             loc.focus(timeout=3000)
@@ -1643,6 +1708,190 @@ class PlaywrightDriver:
         except Exception:
             pass
         return False
+
+    OPTION_SEL = '[role="option"], [data-automation-id="promptOption"]'
+
+    def _pick_option(self, frame, a):
+        """Click the visible dropdown option that best matches the action's targets. False if none matches."""
+        strict = a.source in ("question", "learned")
+        targets = a.targets or choice_targets(a.value)
+        opts = frame.locator(self.OPTION_SEL)
+        seen = []
+        for i in range(min(opts.count(), 120)):
+            try:
+                if opts.nth(i).is_visible():
+                    seen.append((i, opts.nth(i).inner_text(timeout=1000)))
+            except Exception:
+                continue
+        idx = option_match([t for _, t in seen], targets, strict=strict)
+        if idx is None:
+            return False
+        safe_click(opts.nth(seen[idx][0]), "pick_option")
+        self.page.wait_for_timeout(500)
+        return True
+
+    def _listbox(self, loc, a):
+        """Workday "Select One" button: open it, pick the option; for long lists type the first letters to scroll."""
+        frame = self._frames[a.f["frame"]]
+        safe_click(loc, "open_dropdown")
+        self.page.wait_for_timeout(800)
+        if self._pick_option(frame, a):
+            return True
+        for term in combo_terms(a.value)[:2]:
+            try:
+                self.page.keyboard.type(term[:12], delay=60)  # Workday listboxes jump to the typed text
+                self.page.wait_for_timeout(700)
+                if self._pick_option(frame, a):
+                    return True
+            except Exception:
+                pass
+        try:
+            self.page.keyboard.press("Escape")
+        except Exception:
+            pass
+        return False
+
+    # ---- Workday: account step and multi-page navigation ----
+    def is_workday(self):
+        host = urlparse(self.url()).netloc.lower()
+        if "myworkdayjobs.com" in host or "myworkdaysite.com" in host:
+            return True
+        try:
+            return bool(self.page.evaluate("() => !!document.querySelector('[data-automation-id=\"workdayApplication\"],"
+                                           " [data-automation-id=\"applyFlowPage\"], [data-automation-id=\"createAccountLink\"]')"))
+        except Exception:
+            return False
+
+    def _visible(self, selector):
+        loc = self.page.locator(selector)
+        for i in range(min(loc.count(), 5)):
+            if loc.nth(i).is_visible():
+                return loc.nth(i)
+        return None
+
+    def _wd_button(self, name):
+        """Workday covers its buttons with a transparent 'click_filter' div labelled like the button."""
+        for sel in (f'[data-automation-id="click_filter"][aria-label="{name}"]',
+                    f'[data-automation-id="{WD_BUTTON_IDS.get(name, "")}"]',
+                    f'button:has-text("{name}")'):
+            loc = self._visible(sel)
+            if loc is not None:
+                return loc
+        return None
+
+    def page_text(self):
+        try:
+            return self.page.evaluate("() => document.body ? document.body.innerText.slice(0, 20000) : ''")
+        except Exception:
+            return ""
+
+    def workday_account(self, email, password):
+        """Create the candidate account (or sign in if it exists). -> ok | no-password | verify-email | failed:<why>."""
+        try:
+            return self._workday_account(email, password)
+        except SubmitBlocked as e:
+            return f"failed:{e}"
+
+    def _workday_account(self, email, password):
+        if self._visible('input[type="password"]') is None and self._visible('[data-automation-id="createAccountLink"]') is None:
+            return "ok"  # already signed in (persistent Chrome profile) or no account step
+        if not password:
+            return "no-password"
+        creating = self._visible('[data-automation-id="verifyPassword"]') is not None
+        link = self._visible('[data-automation-id="createAccountLink"]')
+        if not creating and link is not None:
+            safe_click(link, "account")
+            self._settle()
+            creating = self._visible('[data-automation-id="verifyPassword"]') is not None
+        result = self._wd_credentials(email, password, creating)
+        if result == "exists":
+            link = self._visible('[data-automation-id="signInLink"]')
+            if link is None:
+                return "failed:account exists but no Sign In link"
+            safe_click(link, "account")
+            self._settle()
+            result = self._wd_credentials(email, password, creating=False)
+        return result
+
+    def _wd_credentials(self, email, password, creating):
+        page = self.page
+        for sel, val in (('[data-automation-id="email"]', email), ('[data-automation-id="password"]', password),
+                         ('[data-automation-id="verifyPassword"]', password if creating else None)):
+            loc = self._visible(sel)
+            if loc is not None and val:
+                loc.fill(val, timeout=6000)
+        if creating:
+            box = self._visible('[data-automation-id="createAccountCheckbox"]')
+            if box is not None and not box.is_checked():
+                safe_click(box, "toggle")
+        name = "Create Account" if creating else "Sign In"
+        btn = self._wd_button(name)
+        if btn is None:
+            return f"failed:no {name} button"
+        safe_click(btn, "account")
+        page.wait_for_timeout(2500)
+        self._settle()
+        text = self.page_text()
+        if re.search(r"already (exists|in use|registered)|account with this email", text, re.I):
+            return "exists"
+        if re.search(r"verify your (email|account)|verification (email|link)|check your (email|inbox)", text, re.I):
+            return "verify-email"
+        if self._visible('input[type="password"]') is not None:
+            err = self._visible('[data-automation-id="errorMessage"], [role="alert"]')
+            why = (err.inner_text(timeout=1000) if err is not None else "still on the sign-in page")[:120]
+            return f"failed:{why}"
+        return "ok"
+
+    def workday_step(self):
+        """Name of the current application step (progress bar), or ''."""
+        loc = self._visible('[data-automation-id="progressBarActiveStep"], [data-automation-id="pageHeaderTitle"], h2')
+        try:
+            return re.sub(r"\s+", " ", loc.inner_text(timeout=1000)).strip() if loc is not None else ""
+        except Exception:
+            return ""
+
+    def _next_button(self):
+        for sel in ('[data-automation-id="bottom-navigation-next-button"]',):
+            loc = self._visible(sel)
+            if loc is not None:
+                return loc
+        return self._wd_button("Save and Continue") or self._wd_button("Next")
+
+    def workday_on_review(self):
+        """The last page: its bottom button says Submit (Workday reuses the 'next' button for it)."""
+        if re.search(r"\breview\b", self.workday_step(), re.I):
+            return True
+        btn = self._next_button()
+        try:
+            return btn is not None and bool(SUBMIT_WORDS.search(btn.inner_text(timeout=1000)))
+        except Exception:
+            return False
+
+    def workday_next(self, timeout_s=25):
+        """Click 'Save and Continue'. -> moved | errors:<text> | no-button."""
+        btn = self._next_button()
+        if btn is None:
+            return "no-button"
+        before = self.workday_step()
+        try:
+            safe_click(btn, "next_page")
+        except SubmitBlocked as e:
+            return f"errors:{e}"
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            self.page.wait_for_timeout(1000)
+            if self.workday_step() != before:
+                self._settle()
+                return "moved"
+            err = self._visible('[data-automation-id="errorMessage"], [data-automation-id="errorBanner"], [role="alert"]')
+            if err is not None:
+                try:
+                    text = err.inner_text(timeout=1000)
+                except Exception:
+                    text = ""
+                if text.strip():
+                    return "errors:" + re.sub(r"\s+", " ", text).strip()[:200]
+        return "errors:the page did not change after Save and Continue"
 
     def mark(self, items):
         by_frame = {}
@@ -1783,6 +2032,65 @@ def check_page(driver):
     return blockers(st, fields), missing_required(fields), st
 
 
+WD_ACCOUNT_REASONS = {
+    "no-password": "Workday needs an account: add workday_password to answers.yaml",
+    "verify-email": "Workday sent you a verification email: click the link in it, then run this job again",
+}
+
+
+def fill_workday(driver, fc, email, password, max_pages=8):
+    """Workday: account step, then fill each page and press 'Save and Continue' until the Review page (never Submit).
+    -> (FillResult over all pages, blocker reasons, missing required labels, step names seen)."""
+    account = driver.workday_account(email, password)
+    if account != "ok":
+        reason = WD_ACCOUNT_REASONS.get(account) or f"Workday sign-in failed ({account.split(':', 1)[-1]})"
+        return FillResult([], [], [], []), [reason], [], []
+    filled, steps, fill = [], [], FillResult([], [], [], [])
+    for _ in range(max_pages):
+        steps.append(driver.workday_step())
+        if driver.workday_on_review():
+            return FillResult(fill.fields, filled, [], []), [], [], steps
+        fill = fill_page(driver, fc)
+        filled += fill.filled
+        reasons, missing, _st = check_page(driver)
+        if missing:  # fields that appear only after another answer (State after Country): one more pass
+            fill = fill_page(driver, fc)
+            filled += fill.filled
+            reasons, missing, _st = check_page(driver)
+        # A page of only buttons/uploads (My Experience) is fine on Workday.
+        reasons = [r for r in reasons if not r.startswith("No application form")]
+        if reasons or missing:
+            return FillResult(fill.fields, filled, fill.todo, fill.tracked), reasons, missing, steps
+        moved = driver.workday_next()
+        if moved == "no-button":
+            return FillResult(fill.fields, filled, fill.todo, fill.tracked), ["Couldn't find Save and Continue"], [], steps
+        if moved.startswith("errors:"):
+            return FillResult(fill.fields, filled, fill.todo, fill.tracked), [f"Workday says: {moved[7:]}"], [], steps
+    return FillResult(fill.fields, filled, fill.todo, fill.tracked), [f"More than {max_pages} pages"], [], steps
+
+
+def is_workday(driver):
+    return bool(getattr(driver, "is_workday", lambda: False)())
+
+
+def ensure_workday_password(answers, path=ANSWERS_PATH):
+    """One strong password for every Workday candidate account, generated once and appended to answers.yaml.
+    Never printed: open answers.yaml to see it."""
+    pw = _s((answers or {}).get("workday_password"))
+    if pw:
+        return pw
+    import secrets
+    import string
+    body = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(14))
+    pw = f"Wd{body}7!"  # Workday wants upper, lower, digit and a special character
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(f'\n# Password for the Workday candidate accounts the runner creates (one per company site).\n'
+                 f'workday_password: "{pw}"\n')
+    answers["workday_password"] = pw
+    print(f"Created a Workday password and saved it in {Path(path).name} (workday_password).")
+    return pw
+
+
 # =====================================================================================================
 # Runner: --auto (dry run or --submit) and --harvest
 # =====================================================================================================
@@ -1810,8 +2118,10 @@ class Runner:
     def __init__(self, api, driver, context_for, *, submit=False, max_jobs=25, per_company=1,
                  handoff_wait_s=1800, ask_timeout_s=600, poll_s=15, pending=None, pending_path=PENDING_PATH,
                  learned=None, learned_path=LEARNED_PATH, harvest_first=True, emailer=None, log=None,
-                 sleep=time.sleep, clock=time.monotonic, rng=None, pace=(90, 240), confirm_wait_s=30):
+                 sleep=time.sleep, clock=time.monotonic, rng=None, pace=(90, 240), confirm_wait_s=30,
+                 workday_password=""):
         self.api, self.d, self.context_for = api, driver, context_for
+        self.workday_password = workday_password
         self.submit, self.max_jobs, self.per_company = submit, max_jobs, per_company
         self.handoff_wait_s, self.ask_timeout_s, self.poll_s = handoff_wait_s, ask_timeout_s, poll_s
         self.pending = pending if pending is not None else {}
@@ -1952,12 +2262,16 @@ class Runner:
 
     def _fill_and_check(self, job):
         fc = self.context_for(job)
-        fill = fill_page(self.d, fc)
+        workday = is_workday(self.d)
+        if workday:
+            fill, reasons, missing, _steps = fill_workday(self.d, fc, fc.values.get("email"), self.workday_password)
+        else:
+            fill = fill_page(self.d, fc)
+            reasons, missing, _st = check_page(self.d)
         for key in fc.used_learned:
             self.learned.mark_used(key)
         self.ai_today += [dict(a, company=job.get("company")) for a in fc.ai_used]
-        reasons, missing, _st = check_page(self.d)
-        if not reasons and not looks_like_application(fill.fields):
+        if not workday and not reasons and not looks_like_application(fill.fields):
             reasons.append("Doesn't look like an application form (no email or resume field)")
         return fill, reasons, missing
 
@@ -2148,8 +2462,13 @@ def run_assist(args, api, answers, learned):
         d.hide()
         note = d.open(job)
         fc = make_fc(job)
-        fill = fill_page(d, fc)
-        reasons, missing, _st = check_page(d)
+        if d.is_workday():
+            password = ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH)
+            fill, reasons, missing, steps = fill_workday(d, fc, fc.values.get("email"), password)
+            note += " (Workday: " + " -> ".join(s for s in steps if s) + ")"
+        else:
+            fill = fill_page(d, fc)
+            reasons, missing, _st = check_page(d)
         still = reasons + list(dict.fromkeys([t.label for t in fill.todo] + missing))
         d.overlay(f"Filled {len(fill.filled)} fields", still,
                   "Review everything, then press the site's Submit button yourself.")
@@ -2211,7 +2530,8 @@ def run_batch(args, api, answers, learned, mode):
                         submit=(mode == "submit"), max_jobs=limit, per_company=args.per_company,
                         handoff_wait_s=args.handoff_wait * 60, ask_timeout_s=args.ask_timeout * 60,
                         pending=pending, learned=learned, harvest_first=not args.no_harvest,
-                        emailer=emailer, log=RunLog())
+                        emailer=emailer, log=RunLog(),
+                        workday_password=ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH))
         if mode == "harvest":
             work, _skipped = plan_queue(jobs, limit, args.per_company)
             pend, _rows = runner.harvest(work, record=True)

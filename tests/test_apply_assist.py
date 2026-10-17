@@ -167,9 +167,19 @@ def test_only_safe_click_calls_click_or_check():
     body = src.split("def safe_click(", 1)[1].split("\n\n\n", 1)[0]
     outside = src.replace(body, "")
     assert not re.search(r"\.(click|check|dblclick|tap)\(", outside)
-    assert not re.search(r"press\([\"']Enter", src)
+    enter_body = src.split("def search_enter(", 1)[1].split("\n\n\n", 1)[0]
+    assert len(re.findall(r"press\([\"']Enter", src)) == 1 and re.search(r"press\([\"']Enter", enter_body)
+    assert "check_enter_allowed(" in enter_body
     for banned in ("webdriver", "stealth", "navigator.plugins", "solve_captcha"):
         assert banned not in src.lower().replace("no stealth", "")
+
+
+def test_enter_only_in_workday_search_picker():
+    assert aa.check_enter_allowed({"uxi": "selectinput", "tag": "input", "in_form": False})
+    for info in ({"uxi": "selectinput", "tag": "input", "in_form": True}, {"uxi": "", "tag": "input", "in_form": False},
+                 {"uxi": "selectinput", "tag": "button", "in_form": False}):
+        with pytest.raises(aa.SubmitBlocked):
+            aa.check_enter_allowed(info)
 
 
 # ------------------------------------------------------------------ field planning
@@ -343,6 +353,99 @@ def test_ai_answerer_caches_and_keeps_private_values_out(tmp_path):
     assert aa.load_yaml(tmp_path / "ai.yaml")
     null = aa.make_ai_answerer(values, generate=lambda p: {"answer": None}, path=None)
     assert null("Date you were last promoted", "text", [], "Acme") is None
+
+
+def test_workday_click_guard():
+    ok = aa.check_click_allowed
+    assert ok({"tag": "div", "role": "button", "text": "Create Account"}, "account")
+    assert ok({"tag": "button", "type": "submit", "text": "Create Account Create Account"}, "account")
+    assert ok({"tag": "button", "text": "Sign In"}, "account")
+    assert ok({"tag": "button", "type": "button", "text": "Save and Continue"}, "next_page")
+    assert ok({"tag": "button", "text": "Select One", "haspopup": "listbox"}, "open_dropdown")
+    assert ok({"tag": "div", "text": "India (+91)", "wdid": "promptOption"}, "pick_option")
+    for info, purpose in [({"tag": "button", "text": "Submit"}, "next_page"),
+                          ({"tag": "button", "text": "Submit Application"}, "account"),
+                          ({"tag": "button", "text": "Submit", "haspopup": ""}, "open_dropdown"),
+                          ({"tag": "button", "text": "Create Account and Apply"}, "account")]:
+        with pytest.raises(aa.SubmitBlocked):
+            ok(info, purpose)
+
+
+def test_workday_phone_and_address_fields():
+    fields = [fld(1, "Phone Device Type*", type="listbox", role="listbox", required=True),
+              fld(2, "Country Phone Code*", role="combobox", required=True),
+              fld(3, "Phone Number*", required=True), fld(4, "Address Line 1*", required=True),
+              fld(5, "Address Line 2"), fld(6, "City*", required=True), fld(7, "Postal Code")]
+    answers = {"phone": "+91 91234 56789", "address": "Kasturi Nagar, Nellore", "address_line1": "Kasturi Nagar",
+               "address_city": "Nellore", "current_city": "Rourkela"}
+    plan = aa.plan_fields(fields, ctx(answers))
+    got = {a.f["aid"]: a.value for a in plan.actions}
+    assert got == {"1": "Mobile", "2": "India (+91)", "3": "9123456789", "4": "Kasturi Nagar", "6": "Nellore"}
+    assert plan.todo == []  # postal code / line 2 aren't required
+    assert aa.plan_fields([fld(3, "Phone Number*", required=True)], ctx(answers)).actions[0].value == "+91 91234 56789"
+
+
+def test_workday_password_never_reaches_form_values(tmp_path):
+    path = tmp_path / "answers.yaml"
+    path.write_text("full_name: X\n", encoding="utf-8")
+    answers = aa.load_yaml(path)
+    pw = aa.ensure_workday_password(answers, path)
+    assert len(pw) >= 12 and re.search(r"[A-Z]", pw) and re.search(r"\d", pw) and "!" in pw
+    assert aa.load_yaml(path)["workday_password"] == pw and aa.ensure_workday_password(aa.load_yaml(path), path) == pw
+    assert "workday_password" not in aa.build_values(PROFILE, aa.load_yaml(path))
+    assert pw not in aa.ai_facts(aa.build_values(PROFILE, aa.load_yaml(path)))
+
+
+class FakeWorkday:
+    """Pages of fields; Save and Continue moves on only when the page's required fields are filled."""
+
+    def __init__(self, pages, account="ok"):
+        self.pages, self.i, self.account, self.clicked_next = pages, 0, account, 0
+
+    def workday_account(self, email, password):
+        return self.account
+
+    def workday_step(self):
+        return "Review" if self.i >= len(self.pages) else f"Step {self.i + 1}"
+
+    def workday_on_review(self):
+        return self.i >= len(self.pages)
+
+    def scan(self):
+        return self.pages[self.i]
+
+    def apply(self, actions):
+        for a in actions:
+            a.f["value"] = "x"
+            a.f["checked"] = a.kind == "toggle" or a.f.get("checked")
+        return actions, []
+
+    def mark(self, items):
+        pass
+
+    def state(self):
+        return {"captcha": False, "login": False}
+
+    def workday_next(self):
+        self.clicked_next += 1
+        self.i += 1
+        return "moved"
+
+
+def test_fill_workday_walks_pages_to_review_and_stops():
+    d = FakeWorkday([[fld(1, "First Name*", required=True), fld(2, "Email*", type="email", required=True)],
+                     [fld(3, "Country*", type="listbox", role="listbox", required=True)]])
+    fill, reasons, missing, steps = aa.fill_workday(d, ctx({}), "a@b.c", "pw")
+    assert (reasons, missing, steps) == ([], [], ["Step 1", "Step 2", "Review"]) and d.clicked_next == 2
+    assert len(fill.filled) == 3
+
+
+def test_fill_workday_stops_on_unknown_required_and_on_account_problems():
+    d = FakeWorkday([[fld(1, "What is your favourite colour? *", required=True)], [fld(2, "City*", required=True)]])
+    _fill, reasons, missing, steps = aa.fill_workday(d, ctx({}), "a@b.c", "pw")
+    assert missing == ["What is your favourite colour? *"] and d.clicked_next == 0 and steps == ["Step 1"]
+    _f, reasons, _m, _s = aa.fill_workday(FakeWorkday([], account="verify-email"), ctx({}), "a@b.c", "pw")
+    assert "verification email" in reasons[0]
 
 
 def test_pick_option_allows_confirm_wording_in_dropdown_options():

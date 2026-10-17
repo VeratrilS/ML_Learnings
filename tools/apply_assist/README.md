@@ -59,6 +59,17 @@ Rules for `--submit`:
   applied to in the last 30 days, and waits 90–240 s between submissions.
 - At the end of the run you get a summary email ("Apply runner: N submitted, M need you").
 
+## Workday (Cisco, Barclays, Mastercard, Deutsche Bank, ...)
+
+Each Workday site needs a candidate account. The tool creates it with your email and one password, then signs in
+with it on later runs. It generates the password the first time and saves it in `answers.yaml`
+(`workday_password`). The password is never printed, so open the file to see it. The tool then fills every page,
+presses **Save and Continue** after each one, and stops on the **Review** page. You press Submit (or let
+`--auto --submit` do it).
+
+If a site emails you a verification link, click it, then run the same job again. If a page has a question it
+can't answer, the window comes up with that field outlined in orange.
+
 ## What it answers by itself
 
 You don't need to answer the standard screening questions. Unless `answers.yaml` says otherwise, it uses these
