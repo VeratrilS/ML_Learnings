@@ -925,7 +925,9 @@ def blockers(state, fields):
         reasons.append("CAPTCHA on the page")
     if state.get("login"):
         reasons.append("Login or account needed")
-    if len(fields) < 2 and not state.get("login"):
+    if re.match(r"\s*(access denied|403 forbidden|request blocked)", state.get("text") or "", re.I):
+        reasons.append("The site blocked this browser (Access Denied): open the link yourself")
+    elif len(fields) < 2 and not state.get("login"):
         reasons.append("No application form found (unknown flow)")
     return reasons
 
