@@ -13,6 +13,7 @@ import { Button, Card, CardHeader, Empty, Segmented, Sheet, Skeleton, useToast, 
 import { play } from '../lib/sfx';
 import { buildBookmarklet, autofillSnippet } from '../lib/autofill';
 import ApplicationDesk from '../components/ApplicationDesk';
+import RecruiterContacts from '../components/RecruiterContacts';
 
 function fmtCtc(val) {
     if (!val || Number(val) === 0) return 'CTC not listed';
@@ -1268,6 +1269,8 @@ Availability: ${answers.availability || 'Class of 2027 (NIT Rourkela CSE). Ready
             </Card>
 
             <ApplicationDesk jobs={confirmedJobs} onOpenTracker={() => setActiveTab('confirmed')} />
+
+            <RecruiterContacts jobs={jobs} />
 
             {/* Navigation Tabs */}
             <div className="border-b border-line flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
