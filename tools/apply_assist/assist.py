@@ -326,6 +326,12 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"degree|qualification|major|discipline|field of study", "degree"),
     (r"grad(uation)?\s*(year|date)|year of (graduation|passing)|class of|\bbatch\b|passing year", "grad_year"),
     (r"cgpa|\bgpa\b|grade point", "cgpa"),
+    (r"start date month|start month|from month", "edu_start_month"),
+    (r"start date year|start year|from year", "edu_start_year"),
+    (r"end date month|end month|to month|graduation month", "edu_end_month"),
+    (r"end date year|end year|to year", "edu_end_year"),
+    (r"(fluent|spoken|written|speak|read)\b.{0,40}\blanguage|\blanguages?\b.{0,40}\b(fluent|spoken|written|speak)",
+     "languages"),
     (r"backlog", "active_backlogs"),
     (r"date of birth|\bdob\b|birth\s*date", "date_of_birth"),
     (r"pin\s*code|postal code|\bzip\b", "pin_code"),
@@ -384,6 +390,10 @@ EXTRA_TARGETS = {
     "notice_period": ["Immediate", "Immediately", "0 days", "Not applicable", "N/A", "Less than 15 days", "None"],
     "current_ctc": ["Not applicable", "N/A", "0"],
     "phone_country_code": ["India (+91)", "India", "+91"],
+    "degree": ["Bachelor of Technology", "B.Tech", "Bachelor's Degree", "Bachelor's", "Bachelors", "Bachelor of Engineering",
+               "Bachelor"],
+    "college": ["National Institute of Technology Rourkela", "NIT Rourkela", "National Institute of Technology"],
+    "languages": ["Hindi", "Telugu"],
     "phone_device_type": ["Mobile", "Mobile Phone", "Cell"],
 }
 DECLINE_KEYS = ("gender", "pronouns", "diversity")  # unanswered -> pick a decline option if the field offers one
@@ -2557,6 +2567,9 @@ def run_batch(args, api, answers, learned, mode):
     from playwright.sync_api import sync_playwright
     jobs = select_jobs(api.live_jobs(args.min_score, args.min_ctc), args.min_score, args.min_ctc)
     jobs = filter_boards(jobs, args.boards)
+    if args.only:
+        wanted = {s.strip() for s in args.only.split(",") if s.strip()}
+        jobs = [j for j in jobs if str(j.get("id")) in wanted]
     radar = api.radar() or {}
     done = recent_role_keys(local_history() + server_history(radar.get("jobs")))
     jobs = dedupe(jobs, done)
@@ -2621,6 +2634,7 @@ def main(argv=None):
     ap.add_argument("--api", help=f"app base URL (default $APPLY_API_BASE or {DEFAULT_API})")
     ap.add_argument("--min-score", type=int, default=MIN_SCORE)
     ap.add_argument("--min-ctc", type=float, default=MIN_CTC)
+    ap.add_argument("--only", default=None, help="only these Job Radar ids, comma-separated (e.g. 5,1,10)")
     ap.add_argument("--boards", default=None,
                     help="only these job boards, e.g. greenhouse,lever,ashby (no account needed)")
     args = ap.parse_args(argv)

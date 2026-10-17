@@ -482,6 +482,19 @@ def test_api_falls_back_to_production_when_local_database_fails():
         remote.live_jobs()
 
 
+def test_education_dates_degree_and_languages():
+    answers = {"edu_start_month": "August", "edu_start_year": "2023", "edu_end_month": "May", "edu_end_year": "2027",
+               "languages": "Hindi, Telugu", "degree": "B.Tech, Computer Science and Engineering"}
+    fields = [fld(1, "Start date month*", required=True), fld(2, "Start date year*", required=True),
+              fld(3, "End date month*", required=True), fld(4, "End date year*", required=True),
+              fld(5, "In which language(s) are you fluent (spoken) other than English?*", required=True),
+              fld(6, "Degree*", type="select", required=True, options=["Select...", "High School", "Bachelor's Degree",
+                                                                       "Master's Degree"])]
+    got = {a.f["aid"]: a.value for a in aa.plan_fields(fields, ctx(answers)).actions}
+    assert got == {"1": "August", "2": "2023", "3": "May", "4": "2027", "5": "Hindi, Telugu", "6": 2}
+    assert aa.rule_key(fld(7, "Which programming languages do you know?")) is None
+
+
 def test_blockers_name_maintenance_and_blocked_sites():
     down = {"url": "https://static.community.workday.com/maintenance-page.html",
             "text": "Workday is currently unavailable. We are experiencing a service interruption."}
