@@ -3078,16 +3078,20 @@ def run_sync_email(api, answers):
 
 def run_batch(args, api, answers, learned, mode):
     from playwright.sync_api import sync_playwright
-    jobs = select_jobs(api.live_jobs(args.min_score, args.min_ctc), args.min_score, args.min_ctc)
-    jobs = filter_boards(jobs, args.boards)
-    if args.only:
-        wanted = {s.strip() for s in args.only.split(",") if s.strip()}
-        jobs = [j for j in jobs if str(j.get("id")) in wanted]
     radar = api.radar() or {}
-    done = recent_role_keys(local_history() + server_history(radar.get("jobs")))
-    jobs = dedupe(jobs, () if args.only else done)
-    gone = expired_ids()
-    jobs = [j for j in jobs if j.get("id") not in gone]  # --only: Sai picked these ids (e.g. finishing an unconfirmed submit)
+    if args.url:  # one posting Sai pasted (not necessarily in Job Radar)
+        jobs = [{"id": None, "company": args.company or urlparse(args.url).netloc, "role": args.role or "",
+                 "url": args.url, "board": application_url(args.url)[1]}]
+    else:
+        jobs = select_jobs(api.live_jobs(args.min_score, args.min_ctc), args.min_score, args.min_ctc)
+        jobs = filter_boards(jobs, args.boards)
+        if args.only:
+            wanted = {s.strip() for s in args.only.split(",") if s.strip()}
+            jobs = [j for j in jobs if str(j.get("id")) in wanted]
+        done = recent_role_keys(local_history() + server_history(radar.get("jobs")))
+        jobs = dedupe(jobs, () if args.only else done)  # --only: Sai picked these ids (e.g. finishing an unconfirmed submit)
+        gone = expired_ids()
+        jobs = [j for j in jobs if j.get("id") not in gone]
     limit = args.max or (40 if mode == "harvest" else 25)
     print(f"{len(jobs)} open jobs after filters and 30-day dedupe; working through up to {limit}.")
     profile = radar.get("profile") or {}
@@ -3168,6 +3172,9 @@ def main(argv=None):
     ap.add_argument("--attended", action="store_true",
                     help="you're at the laptop: CAPTCHAs / missing answers bring the window straight up (no email)")
     ap.add_argument("--only", default=None, help="only these Job Radar ids, comma-separated (e.g. 5,1,10)")
+    ap.add_argument("--url", default=None, help="with --auto: apply to this one posting link (use with --company/--role)")
+    ap.add_argument("--company", default=None, help="with --url: company name")
+    ap.add_argument("--role", default=None, help="with --url: role title")
     ap.add_argument("--boards", default=None,
                     help="only these job boards, e.g. greenhouse,lever,ashby (no account needed)")
     args = ap.parse_args(argv)
