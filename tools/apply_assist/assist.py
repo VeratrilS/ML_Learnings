@@ -1962,7 +1962,7 @@ class PlaywrightDriver:
         extra = [t for t in (a.targets or [])[1:] if len(t) <= 40]  # e.g. "NIT Rourkela", then "Other"
         for term in list(dict.fromkeys(combo_terms(a.value) + extra))[:7]:
             loc.fill(term, timeout=5000)
-            self.page.wait_for_timeout(1200)
+            self._wait_options(frame)  # search-as-you-type boxes (school lists) load results after ~2 s
             if pick():
                 return True
             if a.f.get("role") == "combobox" and self.is_workday():
@@ -2019,6 +2019,20 @@ class PlaywrightDriver:
         return list(dict.fromkeys(t for t in texts if t))
 
     OPTION_SEL = '[role="option"]:visible, [data-automation-id="promptOption"]:visible'
+
+    def _wait_options(self, frame, timeout_ms=3500):
+        """Wait until the dropdown shows options (or the timeout passes)."""
+        waited = 0
+        self.page.wait_for_timeout(700)
+        while waited < timeout_ms:
+            try:
+                if frame.locator(self.OPTION_SEL).count():
+                    self.page.wait_for_timeout(300)  # let the list finish rendering
+                    return
+            except Exception:
+                return
+            self.page.wait_for_timeout(400)
+            waited += 400
 
     def _pick_option(self, frame, a):
         """Click the visible dropdown option that best matches the action's targets. False if none matches."""
