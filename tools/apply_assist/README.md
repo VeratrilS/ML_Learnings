@@ -72,6 +72,22 @@ The runner sees the "thank you" page, marks the job applied, and moves on to the
 minutes per code. You can also paste a code into `security_codes.yaml` under the job's id (for example
 `'224': AbC12345`). `--only 5,1,10` limits a run to those Job Radar ids.
 
+## What the runner has learned (site playbook, 2026-10-17)
+
+| Site | What happens | What the runner does |
+|---|---|---|
+| Greenhouse (Zscaler, Okta, HackerRank, SingleStore, Rubrik, Point72) | After Submit, an 8-character security code is emailed (`no-reply@us.greenhouse-mail.io`). It's valid only for that Submit, because every Submit sends a new one. | Keeps the form open, reads the newest code for that company from Gmail (or you type it in), enters it and submits. |
+| Greenhouse dropdowns | The choices only appear once the dropdown is opened, and a hidden phone country picker adds 240 invisible "options". | Reads only visible options. For required dropdowns it opens them, reads the real choices and lets the AI pick one. |
+| School search boxes (IMC) | NIT Rourkela isn't in some schools' lists. | Tries "NIT Rourkela" and the full name, then picks "Other". |
+| Lever (Hevo Data) | reCAPTCHA after Submit. | Hands the form to you, never solves it. |
+| Workday (Barclays, Lowe's, Cisco, ...) | Create Account is blocked for automated browsers by a hidden bot check, and no email is sent. | You create the account once (password in `answers.yaml`). After that it signs in and fills every page. |
+| Company sites (Qualcomm, Microsoft, Amazon, Apple, Goldman, TI) | Not a standard form. A "thank you" can come from a talent-network signup. | Never auto-submits there. Lists them for you. |
+| Expired postings ("This job has expired") | | Logged as `expired` and never tried again. |
+| Campus Wi-Fi | Blocks Gmail IMAP (993) and Postgres (5432). | Falls back to the production app. Inbox reading needs a hotspot. |
+
+Facts the AI always uses: 0 years of professional experience (internships only), languages English, Hindi and
+Telugu, education Aug 2023 – May 2027. If an AI answer is wrong, fix it in `ai_answers.yaml`: it's reused.
+
 ## Workday (Cisco, Barclays, Mastercard, Deutsche Bank, ...)
 
 Each Workday site needs a candidate account. The tool creates it with your email and one password, then signs in

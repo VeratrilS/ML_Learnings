@@ -408,7 +408,7 @@ EXTRA_TARGETS = {
     "phone_country_code": ["India (+91)", "India", "+91"],
     "degree": ["Bachelor of Technology", "B.Tech", "Bachelor's Degree", "Bachelor's", "Bachelors", "Bachelor of Engineering",
                "Bachelor"],
-    "college": ["National Institute of Technology Rourkela", "NIT Rourkela", "National Institute of Technology"],
+    "college": ["National Institute of Technology Rourkela", "NIT Rourkela", "National Institute of Technology", "Other"],
     "languages": ["Hindi", "Telugu"],
     "phone_device_type": ["Mobile", "Mobile Phone", "Cell"],
 }
@@ -1314,6 +1314,9 @@ AI_SYSTEM = (
     "- Opinion, motivation and technical questions (favourite algorithm, why this role, a project you're proud of, "
     "how you'd design X) always get an answer: 1-3 plain first-person sentences built from the facts and sound CS "
     "knowledge.\n"
+    "- Professional experience is 0 years (internships only, under a year in total): for years-of-experience "
+    "questions answer 0, or the lowest option.\n"
+    "- Languages: the candidate speaks English, Hindi and Telugu. Pick only those; if none is listed, answer null.\n"
     'Return JSON: {"answer": "<text>"} or {"answer": null}.')
 AI_PRIVATE_KEYS = {"phone", "address", "address_line1", "pin_code", "date_of_birth", "email", "workday_password"}
 
@@ -1956,7 +1959,8 @@ class PlaywrightDriver:
         frame = self._frames[a.f["frame"]]
         pick = lambda: self._pick_option(frame, a)  # noqa: E731
 
-        for term in combo_terms(a.value):
+        extra = [t for t in (a.targets or [])[1:] if len(t) <= 40]  # e.g. "NIT Rourkela", then "Other"
+        for term in list(dict.fromkeys(combo_terms(a.value) + extra))[:7]:
             loc.fill(term, timeout=5000)
             self.page.wait_for_timeout(1200)
             if pick():
