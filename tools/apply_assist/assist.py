@@ -1808,7 +1808,10 @@ class PlaywrightDriver:
             s.detach()
 
     def hide(self):
-        if self.headless or self.visible:
+        if self.headless:
+            return
+        if self.visible:  # the profile remembers the last (off-screen) position: put the window where Sai can see it
+            self.show()
             return
         try:
             self._window({"windowState": "normal"})
