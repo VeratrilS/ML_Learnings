@@ -497,6 +497,24 @@ def test_security_code_after_submit_hands_off_instead_of_unconfirmed():
     assert api.handoffs and api.confirmed == []
 
 
+def test_security_code_from_file_is_entered_and_confirmed(tmp_path):
+    d = FakeDriver(SIMPLE, submit_enabled=True, confirm_on_submit=False)
+    orig, entered = d.submit, []
+
+    def submit():
+        orig()
+        d.text = "Thank you for applying! Application ID: GH77777" if entered else "Enter the security code sent to you"
+        return True
+    d.submit = submit
+    d.enter_security_code = lambda code: entered.append(code) or True
+    codes = tmp_path / "codes.yaml"
+    codes.write_text('"1": "AbCd1234"\n', encoding="utf-8")
+    api = FakeApi()
+    out = runner(d, api, code_for=aa.make_code_reader(codes)).run_job(job(1))
+    assert entered == ["AbCd1234"] and out["outcome"] == "submitted" and out["ref"] == "GH77777"
+    assert aa.load_yaml(codes) == {}  # used once
+
+
 def test_unconfirmed_records_what_the_page_said():
     d = FakeDriver(SIMPLE, submit_enabled=True, confirm_on_submit=False)
     out = runner(d, FakeApi()).run_job(job(1))

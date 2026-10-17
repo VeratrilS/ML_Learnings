@@ -1948,6 +1948,34 @@ class PlaywrightDriver:
                     return "errors:" + re.sub(r"\s+", " ", text).strip()[:200]
         return "errors:the page did not change after Save and Continue"
 
+    CODE_INPUTS_JS = r"""() => {
+      const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1; };
+      document.querySelectorAll('[data-aa-code]').forEach((e) => e.removeAttribute('data-aa-code'));
+      const inputs = [...document.querySelectorAll('input')]
+        .filter((e) => shown(e) && !['hidden', 'checkbox', 'radio', 'file', 'submit', 'button'].includes((e.type || '').toLowerCase()))
+        .filter((e) => /security|code|otp|verif/i.test([e.id, e.name, e.getAttribute('aria-label'), e.autocomplete].join(' ')));
+      inputs.forEach((e, i) => e.setAttribute('data-aa-code', String(i)));
+      return inputs.map((e) => e.maxLength);
+    }"""
+
+    def enter_security_code(self, code):
+        """Type the emailed code into the site's code box (one box, or one box per character)."""
+        for fr in list(self.page.frames):
+            try:
+                lens = fr.evaluate(self.CODE_INPUTS_JS)
+            except Exception:
+                continue
+            if not lens:
+                continue
+            if len(lens) >= len(code) and all(n == 1 for n in lens[:len(code)]):
+                for i, ch in enumerate(code):
+                    fr.locator(f'[data-aa-code="{i}"]').fill(ch, timeout=5000)
+            else:
+                fr.locator('[data-aa-code="0"]').fill(code, timeout=5000)
+            self.page.wait_for_timeout(800)
+            return True
+        return False
+
     def mark(self, items):
         by_frame = {}
         for f, color in items:
@@ -2127,6 +2155,20 @@ def fill_workday(driver, fc, email, password, max_pages=8):
     return FillResult(fill.fields, filled, fill.todo, fill.tracked), [f"More than {max_pages} pages"], [], steps
 
 
+CODES_PATH = HERE / "security_codes.yaml"
+
+
+def make_code_reader(path=CODES_PATH):
+    """code_for(job): the security code Sai pasted into security_codes.yaml for this Job Radar id (used once)."""
+    def code_for(job):
+        codes = load_yaml(path)
+        code = _s(codes.pop(str(job.get("id")), ""))
+        if code:
+            save_yaml(path, codes, "# Security codes the sites emailed after Submit, by Job Radar id. Used once.")
+        return code or None
+    return code_for
+
+
 def is_workday(driver):
     return bool(getattr(driver, "is_workday", lambda: False)())
 
@@ -2177,9 +2219,10 @@ class Runner:
                  handoff_wait_s=1800, ask_timeout_s=600, poll_s=15, pending=None, pending_path=PENDING_PATH,
                  learned=None, learned_path=LEARNED_PATH, harvest_first=True, emailer=None, log=None,
                  sleep=time.sleep, clock=time.monotonic, rng=None, pace=(90, 240), confirm_wait_s=30,
-                 workday_password=""):
+                 workday_password="", code_for=None):
         self.api, self.d, self.context_for = api, driver, context_for
         self.workday_password = workday_password
+        self.code_for = code_for  # code_for(job) -> the security code the site emailed, or None
         self.submit, self.max_jobs, self.per_company = submit, max_jobs, per_company
         self.handoff_wait_s, self.ask_timeout_s, self.poll_s = handoff_wait_s, ask_timeout_s, poll_s
         self.pending = pending if pending is not None else {}
@@ -2306,6 +2349,13 @@ class Runner:
             st = self.d.state()
             if SECURITY_CODE.search(st.get("text") or ""):
                 # Greenhouse emails a code after Submit; the application only goes through once it's typed in.
+                code = self.code_for(job) if self.code_for else None
+                if code and hasattr(self.d, "enter_security_code") and self.d.enter_security_code(code):
+                    print(f"  entered the emailed security code for {job.get('company')}")
+                    if self.d.submit():
+                        ok, ref = self.d.wait_confirmation(self.confirm_wait_s)
+                        if ok:
+                            return self._confirmed(job, ref)
                 reasons, missing = ["The site emailed you a security code: type it in the window, then press Submit"], []
                 continue
             if st.get("captcha") or st.get("errors"):
@@ -2589,7 +2639,7 @@ def run_batch(args, api, answers, learned, mode):
         jobs = [j for j in jobs if str(j.get("id")) in wanted]
     radar = api.radar() or {}
     done = recent_role_keys(local_history() + server_history(radar.get("jobs")))
-    jobs = dedupe(jobs, done)
+    jobs = dedupe(jobs, () if args.only else done)  # --only: Sai picked these ids (e.g. finishing an unconfirmed submit)
     limit = args.max or (40 if mode == "harvest" else 25)
     print(f"{len(jobs)} open jobs after filters and 30-day dedupe; working through up to {limit}.")
     profile = radar.get("profile") or {}
@@ -2607,7 +2657,8 @@ def run_batch(args, api, answers, learned, mode):
                         handoff_wait_s=args.handoff_wait * 60, ask_timeout_s=args.ask_timeout * 60,
                         pending=pending, learned=learned, harvest_first=not args.no_harvest,
                         emailer=emailer, log=RunLog(),
-                        workday_password=ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH))
+                        workday_password=ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH),
+                        code_for=make_code_reader())
         if mode == "harvest":
             work, _skipped = plan_queue(jobs, limit, args.per_company)
             pend, _rows = runner.harvest(work, record=True)
