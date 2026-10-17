@@ -493,8 +493,32 @@ def test_security_code_after_submit_hands_off_instead_of_unconfirmed():
     d.submit = submit
     api = FakeApi()
     out = runner(d, api).run_job(job(1))
-    assert out["outcome"] == "needs-you" and "security code" in out["reason"]
-    assert api.handoffs and api.confirmed == []
+    assert out["outcome"] == "needs-you" and "security code not entered" in out["reason"]
+    assert d.shown == 1 and d.overlays[-1][0].startswith("Security code needed") and api.confirmed == []
+
+
+def test_attended_mode_brings_window_up_without_email():
+    d = FakeDriver(SIMPLE, submit_enabled=True, captcha=True)
+    api = FakeApi()
+    runner(d, api, attended=True).run_job(job(1))
+    assert api.handoffs == [] and d.shown >= 1
+
+
+def test_sai_types_code_in_window_and_runner_carries_on():
+    d = FakeDriver(SIMPLE, submit_enabled=True, confirm_on_submit=False)
+    orig = d.submit
+
+    def submit():
+        orig()
+        d.text = "Enter the security code sent to your email"
+        return True
+    d.submit = submit
+
+    def sleep(_s):  # Sai types the code in the shown window and presses Submit
+        d.text = "Thank you for applying! Application ID: OK55555"
+    api = FakeApi()
+    out = runner(d, api, sleep=sleep).run_job(job(1))
+    assert out["outcome"] == "submitted" and out["by_sai"] and out["ref"] == "OK55555" and d.shown == 1
 
 
 def test_security_code_from_file_is_entered_and_confirmed(tmp_path):
@@ -531,7 +555,7 @@ def test_stale_code_rejected_then_waits_for_fresh_code(tmp_path):
 
     def sleep(_s):  # Sai pastes the fresh code while the runner waits
         codes.write_text('"1": "Fresh123"\n', encoding="utf-8")
-    out = runner(d, FakeApi(), code_for=aa.make_code_reader(codes, sleep=sleep)).run_job(job(1))
+    out = runner(d, FakeApi(), sleep=sleep, code_for=aa.make_code_reader(codes)).run_job(job(1))
     assert entered == ["Stale999", "Fresh123"] and out["outcome"] == "submitted"
 
 

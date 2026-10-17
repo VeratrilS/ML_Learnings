@@ -59,6 +59,19 @@ Rules for `--submit`:
   applied to in the last 30 days, and waits 90–240 s between submissions.
 - At the end of the run you get a summary email ("Apply runner: N submitted, M need you").
 
+## Run it by yourself (no Claude needed)
+
+```
+python tools/apply_assist/assist.py --auto --submit --attended --max 10
+```
+
+It submits each complete form. When a site needs you, the Chrome window comes up and the runner waits. This
+happens when the site emails a security code after Submit (Greenhouse does this), shows a CAPTCHA, or asks a
+question the runner can't answer. Type the code, or fix what's outlined in orange, and press Submit on the page.
+The runner sees the "thank you" page, marks the job applied, and moves on to the next one. It waits up to 10
+minutes per code. You can also paste a code into `security_codes.yaml` under the job's id (for example
+`'224': AbC12345`). `--only 5,1,10` limits a run to those Job Radar ids.
+
 ## Workday (Cisco, Barclays, Mastercard, Deutsche Bank, ...)
 
 Each Workday site needs a candidate account. The tool creates it with your email and one password, then signs in

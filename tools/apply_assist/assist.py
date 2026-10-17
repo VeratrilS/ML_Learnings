@@ -2260,11 +2260,12 @@ class Runner:
                  handoff_wait_s=1800, ask_timeout_s=600, poll_s=15, pending=None, pending_path=PENDING_PATH,
                  learned=None, learned_path=LEARNED_PATH, harvest_first=True, emailer=None, log=None,
                  sleep=time.sleep, clock=time.monotonic, rng=None, pace=(90, 240), confirm_wait_s=30,
-                 workday_password="", code_for=None, code_wait_s=600):
+                 workday_password="", code_for=None, code_wait_s=600, attended=False):
         self.api, self.d, self.context_for = api, driver, context_for
         self.workday_password = workday_password
         self.code_for = code_for  # code_for(job, wait_s) -> the security code the site emailed, or None
         self.code_wait_s = code_wait_s
+        self.attended = attended
         self.submit, self.max_jobs, self.per_company = submit, max_jobs, per_company
         self.handoff_wait_s, self.ask_timeout_s, self.poll_s = handoff_wait_s, ask_timeout_s, poll_s
         self.pending = pending if pending is not None else {}
@@ -2314,8 +2315,8 @@ class Runner:
     def handoff(self, job, reasons, fill):
         missing = [t.label for t in fill.todo] if fill else []
         reason = "; ".join(reasons)
-        hid = self.api.create_handoff(job, reason, missing or reasons, url=self.d.url())
-        choice = "pending"
+        hid = None if self.attended else self.api.create_handoff(job, reason, missing or reasons, url=self.d.url())
+        choice = "now" if self.attended else "pending"  # attended: Sai is at the laptop, bring the window straight up
         if hid:
             deadline = self.clock() + self.ask_timeout_s
             while True:
@@ -2391,28 +2392,12 @@ class Runner:
             st = self.d.state()
             if SECURITY_CODE.search(st.get("text") or ""):
                 # Greenhouse emails a code after Submit; the application only goes through once it's typed in.
-                # A code saved earlier may be stale (each Submit emails a new one): if it's rejected, keep the form
-                # open and wait for the fresh code to be pasted into security_codes.yaml.
-                for wait in (0, self.code_wait_s, self.code_wait_s):
-                    if not (self.code_for and hasattr(self.d, "enter_security_code")):
-                        break
-                    if wait:
-                        print(f"  WAITING up to {wait // 60} min for the security code {job.get('company')} just emailed "
-                              f"you (job id {job.get('id')} in security_codes.yaml)", flush=True)
-                    code = self.code_for(job, wait_s=wait)
-                    if not code:
-                        if wait:
-                            break
-                        continue
-                    if not self.d.enter_security_code(code):
-                        break
-                    print(f"  entered a security code for {job.get('company')}", flush=True)
-                    if self.d.submit():
-                        ok, ref = self.d.wait_confirmation(self.confirm_wait_s)
-                        if ok:
-                            return self._confirmed(job, ref)
-                reasons, missing = ["The site emailed you a security code: type it in the window, then press Submit"], []
-                continue
+                done = self._await_security_code(job)
+                if done:
+                    return done
+                self.d.reset()
+                return self._record(job, "needs-you", filled=filled_n,
+                                    reason=f"security code not entered within {self.code_wait_s // 60} min")
             if st.get("captcha") or st.get("errors"):
                 reasons = (["CAPTCHA appeared after Submit"] if st.get("captcha") else []) + \
                           (["The site flagged errors after Submit"] if st.get("errors") else [])
@@ -2422,6 +2407,45 @@ class Runner:
             self.d.reset()
             return self._record(job, "unconfirmed", reason="no confirmation page after Submit", filled=filled_n,
                                 page=page)
+
+    def _try_code(self, job, code):
+        """Type a code into the site's code box and submit. -> the 'submitted' record, or None."""
+        if not (code and hasattr(self.d, "enter_security_code") and self.d.enter_security_code(code)):
+            return None
+        print(f"  entered a security code for {job.get('company')}", flush=True)
+        if self.d.submit():
+            ok, ref = self.d.wait_confirmation(self.confirm_wait_s)
+            if ok:
+                return self._confirmed(job, ref)
+        return None
+
+    def _await_security_code(self, job):
+        """The site emailed Sai a code after Submit (a new one on every Submit). Works without anyone orchestrating:
+        the window comes up so Sai can type the code into the site's own box and press Submit; a code pasted into
+        security_codes.yaml is entered too. Returns the 'submitted' record, or None after code_wait_s."""
+        code = self.code_for(job, wait_s=0) if self.code_for else None  # saved earlier: may be stale
+        done = self._try_code(job, code)
+        if done:
+            return done
+        self.d.show()
+        self.d.overlay(f"Security code needed: {job.get('company')}", [],
+                       "Check your email for the security code, type it in the code box on this page and press "
+                       "Submit. The runner notices the confirmation and carries on by itself.")
+        print(f"\a  WAITING up to {self.code_wait_s // 60} min: type the security code {job.get('company')} emailed you "
+              f"into the Chrome window (or put it under '{job.get('id')}' in security_codes.yaml)", flush=True)
+        deadline = self.clock() + self.code_wait_s
+        while self.clock() < deadline:
+            ok, ref = self.d.confirmation()
+            if ok:
+                self.d.hide()
+                return self._confirmed(job, ref, by_sai=True)
+            done = self._try_code(job, self.code_for(job, wait_s=0) if self.code_for else None)
+            if done:
+                self.d.hide()
+                return done
+            self.sleep(5)
+        self.d.hide()
+        return None
 
     def _evidence(self, job, st):
         """What the page showed after Submit (text excerpt; screenshot saved next to the run log)."""
@@ -2713,7 +2737,7 @@ def run_batch(args, api, answers, learned, mode):
                         pending=pending, learned=learned, harvest_first=not args.no_harvest,
                         emailer=emailer, log=RunLog(),
                         workday_password=ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH),
-                        code_for=make_code_reader())
+                        code_for=make_code_reader(), attended=args.attended)
         if mode == "harvest":
             work, _skipped = plan_queue(jobs, limit, args.per_company)
             pend, _rows = runner.harvest(work, record=True)
@@ -2757,6 +2781,8 @@ def main(argv=None):
     ap.add_argument("--api", help=f"app base URL (default $APPLY_API_BASE or {DEFAULT_API})")
     ap.add_argument("--min-score", type=int, default=MIN_SCORE)
     ap.add_argument("--min-ctc", type=float, default=MIN_CTC)
+    ap.add_argument("--attended", action="store_true",
+                    help="you're at the laptop: CAPTCHAs / missing answers bring the window straight up (no email)")
     ap.add_argument("--only", default=None, help="only these Job Radar ids, comma-separated (e.g. 5,1,10)")
     ap.add_argument("--boards", default=None,
                     help="only these job boards, e.g. greenhouse,lever,ashby (no account needed)")
