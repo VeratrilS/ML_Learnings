@@ -1986,6 +1986,34 @@ class PlaywrightDriver:
         return False
 
     # Visible options only: pages hide hundreds of other options (e.g. a phone country-code picker's 240 countries).
+    def combo_options(self, f):
+        """Open a dropdown, read its visible choices, close it again (nothing is selected)."""
+        frame, loc, texts = self._frames.get(f.get("frame")), self._loc(f), []
+        if frame is None:
+            return []
+        try:
+            if f.get("role") == "listbox":
+                safe_click(loc, "open_dropdown")
+            else:
+                loc.fill("", timeout=3000)
+                loc.focus(timeout=3000)
+                loc.press("ArrowDown")
+            self.page.wait_for_timeout(900)
+            opts = frame.locator(self.OPTION_SEL)
+            for i in range(min(opts.count(), 60)):
+                try:
+                    texts.append(re.sub(r"\s+", " ", opts.nth(i).inner_text(timeout=1000)).strip())
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        finally:
+            try:
+                self.page.keyboard.press("Escape")
+            except Exception:
+                pass
+        return list(dict.fromkeys(t for t in texts if t))
+
     OPTION_SEL = '[role="option"]:visible, [data-automation-id="promptOption"]:visible'
 
     def _pick_option(self, frame, a):
@@ -2375,8 +2403,35 @@ def fill_page(driver, fc):
     plan = plan_fields(fields, fc)
     filled, failed = driver.apply(plan.actions)
     todo = plan.todo + failed
+    retry_filled, todo = retry_dropdowns_with_options(driver, fc, todo)
+    filled += retry_filled
     driver.mark([(a.f, GREEN) for a in filled] + [(t.f, ORANGE) for t in todo])
     return FillResult(fields, filled, todo, tracked_from_todo(todo))
+
+
+def retry_dropdowns_with_options(driver, fc, todo):
+    """Required dropdowns still empty: their choices are only visible once opened, so read them and let the AI
+    pick one (it can't invent an option). -> (newly filled actions, remaining todo)."""
+    if not (fc.ai and hasattr(driver, "combo_options")):
+        return [], todo
+    actions, keep = [], []
+    for t in todo:
+        f = t.f
+        if not (f and f.get("role") in ("combobox", "listbox") and is_required(f)):
+            keep.append(t)
+            continue
+        options = [o for o in driver.combo_options(f) if o and not PLACEHOLDER_OPT.match(o.strip())]
+        val = _ask_ai(fc, t.label, "select", options) if options else None
+        idx = option_match(options, choice_targets(val)) if val else None
+        if idx is None:
+            keep.append(t)
+            continue
+        actions.append(Action(f, "combo", options[idx], "ai", t.label, [options[idx]]))
+    if not actions:
+        return [], todo
+    filled, failed = driver.apply(actions)
+    done = {a.f.get("aid") for a in filled}
+    return filled, [t for t in keep if (t.f or {}).get("aid") not in done] + failed
 
 
 def looks_like_application(fields):

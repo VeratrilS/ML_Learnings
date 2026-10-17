@@ -599,6 +599,39 @@ def test_unfamiliar_site_is_never_auto_submitted():
     assert not aa.known_ats(job(4, url="https://careers.qualcomm.com/careers/job/1"))
 
 
+def test_dropdown_options_are_read_and_ai_picks_one():
+    class D:
+        def __init__(self):
+            self.applied = []
+
+        def scan(self):
+            return [fld(1, "Years of relevant experience *", role="combobox", required=True),
+                    fld(2, "Email *", type="email", required=True)]
+
+        def apply(self, actions):
+            self.applied += actions
+            ok = [a for a in actions if a.kind != "combo" or a.value in ("0-1 years",)]
+            return ok, [aa.Todo(a.f, a.label, "couldn't fill", "text") for a in actions if a not in ok]
+
+        def combo_options(self, f):
+            return ["Select...", "0-1 years", "1-3 years", "3+ years"]
+
+        def mark(self, items):
+            pass
+
+    asked = []
+
+    def ai(question, ftype, options, company, role=""):
+        asked.append(options)
+        return "0-1 years" if options else "0"
+    fc = ctx({})
+    fc.ai = ai
+    d = D()
+    fill = aa.fill_page(d, fc)
+    assert any(a.value == "0-1 years" for a in fill.filled) and fill.todo == []
+    assert asked[-1] == ["0-1 years", "1-3 years", "3+ years"]
+
+
 def test_expired_posting_is_recorded_and_never_retried(tmp_path):
     st = {"url": "u", "text": "Software Dev Engineer I This job has expired Sorry, this job has expired"}
     assert aa.blockers(st, []) == ["Posting closed (expired or no longer accepting applications)"]
