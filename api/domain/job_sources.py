@@ -84,6 +84,7 @@ COMPANIES = [
     ("IMC", "greenhouse", "imc"), ("Jump Trading", "greenhouse", "jumptrading"),                # 18, 4
     ("Squarepoint Capital", "greenhouse", "squarepointcapital"), ("Arcesium", "greenhouse", "arcesiumllc"),  # 23, 18
     ("Zeta Global", "greenhouse", "zetaglobal"),                                                # 40
+    ("Glean", "greenhouse", "gleanwork"), ("Grafana Labs", "greenhouse", "grafanalabs"),        # 8, 1 (2026-10-17)
     # Lever
     ("Paytm", "lever", "paytm"), ("Meesho", "lever", "meesho"), ("Zeta", "lever", "zeta"),      # 148, 54, 21
     ("FamPay", "lever", "fampay"), ("CRED", "lever", "cred"), ("Spotify", "lever", "spotify"),  # 17, 7, 1
@@ -93,6 +94,7 @@ COMPANIES = [
     ("Sarvam AI", "ashby", "sarvam"), ("Cursor", "ashby", "cursor"),                            # 42, 5
     ("ClickHouse", "ashby", "clickhouse"), ("Sardine", "ashby", "sardine"),                     # 10, 1
     ("Ema", "ashby", "ema"), ("Snowflake", "ashby", "snowflake"),                               # 14, 7
+    ("Atlan", "ashby", "atlan"),                                                                # 2 (2026-10-17)
     # SmartRecruiters (country=in)
     ("Swiggy", "smartrecruiters", "swiggy"), ("ServiceNow", "smartrecruiters", "servicenow"),   # 195, 76
     ("Freshworks", "smartrecruiters", "freshworks"), ("Arista Networks", "smartrecruiters", "aristanetworks"),  # 37, 26
