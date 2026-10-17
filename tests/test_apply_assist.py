@@ -218,11 +218,130 @@ def test_preferred_name_is_never_guessed():
     assert aa.plan_fields(fields, ctx({"preferred_name": "Sai"})).actions[0].value == "Sai"
 
 
-def test_plan_phone_from_answers_and_no_consent_without_opt_in():
-    plan = aa.plan_fields(form(), ctx({"phone": "+91 90000 11111"}))
+def test_plan_phone_from_answers_and_no_consent_after_opt_out():
+    plan = aa.plan_fields(form(), ctx({"phone": "+91 90000 11111", "accept_privacy_notice": "No"}))
     got = {a.f["aid"]: a.value for a in plan.actions}
     assert got["4"] == "+91 90000 11111"
     assert "15" not in got and any(t.label.startswith("I agree") for t in plan.todo)
+    assert "15" in {a.f["aid"] for a in aa.plan_fields(form(), ctx({})).actions}  # ticked by default
+
+
+# Real questions that the 2026-10-16 runs left for Sai (Zscaler, Rubrik, Okta, HackerRank on Greenhouse).
+SCREENING = [
+    ("Country*", "combobox", "India"),
+    ("Do you have the legal right to work in the country where you are applying to work?*", "combobox", "Yes"),
+    ("Do you, now or in the future, require a work permit, visa, or additional right to work support for the "
+     "country where you are applying to work?*", "combobox", "No"),
+    ("Do you currently work for, or have you previously worked for Zscaler?*", "combobox", "No"),
+    ("Current Company*", "", "Student, NIT Rourkela"),
+    ("What is the name of your current employer?*", "", "Student, NIT Rourkela"),
+    ("Current Title*", "", "B.Tech student (final year)"),
+    ("Have you been involved in procurement or contract award activities involving Zscaler as a government "
+     "employee or official?*", "combobox", "No"),
+    ("Home Address*", "", "NIT Rourkela, Sector 1, Rourkela, Odisha 769008, India"),
+    ("Are you currently or have you ever been employed by Rubrik or contracted to provide services to Rubrik?*",
+     "combobox", "No"),
+    ("Have you been employed by Okta, Inc. or any of its subsidiaries in the past?*", "combobox", "No"),
+    ("To the best of your knowledge, do you have any family members / relatives or personal relationships at Okta?*",
+     "combobox", "No"),
+    ("Do you have any outside business activity(ies) (advisory, consulting, or board roles, or side businesses)?*",
+     "combobox", "No"),
+    ("Are you available to intern with HackerRank for a full-time, 6-month internship starting from Jan 5th 2027?*",
+     "combobox", "Yes"),
+    ("Are you able to work from our Bangalore office, full-time for the entire 6-month internship period?*",
+     "combobox", "Yes"),
+    ("How did you learn about this job?*", "", "Company careers website"),
+    ("Are you available to start a full-time role in July 2027?*", "combobox", "Yes"),
+    ("When can you start?*", "", "July 2027 (after graduation)"),
+]
+
+
+@pytest.mark.parametrize("label,role,expected", SCREENING)
+def test_screening_questions_answered_without_sai(label, role, expected):
+    plan = aa.plan_fields([fld(1, label, required=True, role=role)], ctx({}))
+    assert plan.todo == []
+    assert plan.actions[0].value == expected and plan.actions[0].source == "profile"
+
+
+def test_acknowledgement_dropdown_accepts_agree_wording():
+    a = aa.plan_fields([fld(1, "I acknowledge that I have read Rubrik's Candidate Privacy Notice.*", required=True,
+                            role="combobox")], ctx({})).actions[0]
+    assert a.kind == "combo" and "I acknowledge" in a.targets
+    sel = fld(2, "I acknowledge the privacy notice *", type="select", required=True,
+              options=["Select...", "I acknowledge", "I do not acknowledge"])
+    assert aa.plan_fields([sel], ctx({})).actions[0].value == 1
+    assert aa.plan_fields([sel], ctx({"accept_privacy_notice": "No"})).actions == []
+
+
+def test_unanswered_gender_picks_decline_option_but_never_guesses():
+    sel = fld(1, "Sex*", type="select", required=True, options=["Select...", "Male", "Female", "Decline to self-identify"])
+    assert aa.plan_fields([sel], ctx({})).actions[0].value == 3
+    only = fld(2, "Gender*", type="select", required=True, options=["Select...", "Male", "Female"])
+    assert aa.plan_fields([only], ctx({})).actions == []
+    assert aa.plan_fields([only], ctx({"gender": "Male"})).actions[0].value == 1
+
+
+def test_how_did_you_hear_falls_back_to_site_wording():
+    sel = fld(1, "How did you hear about us?*", type="select", required=True,
+              options=["Select...", "Referral", "LinkedIn", "Company Website"])
+    assert aa.plan_fields([sel], ctx({})).actions[0].value == 3
+
+
+def test_answers_yaml_overrides_defaults():
+    plan = aa.plan_fields([fld(1, "Current Company*", required=True)], ctx({"current_company": "DataAnnotation"}))
+    assert plan.actions[0].value == "DataAnnotation"
+
+
+def test_ai_answers_unusual_required_questions_only():
+    calls = []
+
+    def ai(question, ftype, options, company, role=""):
+        calls.append((question, ftype, options))
+        return {"Why do you like databases? *": "Safety", "Describe a time you led a team *": "At OpenCode Club I led..."
+                }.get(question)
+    fields = [fld(1, "Why do you like databases? *", type="select", required=True, options=["Select...", "Speed", "Safety"]),
+              fld(2, "Describe a time you led a team *", type="textarea", required=True),
+              fld(3, "Optional fun fact"),
+              fld(4, "Passport number *", required=True),
+              fld(5, "Email *", type="email", required=True)]
+    fc = ctx({})
+    fc.ai = ai
+    plan = aa.plan_fields(fields, fc)
+    got = {a.f["aid"]: (a.value, a.source) for a in plan.actions}
+    assert got["1"] == (2, "ai") and got["2"] == ("At OpenCode Club I led...", "ai")
+    assert "3" not in got and [t.label for t in plan.todo] == ["Passport number *"]
+    assert [c[0] for c in calls] == ["Why do you like databases? *", "Describe a time you led a team *",
+                                     "Passport number *"]
+    assert calls[0][2] == ["Speed", "Safety"]
+    assert [x["question"] for x in fc.ai_used] == ["Why do you like databases? *", "Describe a time you led a team *"]
+
+
+def test_ai_never_sees_sensitive_questions():
+    fc = ctx({})
+    fc.ai = lambda *a, **k: pytest.fail("AI must not be asked for a password")
+    assert aa.plan_fields([fld(1, "Create a password *", type="text", required=True)], fc).actions == []
+
+
+def test_ai_answerer_caches_and_keeps_private_values_out(tmp_path):
+    prompts = []
+
+    def gen(prompt):
+        prompts.append(prompt)
+        return {"answer": "Yes"}
+    values = aa.build_values(PROFILE, {"phone": "+91 90000 11111"})
+    ai = aa.make_ai_answerer(values, generate=gen, path=tmp_path / "ai.yaml")
+    assert ai("Are you comfortable with rotational shifts?", "select", ["Yes", "No"], "Acme") == "Yes"
+    assert ai("Are you comfortable with rotational shifts?", "select", ["Yes", "No"], "Beta") == "Yes"
+    assert len(prompts) == 1 and "+91 90000 11111" not in prompts[0] and "769008" not in prompts[0]
+    assert aa.load_yaml(tmp_path / "ai.yaml")
+    null = aa.make_ai_answerer(values, generate=lambda p: {"answer": None}, path=None)
+    assert null("Date you were last promoted", "text", [], "Acme") is None
+
+
+def test_pick_option_allows_confirm_wording_in_dropdown_options():
+    assert aa.check_click_allowed({"tag": "div", "type": "", "text": "Yes, I confirm", "role": "option"}, "pick_option")
+    with pytest.raises(aa.SubmitBlocked):
+        aa.check_click_allowed({"tag": "button", "type": "", "text": "Confirm", "role": "option"}, "pick_option")
 
 
 def test_required_detection_and_missing():

@@ -36,7 +36,8 @@ from urllib.parse import parse_qs, quote, urlparse, urlunparse
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 DEFAULT_API = "http://localhost:5050"  # the local app (tools/local_server/serve.py), same database as production
-START_HINT = r"Start the app first: tools\local_server\start_local.bat"
+PROD_API = "https://productivity-automations.vercel.app"
+START_HINT =r"Start the app first: tools\local_server\start_local.bat"
 PROFILE_DIR = HERE / ".profile"
 RESUME_PATH = HERE / "resume.pdf"
 ANSWERS_PATH = HERE / "answers.yaml"
@@ -216,7 +217,7 @@ class SubmitBlocked(RuntimeError):
 
 SUBMIT_WORDS = re.compile(r"\b(submit|apply|send|finish|complete|confirm)\b", re.I)
 APPLY_ENTRY = (r"apply|apply now|apply for this (job|role|position)|apply here|apply online|apply to this job|"
-               r"apply manually|start (your )?application")
+               r"apply manually|start (your )?application|i.?m interested")
 
 
 def is_submit_like(info):
@@ -241,6 +242,8 @@ def check_click_allowed(info, purpose, submit_enabled=False):
         if t != "submit" and not info.get("in_form") and re.fullmatch(rf"\s*({APPLY_ENTRY})\s*", text, re.I):
             return True
         raise SubmitBlocked(f"Refusing to click {text!r}: not a plain 'Apply' entry button.")
+    if purpose == "pick_option" and info.get("role") == "option" and info.get("tag") not in ("button", "input", "a"):
+        return True  # a dropdown option ("Yes, I confirm") can't submit the form
     if is_submit_like(info):
         raise SubmitBlocked(f"Refusing to click {text or t!r}: looks like a submit/apply/send control.")
     return True
@@ -296,18 +299,33 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"expected (ctc|salary|compensation|pay)|salary expectation|desired (salary|compensation)", "expected_ctc"),
     (r"current (ctc|salary|compensation)|present (ctc|salary)", "current_ctc"),
     (r"notice period", "notice_period"),
+    (r"^(are|is|will|would|can|could|do) you\b.{0,25}\b(available|able|willing|open|ready) to", "available"),  # yes/no
     (r"earliest (start|joining)|when can you (start|join)|start date|joining date|available to (start|join)", "start_date"),
     (r"relocat", "willing_to_relocate"),
     (r"preferred (location|cities|city)|location preference", "preferred_cities"),
+    (r"\b(require|need)\b.{0,40}\b(visa|work permit|right to work support)", "needs_sponsorship"),
     (r"(authori[sz]ed|eligible|legally (allowed|permitted)|right|permission) to work|work (permit|authori[sz]ation)",
      "work_authorized_india"),
     (r"sponsor", "needs_sponsorship"),
     (r"how did you (hear|find|learn)|where did you (hear|find|learn)|referral source|source of (application|hire)",
      "how_did_you_hear"),
     (r"pronoun", "pronouns"),
-    (r"\bgender\b", "gender"),
+    (r"\bgender\b|\bsex\b", "gender"),
     (r"veteran|disabilit|\brace\b|ethnic|sexual orientation|transgender", "diversity"),
-    (r"(work|working) (from|in) (the )?office|hybrid|on-?site|in-office", "office_or_hybrid"),
+    (r"(work|working) (from|in|at) .{0,30}office|hybrid|on-?site|in-?office", "office_or_hybrid"),
+    # Standard screening questions a student applicant answers the same way every time (see AUTO_DEFAULTS).
+    (r"(currently|previously|ever|in the past|before)\b.{0,40}\b(work(ed)?|employed|contracted)\b.{0,40}\b(for|by|at|with)\b|"
+     r"former employee|contracted to provide services|employed by .{0,60} in the past", "previously_employed"),
+    (r"family members?|relatives?\b|related to (any|an) (current )?employee|personal relationships?", "relatives_at_company"),
+    (r"outside (business|employment|activit)|side business|conflicts? of interest", "outside_business"),
+    (r"procurement|contract award|government (employee|official)|public official", "govt_official"),
+    (r"(at least|over|above) (the age of )?18|18 years (of age|or older)|legal (working )?age", "is_adult"),
+    (r"current (employer|company|organi[sz]ation)|name of your current employer|most recent (employer|company)",
+     "current_company"),
+    (r"current (job )?(title|role|position|designation)", "current_title"),
+    (r"\backnowledge|privacy (policy|notice)|\bi (agree|accept|certify|confirm|consent)\b|consent to|agree to", "accept_privacy_notice"),
+    (r"\b(available|able|willing|open|ready) to (intern|join|start|work|commit|attend|take)|availability (to|for)", "available"),
+    (r"^state\b|state of residence|^province", "state"),
     (r"current (location|city)|^location|\bcity\b|where are you (based|located)|city of residence", "current_city"),
     (r"^country|country of residence|current country", "country"),
     (r"^skills|key skills|technical skills", "skills"),
@@ -318,7 +336,18 @@ FOREIGN = re.compile(r"united states|\bu\.s\.|\busa\b|america|united kingdom|\bu
                      r"singapore|australia|germany|ireland|netherlands|poland|japan|\buae\b|dubai|israel|mexico|brazil", re.I)
 DECLINE = ["Prefer not to say", "Decline to self identify", "I don't wish to answer", "Prefer not to answer",
            "I do not want to answer", "Decline to answer"]
-CONSENT = re.compile(r"privacy|consent|data protection|gdpr|processing of (my )?(personal )?data", re.I)
+CONSENT = re.compile(r"privacy|consent|data protection|gdpr|processing of (my )?(personal )?data|acknowledge|"
+                     r"\bi (agree|accept|certify|confirm)\b|agree to|terms (and|&) conditions|confidential", re.I)
+# Extra option texts tried after the saved answer, per rule key (dropdowns word these differently on every site).
+EXTRA_TARGETS = {
+    "accept_privacy_notice": ["I agree", "I acknowledge", "I accept", "I consent", "Agree", "Acknowledge",
+                              "Acknowledged", "Accept", "I have read"],
+    "how_did_you_hear": ["Company website", "Company careers page", "Careers page", "Careers site", "Career site",
+                         "Website", "Job board", "Online job board", "LinkedIn", "Other"],
+    "notice_period": ["Immediate", "Immediately", "0 days", "Not applicable", "N/A", "Less than 15 days", "None"],
+    "current_ctc": ["Not applicable", "N/A", "0"],
+}
+DECLINE_KEYS = ("gender", "pronouns", "diversity")  # unanswered -> pick a decline option if the field offers one
 RESUME_FIELD = re.compile(r"resume|\bcv\b|curriculum", re.I)
 COVER_FIELD = re.compile(r"cover", re.I)
 PLACEHOLDER_OPT = re.compile(r"^(|select\b.*|choose\b.*|please select.*|-+.*|none selected|\.\.\.)$", re.I)
@@ -411,16 +440,17 @@ def choice_targets(value):
 
 
 def option_match(options, wanted, strict=False):
-    """Index of the option that matches the answer, or None. strict=True: exact text only (learned answers)."""
+    """Index of the option that matches the answer, or None. strict=True: exact text only (learned answers).
+    With several targets, an earlier target beats a later one of the same match quality."""
     targets = [t for t in ([wanted] if isinstance(wanted, str) else list(wanted or [])) if _s(t)]
-    best, best_s = None, 0
+    best, best_s = None, (0, 0)
     for i, opt in enumerate(options):
         if PLACEHOLDER_OPT.match((opt or "").strip()):
             continue
         o = _words(opt)
         if not o:
             continue
-        for t in targets:
+        for ti, t in enumerate(targets):
             w = _words(t)
             if not w:
                 continue
@@ -434,9 +464,21 @@ def option_match(options, wanted, strict=False):
                 s = 100 + len(o)  # "Bachelor of Technology" inside the saved degree
             else:
                 continue
-            if s > best_s:
-                best, best_s = i, s
+            if (s, -ti) > best_s:
+                best, best_s = i, (s, -ti)
     return best
+
+
+def targets_for(key, value, strict=False):
+    """Option texts to look for: the answer itself, then the rule key's usual wordings (not for Sai's exact answers)."""
+    out = choice_targets(value)
+    if strict:
+        return out
+    if key in DECLINE_KEYS and not out:
+        return list(DECLINE)
+    if key == "accept_privacy_notice" and _norm(value) != "yes":
+        return out  # Sai opted out: never tick or pick "I agree"
+    return out + [t for t in EXTRA_TARGETS.get(key, []) if t not in out] if out else out
 
 
 def combo_terms(value):
@@ -554,6 +596,9 @@ class FillContext:
     pack: dict = field(default_factory=dict)
     resume: bool = False
     used_learned: set = field(default_factory=set)
+    ai: object = None  # ai(question, ftype, options, company) -> answer or None; last resort for required fields
+    role: str = ""
+    ai_used: list = field(default_factory=list)
 
 
 @dataclass
@@ -563,6 +608,7 @@ class Action:
     value: object
     source: str
     label: str = ""
+    targets: list = field(default_factory=list)  # combo: option texts to accept, best first
 
 
 @dataclass
@@ -580,11 +626,44 @@ class Plan:
     todo: list
 
 
+# What a final-year student applying in India answers on every form. Used only where answers.yaml is blank;
+# put a different value (or "No") in answers.yaml to override any of them.
+AUTO_DEFAULTS = {
+    "country": "India",
+    "work_authorized_india": "Yes",
+    "needs_sponsorship": "No",
+    "willing_to_relocate": "Yes",
+    "office_or_hybrid": "Yes",
+    "available": "Yes",
+    "accept_privacy_notice": "Yes",
+    "how_did_you_hear": "Company careers website",
+    "diversity": "Prefer not to say",
+    "current_company": "Student, NIT Rourkela",
+    "current_title": "B.Tech student (final year)",
+    "previously_employed": "No",
+    "relatives_at_company": "No",
+    "outside_business": "No",
+    "govt_official": "No",
+    "is_adult": "Yes",
+    "active_backlogs": "No",
+    "notice_period": "Immediate (final-year student)",
+    "current_ctc": "0 / Not applicable",
+    "expected_ctc": "As per company norms",
+    "start_date_fte": "July 2027 (after graduation)",
+    "start_date_internship": "January 2027",
+    "address": "NIT Rourkela, Sector 1, Rourkela, Odisha 769008, India",
+    "pin_code": "769008",
+    "state": "Odisha",
+}
+
+
 def build_values(profile, answers, role_type=None):
-    """Profile (Job Radar) + answers.yaml -> the values the rules use. answers.yaml wins; phone only from answers."""
+    """Profile (Job Radar) + answers.yaml + AUTO_DEFAULTS -> the values the rules use. answers.yaml wins; phone only
+    from answers."""
     p, a = profile or {}, answers or {}
     full = _s(a.get("full_name")) or _s(p.get("full_name"))
     parts = full.split()
+    a = {**{k: d for k, d in AUTO_DEFAULTS.items() if not _s(a.get(k))}, **{k: x for k, x in a.items() if _s(x)}}
     v = {k: _s(val) for k, val in a.items() if not isinstance(val, (list, dict))}
     v.update({
         "full_name": full,
@@ -643,6 +722,21 @@ def resolve(f, fc, choice=False):
     return None, None
 
 
+def _ask_ai(fc, label, ftype, options):
+    """Last resort for a required field nothing else answers. Returns the answer or None."""
+    if not fc.ai or SENSITIVE_LABEL.search(label):
+        return None
+    try:
+        ans = _s(fc.ai(label, ftype, [o for o in options or [] if not PLACEHOLDER_OPT.match((o or "").strip())],
+                       fc.company, fc.role))
+    except Exception as e:
+        print(f"  (AI could not answer {label[:50]!r}: {str(e)[:80]})")
+        return None
+    if ans:
+        fc.ai_used.append({"question": label, "answer": ans})
+    return ans or None
+
+
 def plan_fields(fields, fc):
     actions, todo = [], []
     files = [f for f in fields if f.get("type") == "file"]
@@ -662,24 +756,33 @@ def plan_fields(fields, fc):
             continue
         if has_value(f):
             continue  # never overwrite what's already there
-        is_choice = t == "select" or f.get("role") == "combobox"
-        val, src = resolve(f, fc, choice=is_choice)
+        is_combo = f.get("role") == "combobox"
+        val, src = resolve(f, fc, choice=t == "select" or is_combo)
         strict = src in ("question", "learned")
-        if t == "select":
-            idx = option_match(f.get("options") or [], choice_targets(val), strict=strict) if val else None
-            if idx is not None:
-                actions.append(Action(f, "select", idx, src, label))
-                continue
-        elif f.get("role") == "combobox":
-            if val:
-                actions.append(Action(f, "combo", val, src, label))
-                continue
-        elif val:
-            actions.append(Action(f, "text", val, src, label))
-            continue
-        if is_required(f):
-            todo.append(Todo(f, label, "no saved answer" if not val else f"no option matches {val!r}", t,
-                             list(f.get("options") or [])))
+        targets = targets_for(rule_key(f), val, strict=strict)
+        src = src or ("default" if targets else None)  # e.g. "Decline to self-identify"
+        for attempt in (1, 2):
+            if t == "select":
+                idx = option_match(f.get("options") or [], targets, strict=strict) if targets else None
+                if idx is not None:
+                    actions.append(Action(f, "select", idx, src, label))
+                    break
+            elif is_combo:
+                if targets:
+                    actions.append(Action(f, "combo", val or targets[0], src, label, targets))
+                    break
+            elif val:
+                actions.append(Action(f, "text", val, src, label))
+                break
+            if attempt == 1 and is_required(f) and not val:
+                val = _ask_ai(fc, label, "select" if is_combo else t, f.get("options") or [])
+                src, targets, strict = "ai", choice_targets(val), False
+                if val:
+                    continue
+            if is_required(f):
+                todo.append(Todo(f, label, "no saved answer" if not val else f"no option matches {val!r}", t,
+                                 list(f.get("options") or [])))
+            break
     for g in _groups(fields).values():
         if any(x.get("checked") for x in g):
             continue
@@ -693,9 +796,13 @@ def plan_fields(fields, fc):
                 todo.append(Todo(g[0], q, "needs your tick", "checkbox", opts))
             continue
         val, src = resolve(g[0], fc, choice=True)
-        idx = option_match(opts, choice_targets(val), strict=src in ("question", "learned")) if val else None
+        strict = src in ("question", "learned")
+        idx = option_match(opts, targets_for(rule_key(g[0]), val, strict=strict), strict=strict)
+        if idx is None and required and not val:
+            val, src = _ask_ai(fc, q, g[0].get("type"), opts), "ai"
+            idx = option_match(opts, choice_targets(val)) if val else None
         if idx is not None:
-            actions.append(Action(g[idx], "toggle", True, src, q))
+            actions.append(Action(g[idx], "toggle", True, src or "default", q))
         elif required:
             todo.append(Todo(g[0], q, "no saved answer" if not val else f"no option matches {val!r}",
                              g[0].get("type"), opts))
@@ -982,7 +1089,12 @@ class Api:
             sys.exit("APP_PASSCODE is not set (put it in the repo's .env).")
         api = cls(api_base(base), app_key(passcode))
         if not api.reachable():
-            sys.exit(START_HINT)
+            if base or os.getenv("APPLY_API_BASE"):
+                sys.exit(START_HINT)
+            api.base = PROD_API  # local app not running: production has the same database
+            if not api.reachable():
+                sys.exit(START_HINT)
+            print(f"Local app not running: using {PROD_API}")
         return api
 
     def reachable(self):
@@ -1073,6 +1185,67 @@ def ensure_resume(api, path=RESUME_PATH):
     return r.content
 
 
+AI_PATH = HERE / "ai_answers.yaml"
+AI_SYSTEM = (
+    "You fill in job application forms for one candidate: a final-year B.Tech CSE student in India applying to "
+    "entry-level software roles in India. Answer ONLY from the candidate facts given.\n"
+    "- If options are listed, answer with the exact text of one option.\n"
+    "- Yes/No questions about willingness or eligibility (relocation, office work, shifts, availability, taking an "
+    "assessment, background verification consent): answer in the candidate's favour unless the facts contradict it.\n"
+    "- Never invent numbers, dates, IDs, names, employers or work history. Answer null ONLY when the question needs a "
+    "personal fact you don't have: date of birth, ID or passport numbers, family details, criminal record, exact "
+    "salary figures, or details of a job not in the facts.\n"
+    "- Opinion, motivation and technical questions (favourite algorithm, why this role, a project you're proud of, "
+    "how you'd design X) always get an answer: 1-3 plain first-person sentences built from the facts and sound CS "
+    "knowledge.\n"
+    'Return JSON: {"answer": "<text>"} or {"answer": null}.')
+AI_PRIVATE_KEYS = {"phone", "address", "pin_code", "date_of_birth", "email"}
+
+
+def ai_facts(values):
+    """Resume facts + the non-private answers, as prompt text."""
+    try:
+        if str(REPO) not in sys.path:
+            sys.path.insert(0, str(REPO))
+        from api.domain.job_pack import facts_text
+        facts = facts_text()
+    except Exception:
+        facts = f"Skills: {KNOWN['skills']}"
+    extra = "\n".join(f"{k}: {v}" for k, v in sorted(values.items()) if k not in AI_PRIVATE_KEYS)
+    return facts + "\n" + extra
+
+
+def make_ai_answerer(values, generate=None, path=AI_PATH):
+    """ai(question, ftype, options, company, role) -> answer or None. Answers are cached in ai_answers.yaml (reused
+    for the same question, company-specific ones only for that company); fix any wrong one there."""
+    if generate is None:
+        if not (os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
+            print("No GEMINI_API_KEY / OPENROUTER_API_KEY: unusual questions will be left for you.")
+            return None
+        if str(REPO) not in sys.path:
+            sys.path.insert(0, str(REPO))
+        from api.core.clients import LLMClient
+        client = LLMClient(budget=45)
+        generate = lambda prompt: client.generate_json(prompt, temperature=0.2, system=AI_SYSTEM)  # noqa: E731
+    bank = QuestionBank(load_yaml(path) if path else {})
+    facts = ai_facts(values)
+
+    def ai(question, ftype, options, company, role=""):
+        _key, e = bank.find(question, company)
+        if e and (not options or option_match(options, e["answer"]) is not None):
+            return e["answer"]
+        prompt = (f"Candidate facts:\n{facts}\n\nCompany: {company}\nRole: {role}\nQuestion: {question}\n"
+                  f"Field type: {ftype}\n" + (f"Options: {json.dumps(options, ensure_ascii=False)}\n" if options else ""))
+        out = generate(prompt)
+        ans = _s(out.get("answer") if isinstance(out, dict) else None)
+        if not ans or _norm(ans) in ("null", "none", "unknown"):
+            return None
+        if bank.learn(question, ans, ftype, options, company, role) and path:
+            save_yaml(path, bank.entries, "# Answers the AI gave to unusual form questions. Fix or delete any that are wrong.")
+        return ans
+    return ai
+
+
 def make_emailer():
     """send(subject, body) -> bool via api.core.clients.EmailClient (SENDER_EMAIL / SENDER_PASSWORD / RECEIVER_EMAIL)."""
     def send(subject, body):
@@ -1117,6 +1290,7 @@ SCAN_JS = r"""() => {
       const t = l ? txt(l) : (rg.getAttribute('aria-label') || ''); if (t) return t; }
     const sel = el.name ? `input[name="${CSS.escape(el.name)}"]` : null;
     const total = sel ? document.querySelectorAll(sel).length : 1;
+    if (total === 1 && el.type === 'checkbox' && own(el)) return own(el);  // a lone "I agree ..." tick box
     let n = el.parentElement;
     for (let i = 0; n && i < 6; i++, n = n.parentElement) {
       if (sel && n.querySelectorAll(sel).length < total) continue;
@@ -1313,7 +1487,13 @@ class PlaywrightDriver:
         self.page.wait_for_timeout(1500)
 
     def _goto(self, url):
-        self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        try:
+            self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        except Exception as e:
+            if "net::" not in str(e):
+                raise
+            self.page.wait_for_timeout(5000)  # flaky Wi-Fi / DNS: one retry
+            self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
         self._settle()
 
     def open(self, job):
@@ -1416,24 +1596,42 @@ class PlaywrightDriver:
         return filled, failed
 
     def _combo(self, loc, a):
+        """Search-as-you-type dropdown: type each search term and pick a matching option; if typing finds nothing
+        (e.g. the answer is "Yes" but the options say "I acknowledge"), open the full list and match against it."""
         frame = self._frames[a.f["frame"]]
         strict = a.source in ("question", "learned")
-        for term in combo_terms(a.value):
-            loc.fill(term, timeout=5000)
-            self.page.wait_for_timeout(1200)
+        targets = a.targets or choice_targets(a.value)
+
+        def pick():
             opts = frame.locator('[role="option"]')
             seen = []
-            for i in range(min(opts.count(), 60)):
+            for i in range(min(opts.count(), 80)):
                 try:
                     if opts.nth(i).is_visible():
                         seen.append((i, opts.nth(i).inner_text(timeout=1000)))
                 except Exception:
                     continue
-            idx = option_match([t for _, t in seen], choice_targets(a.value), strict=strict)
-            if idx is not None:
-                safe_click(opts.nth(seen[idx][0]), "pick_option")
-                self.page.wait_for_timeout(400)
+            idx = option_match([t for _, t in seen], targets, strict=strict)
+            if idx is None:
+                return False
+            safe_click(opts.nth(seen[idx][0]), "pick_option")
+            self.page.wait_for_timeout(400)
+            return True
+
+        for term in combo_terms(a.value):
+            loc.fill(term, timeout=5000)
+            self.page.wait_for_timeout(1200)
+            if pick():
                 return True
+        try:
+            loc.fill("", timeout=3000)
+            loc.focus(timeout=3000)
+            loc.press("ArrowDown")
+            self.page.wait_for_timeout(1000)
+            if pick():
+                return True
+        except Exception:
+            pass
         try:
             loc.fill("", timeout=3000)
             loc.press("Escape")
@@ -1621,6 +1819,7 @@ class Runner:
         self.confirm_wait_s = confirm_wait_s
         self.results, self.rows = [], []
         self.learned_today = []
+        self.ai_today = []
         self.started_at = _iso()
 
     # ---- bookkeeping ----
@@ -1751,6 +1950,7 @@ class Runner:
         fill = fill_page(self.d, fc)
         for key in fc.used_learned:
             self.learned.mark_used(key)
+        self.ai_today += [dict(a, company=job.get("company")) for a in fc.ai_used]
         reasons, missing, _st = check_page(self.d)
         if not reasons and not looks_like_application(fill.fields):
             reasons.append("Doesn't look like an application form (no email or resume field)")
@@ -1820,13 +2020,13 @@ class Runner:
 
     # ---- end of run ----
     def summary(self, mode):
-        return compose_summary(self.results, self.learned_today, mode)
+        return compose_summary(self.results, self.learned_today, mode, self.ai_today)
 
     def report(self, mode):
         return build_report(self.results, self.learned_today, mode, self.started_at, _iso())
 
 
-def compose_summary(results, learned, mode="auto"):
+def compose_summary(results, learned, mode="auto", ai=None):
     by = lambda o: [r for r in results if r["outcome"] == o]  # noqa: E731
     submitted, needs = by("submitted"), by("needs-you") + by("waiting-answers")
     unconf, failed = by("unconfirmed"), by("failed") + by("skipped")
@@ -1852,6 +2052,9 @@ def compose_summary(results, learned, mode="auto"):
     if learned:
         lines.append("Learned from you today (fix them in tools/apply_assist/learned_answers.yaml if wrong):")
         lines.extend(f"  - {x['question']}: {x['answer']}" for x in learned)
+    if ai:
+        lines.append("Answered by AI (check them; fix in tools/apply_assist/ai_answers.yaml):")
+        lines.extend(f"  - {x.get('company')}: {x['question'][:120]} -> {x['answer'][:160]}" for x in ai)
     if needs and any(r["outcome"] == "waiting-answers" for r in needs):
         lines += ["", "Answer the pending questions with: python tools/apply_assist/assist.py --setup --pending"]
     return subject, "\n".join(lines).rstrip() + "\n"
@@ -1885,16 +2088,17 @@ def _load_env():
         pass
 
 
-def _fill_context_factory(api, profile, answers, learned, resume):
+def _fill_context_factory(api, profile, answers, learned, resume, use_ai=True):
     questions = QuestionBank((answers or {}).get("questions") or {})
     packs = {}
+    ai = make_ai_answerer(build_values(profile, answers)) if use_ai else None
 
     def make(job):
         if job.get("id") not in packs:
             packs[job.get("id")] = api.pack(job["id"]) if job.get("id") else {}
         return FillContext(values=build_values(profile, answers, job.get("role_type")), company=job.get("company") or "",
                            custom=(answers or {}).get("custom") or [], questions=questions, learned=learned,
-                           pack=packs[job.get("id")], resume=bool(resume))
+                           pack=packs[job.get("id")], resume=bool(resume), ai=ai, role=job.get("role") or "")
     return make
 
 
@@ -1930,7 +2134,7 @@ def run_assist(args, api, answers, learned):
     print(f"\nJob: {job['company']} - {job['role']}\n     {job['url']}")
     profile = (api.radar() or {}).get("profile") or {}
     resume = ensure_resume(api)
-    make_fc = _fill_context_factory(api, profile, answers, learned, resume)
+    make_fc = _fill_context_factory(api, profile, answers, learned, resume, use_ai=not args.no_ai)
     log = RunLog()
     with sync_playwright() as pw:
         ctx = launch(pw, headless=args.headless, visible=args.visible)
@@ -1998,7 +2202,7 @@ def run_batch(args, api, answers, learned, mode):
                              resume_name=_resume_name(profile, answers), submit_enabled=(mode == "submit"),
                              gh_tokens=greenhouse_tokens())
         d.hide()
-        runner = Runner(api, d, _fill_context_factory(api, profile, answers, learned, resume),
+        runner = Runner(api, d, _fill_context_factory(api, profile, answers, learned, resume, use_ai=not args.no_ai),
                         submit=(mode == "submit"), max_jobs=limit, per_company=args.per_company,
                         handoff_wait_s=args.handoff_wait * 60, ask_timeout_s=args.ask_timeout * 60,
                         pending=pending, learned=learned, harvest_first=not args.no_harvest,
@@ -2038,6 +2242,7 @@ def main(argv=None):
     ap.add_argument("--handoff-wait", type=int, default=30, help="minutes to wait for you after 'Complete it now'")
     ap.add_argument("--ask-timeout", type=int, default=10, help="minutes to wait for your email choice")
     ap.add_argument("--no-harvest", action="store_true", help="with --auto --submit: skip the harvest pass")
+    ap.add_argument("--no-ai", action="store_true", help="don't ask the AI about unusual required questions")
     ap.add_argument("--visible", action="store_true", help="keep Chrome on-screen (debugging)")
     ap.add_argument("--headless", action="store_true", help="no window at all (checks only; never waits for you)")
     ap.add_argument("--screenshot", help="with --headless: where to save a full-page screenshot")

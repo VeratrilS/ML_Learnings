@@ -59,6 +59,29 @@ Rules for `--submit`:
   applied to in the last 30 days, and waits 90–240 s between submissions.
 - At the end of the run you get a summary email ("Apply runner: N submitted, M need you").
 
+## What it answers by itself
+
+You don't need to answer the standard screening questions. Unless `answers.yaml` says otherwise, it uses these
+defaults (`AUTO_DEFAULTS` in `assist.py`):
+
+- Country India, authorised to work in India: Yes, need visa sponsorship: No
+- Current company "Student, NIT Rourkela", current title "B.Tech student (final year)"
+- Worked for this company before / relatives there / outside business / government procurement: No
+- Willing to relocate, work from office, available to start or intern: Yes. Earliest start: July 2027 (full-time) or
+  January 2027 (internship). Notice period: Immediate
+- Address: NIT Rourkela, Sector 1, Rourkela, Odisha 769008. Active backlogs: No. 18 or older: Yes
+- Privacy / consent / "I acknowledge" questions are accepted. Gender, race and similar questions get the
+  "decline to answer" option when the form has one. It never guesses your gender.
+- "How did you hear about us": careers website, or the closest option the form offers
+
+Any other required question goes to the AI (Gemini, with OpenRouter as a backup). It sees your resume facts and
+the answers above, but not your phone, email, address or date of birth. It answers in 1-3 sentences or picks one
+of the form's options. It returns nothing for facts it can't know (date of birth, ID numbers, criminal record),
+and those stay orange for you. AI answers are saved in `ai_answers.yaml` and reused. Each run's summary email
+lists them, so check them, and edit that file to fix any. Use `--no-ai` to turn this off.
+
+If the local app isn't running, the tool uses the production app automatically (same database).
+
 ## Questions it can't answer
 
 Each `--auto` run starts by collecting the required questions it couldn't answer from all the forms. You get
@@ -76,7 +99,7 @@ Edit either YAML file if something is wrong.
 
 ## Files (all gitignored)
 
-`answers.yaml`, `learned_answers.yaml`, `pending_questions.yaml`, `resume.pdf` (downloaded once from
+`answers.yaml`, `learned_answers.yaml`, `ai_answers.yaml`, `pending_questions.yaml`, `resume.pdf` (downloaded once from
 Job Radar), `.profile/` (the Chrome profile, so logins stick), `runs/` (logs and screenshots).
 
 Other flags: `--visible` shows the window the whole time, `--headless` runs with no window and only checks the

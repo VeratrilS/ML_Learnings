@@ -1,6 +1,9 @@
 # Template for tools/apply_assist/answers.yaml (the real file is gitignored: it holds your phone number).
 # Easiest: run `python tools/apply_assist/assist.py --setup` and it writes answers.yaml for you.
-# Blank ("") = leave that field empty and outline it orange, so you fill it yourself.
+# Blank ("") = use the built-in student default (AUTO_DEFAULTS in assist.py, listed in README.md) if there is
+# one, otherwise leave the field orange for you. Write a value (or "No") to override a default.
+# Also understood: current_company, current_title, previously_employed, relatives_at_company, outside_business,
+# govt_official, is_adult, available, state.
 # Quote Yes / No so YAML keeps them as words.
 
 full_name: Nandam Venkata Sai Raghava
