@@ -648,6 +648,18 @@ def test_answer_pack_is_fetched_only_when_a_free_text_question_needs_it():
     assert calls == [1] and plan.actions[0].value == "Dear team..."
 
 
+def test_tidy_plan_trashes_codes_archives_confirmations_keeps_callbacks():
+    now = 1_800_000_000.0
+    mails = [(b"1", "no-reply@us.greenhouse-mail.io", "Security code for your application to Okta", now - 7200),
+             (b"2", "no-reply@okta.com", "Thank you for applying to Okta!", now - 7200),
+             (b"3", "support@hackerrankforwork.com", "AI TA Screen - Interview - Software Development Engineer Intern", now - 7200),
+             (b"4", "no-reply@us.greenhouse-mail.io", "Security code for your application to Rubrik", now - 60),  # in use
+             (b"5", "talent@x.com", "Online assessment for Software Engineer", now - 7200),
+             (b"6", "noreply@x.com", "Thank you for applying - next steps: coding test", now - 7200)]
+    trash, archive = aa.tidy_plan(mails, now)
+    assert trash == [b"1"] and archive == [b"2"]
+
+
 def test_parallel_shards_split_companies_and_strip_options():
     companies = ["Okta", "Zscaler", "Rubrik", "IMC", "Point72", "Hevo Data", "GitLab", "Stripe"]
     shards = [{c for c in companies if aa.shard_of(c, 3) == k} for k in range(3)]

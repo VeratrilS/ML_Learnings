@@ -1547,6 +1547,65 @@ def sync_email_confirmations(api, inbox, jobs, log=None):
     return n
 
 
+TIDY_LABEL = "Job applications"
+CODE_SUBJECT = re.compile(r"security code|verification code|one[- ]time (pass)?code", re.I)
+CALLBACK = re.compile(r"interview|assessment|online test|oa|coding (test|challenge)|shortlist|next step|screen|offer",
+                      re.I)
+
+
+def tidy_plan(mails, now, min_age_s=3600):
+    """Which job-site mails to tidy: security codes -> Trash, application confirmations -> the label (out of the
+    inbox). Interview / assessment / OA mails are never touched. mails: [(uid, sender, subject, epoch)]."""
+    trash, archive = [], []
+    for uid, sender, subject, ts in mails:
+        if now - ts < min_age_s or CALLBACK.search(subject):
+            continue
+        if CODE_SUBJECT.search(subject):
+            trash.append(uid)
+        elif CONFIRM_MAIL.search(subject):
+            archive.append(uid)
+    return trash, archive
+
+
+def tidy_inbox(user, password, imap_factory=None, now=time.time, days=14):
+    """Gmail clean-up after applying (the only write the runner does to the mailbox)."""
+    import email as _email
+    import imaplib
+    from email.header import decode_header, make_header
+    m = (imap_factory or (lambda: imaplib.IMAP4_SSL("imap.gmail.com", timeout=20)))()
+    try:
+        m.login(user, password)
+        m.select("INBOX")
+        since = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        uids = set()
+        for sender in CODE_SENDERS + CONFIRM_SENDERS:
+            _typ, data = m.uid("SEARCH", None, f'(SINCE "{since}" FROM "{sender}")')
+            uids.update((data[0] or b"").split())
+        mails = []
+        for uid in sorted(uids):
+            _typ, parts = m.uid("FETCH", uid, "(INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
+            meta = next((x[0] for x in parts if isinstance(x, tuple)), b"")
+            raw = next((x[1] for x in parts if isinstance(x, tuple)), b"")
+            msg = _email.message_from_bytes(raw)
+            t = imaplib.Internaldate2tuple(meta)
+            mails.append((uid, msg.get("From") or "", str(make_header(decode_header(msg.get("Subject") or ""))),
+                          time.mktime(t) if t else now()))
+        trash, archive = tidy_plan(mails, now())
+        if archive:
+            m.create(f'"{TIDY_LABEL}"')  # fails harmlessly when the label exists
+            m.uid("MOVE", b",".join(archive).decode(), f'"{TIDY_LABEL}"')
+        if trash:
+            ok, _ = m.uid("MOVE", b",".join(trash).decode(), '"[Gmail]/Trash"')
+            if ok != "OK":
+                m.uid("MOVE", b",".join(trash).decode(), '"[Gmail]/Bin"')
+        return len(trash), len(archive)
+    finally:
+        try:
+            m.logout()
+        except Exception:
+            pass
+
+
 def make_inbox(email_addr):
     """GMAIL_APP_PASSWORD in .env (an app password of Sai's own Gmail) lets the runner read codes / links itself."""
     password = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "")
@@ -3332,6 +3391,13 @@ def run_batch(args, api, answers, learned, mode):
         else:
             runner.run(jobs)
         ctx.close()
+    if inbox and mode == "submit" and not args.no_tidy and not args.shard:
+        try:
+            n_trash, n_label = tidy_inbox(inbox.user, inbox.password)
+            print(f"Inbox tidied: {n_trash} security-code mails to Trash, {n_label} confirmations moved to "
+                  f"'{TIDY_LABEL}'.")
+        except Exception as e:
+            print(f"(inbox tidy skipped: {str(e)[:80]})")
     if inbox and mode == "submit":
         attempted = [{"id": r.get("job_id"), "company": r.get("company"), "role": r.get("role"), "url": r.get("url")}
                      for r in runner.results if r.get("outcome") in ("unconfirmed", "needs-you")]
@@ -3386,6 +3452,8 @@ def main(argv=None):
     ap.add_argument("--only", default=None, help="only these Job Radar ids, comma-separated (e.g. 5,1,10)")
     ap.add_argument("--url", default=None, help="with --auto: apply to this one posting link (use with --company/--role)")
     ap.add_argument("--company", default=None, help="with --url: company name")
+    ap.add_argument("--no-tidy", action="store_true", help="don't tidy Gmail (codes to Trash, confirmations to a label)")
+    ap.add_argument("--tidy-inbox", action="store_true", help="only tidy Gmail now and exit")
     ap.add_argument("--parallel", type=int, default=1, help="with --auto: run N workers side by side (own browsers)")
     ap.add_argument("--pace", default="180,420",
                     help="seconds to wait between submissions, min,max (default 3-7 min: sites rate-limit fast applicants)")
@@ -3395,6 +3463,14 @@ def main(argv=None):
     ap.add_argument("--boards", default=None,
                     help="only these job boards, e.g. greenhouse,lever,ashby (no account needed)")
     args = ap.parse_args(argv)
+    if args.tidy_inbox:
+        _load_env()
+        inbox = make_inbox(_s(load_yaml(ANSWERS_PATH).get("email")) or "sairaghava1318@gmail.com")
+        if not inbox:
+            sys.exit("Add GMAIL_APP_PASSWORD to .env first.")
+        n_trash, n_label = tidy_inbox(inbox.user, inbox.password)
+        print(f"Inbox tidied: {n_trash} security-code mails to Trash, {n_label} confirmations moved to '{TIDY_LABEL}'.")
+        return
     if args.parallel > 1 and args.auto and not args.shard:
         _load_env()
         return run_parallel(sys.argv[1:] if argv is None else argv, args.parallel)
