@@ -358,6 +358,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"expected (ctc|salary|compensation|pay)|salary expectation|desired (salary|compensation)", "expected_ctc"),
     (r"current (ctc|salary|compensation)|present (ctc|salary)", "current_ctc"),
     (r"notice period", "notice_period"),
+    # Sai is a student: he can't join before January 2027, so "join immediately / within N days" is always No.
+    (r"join (us )?(immediately|right away|asap|now)|immediate(ly)? (join|joining|start)|join within \d+", "join_immediately"),
     (r"^(are|is|will|would|can|could|do) you\b.{0,25}\b(available|able|willing|open|ready) to", "available"),  # yes/no
     (r"earliest (start|joining)|when can you (start|join)|start date|joining date|available to (start|join)", "start_date"),
     (r"relocat", "willing_to_relocate"),
@@ -702,6 +704,7 @@ AUTO_DEFAULTS = {
     "willing_to_relocate": "Yes",
     "office_or_hybrid": "Yes",
     "available": "Yes",
+    "join_immediately": "No",
     "accept_privacy_notice": "Yes",
     "how_did_you_hear": "Company careers website",
     "diversity": "Prefer not to say",
@@ -1323,6 +1326,9 @@ AI_SYSTEM = (
     "- Professional experience is 0 years (internships only, under a year in total): for years-of-experience "
     "questions answer 0, or the lowest option.\n"
     "- Languages: the candidate speaks English, Hindi and Telugu. Pick only those; if none is listed, answer null.\n"
+    "- Availability: he is a student and can join only from January 2027 (6-month internship Jan-Jun 2027, or full-time "
+    "from January 2027). He can NOT join immediately or before January 2027: answer No to 'join immediately / now / "
+    "within N days' questions, or pick the option closest to January 2027.\n"
     'Return JSON: {"answer": "<text>"} or {"answer": null}.')
 AI_PRIVATE_KEYS = {"phone", "address", "address_line1", "pin_code", "date_of_birth", "email", "workday_password"}
 

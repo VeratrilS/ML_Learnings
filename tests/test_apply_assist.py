@@ -637,6 +637,15 @@ def test_gate_makes_runner_submit_through_it():
     assert out["outcome"] == "submitted" and turns == [1]
 
 
+def test_never_claims_to_join_immediately():
+    for q in ("We must fill this position urgently. Can you join us immediately?*", "Can you join within 15 days?*",
+              "Are you an immediate joiner?*"):
+        f = fld(1, q, role="combobox", required=True)
+        assert aa.rule_key(f) == "join_immediately", q
+        assert aa.plan_fields([f], ctx({})).actions[0].value == "No"
+    assert aa.rule_key(fld(2, "Are you available to start a full-time role in July 2027?*")) == "available"
+
+
 def test_answer_pack_is_fetched_only_when_a_free_text_question_needs_it():
     calls = []
     pack = aa.LazyPack(lambda: calls.append(1) or {"cover_note": "Dear team..."})
