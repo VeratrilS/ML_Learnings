@@ -2082,7 +2082,9 @@ class PlaywrightDriver:
         for a in actions:
             try:
                 loc = self._loc(a.f)
-                if a.kind == "text":
+                if a.kind == "text" and loc.evaluate("el => el.classList.contains('location-input')"):
+                    self._lever_location(loc, str(a.value))
+                elif a.kind == "text":
                     loc.fill(str(a.value), timeout=6000)
                 elif a.kind == "select":
                     loc.select_option(index=a.value, timeout=6000)
@@ -2101,6 +2103,14 @@ class PlaywrightDriver:
                 failed.append(Todo(a.f, a.label, f"couldn't fill automatically ({str(e).splitlines()[0][:60]})",
                                    a.f.get("type"), list(a.f.get("options") or [])))
         return filled, failed
+
+    def _lever_location(self, loc, value):
+        """Lever's location box only counts a city picked from its suggestions (typed text alone stays 'missing')."""
+        loc.fill("", timeout=5000)
+        loc.press_sequentially(value.split(",")[0].strip(), delay=50)
+        opt = loc.locator("xpath=..").locator(".dropdown-location:visible").first
+        opt.wait_for(state="visible", timeout=8000)
+        safe_click(opt, "pick_option")
 
     def _combo(self, loc, a):
         """Search-as-you-type dropdown: type each search term and pick a matching option; if typing finds nothing
