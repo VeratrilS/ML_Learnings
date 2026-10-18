@@ -406,6 +406,8 @@ EXTRA_TARGETS = {
     "notice_period": ["Immediate", "Immediately", "0 days", "Not applicable", "N/A", "Less than 15 days", "None"],
     "current_ctc": ["Not applicable", "N/A", "0"],
     "phone_country_code": ["India (+91)", "India", "+91"],
+    "current_company": ["Student", "None", "Not applicable", "N/A", "Not currently employed", "Other"],
+    "current_title": ["Student", "Not applicable", "N/A", "Other"],
     "degree": ["Bachelor of Technology", "B.Tech", "Bachelor's Degree", "Bachelor's", "Bachelors", "Bachelor of Engineering",
                "Bachelor"],
     "college": ["National Institute of Technology Rourkela", "NIT Rourkela", "National Institute of Technology", "Other"],
@@ -1990,7 +1992,8 @@ class PlaywrightDriver:
 
         extra = [t for t in (a.targets or [])[1:] if len(t) <= 40]  # e.g. "NIT Rourkela", then "Other"
         for term in list(dict.fromkeys(combo_terms(a.value) + extra))[:7]:
-            loc.fill(term, timeout=5000)
+            loc.fill("", timeout=5000)
+            loc.press_sequentially(term, delay=35)  # search boxes (school lists) only search on real keystrokes
             self._wait_options(frame)  # search-as-you-type boxes (school lists) load results after ~2 s
             if pick():
                 return True
