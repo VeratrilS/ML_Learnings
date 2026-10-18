@@ -952,7 +952,7 @@ def detect_confirmation(text, url, start_url=None):
 EXPIRED = re.compile(r"this job (has expired|is no longer (available|accepting))|job (posting )?(has expired|is closed|"
                      r"no longer available)|position (has been filled|is no longer available)|no longer accepting "
                      r"applications|this (position|role|requisition) (has been )?closed|the job you are looking for "
-                     r"(is no longer|does not exist)", re.I)
+                     r"(is no longer|does not exist)|page you requested was not found|job (posting )?(was )?not found", re.I)
 
 
 def blockers(state, fields):
