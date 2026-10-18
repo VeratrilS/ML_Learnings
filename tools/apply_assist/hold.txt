@@ -1,0 +1,2 @@
+# Companies on hold: the runner skips them until the line is removed.
+FamPay  # verification site broken (2026-10-18)

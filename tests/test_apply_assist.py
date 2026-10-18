@@ -637,6 +637,17 @@ def test_gate_makes_runner_submit_through_it():
     assert out["outcome"] == "submitted" and turns == [1]
 
 
+def test_hold_list(tmp_path):
+    f = tmp_path / "hold.txt"
+    f.write_text("# comment
+FamPay  # site broken
+
+Zeta Global
+", encoding="utf-8")
+    assert aa.held_companies(f) == {"fampay", "zeta global"}
+    assert aa.held_companies(tmp_path / "missing.txt") == set()
+
+
 def test_never_claims_to_join_immediately():
     for q in ("We must fill this position urgently. Can you join us immediately?*", "Can you join within 15 days?*",
               "Are you an immediate joiner?*"):

@@ -44,6 +44,7 @@ ANSWERS_PATH = HERE / "answers.yaml"
 LEARNED_PATH = HERE / "learned_answers.yaml"
 PENDING_PATH = HERE / "pending_questions.yaml"
 RUNS_DIR = HERE / "runs"
+HOLD_PATH = HERE / "hold.txt"  # companies on hold (site broken etc.), one per line: never applied to until removed
 
 MIN_SCORE, MIN_CTC, ROLE_TYPES = 55, 15.0, ("fte", "intern_6m")
 DONE_STATUSES = {"manual_applied", "applied_confirmed", "skipped"}
@@ -3290,6 +3291,14 @@ def run_sync_email(api, answers):
     print(f"{n} application(s) marked applied from confirmation emails.")
 
 
+def held_companies(path=HOLD_PATH):
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return set()
+    return {_norm(l.split("#")[0]) for l in lines if _norm(l.split("#")[0])}
+
+
 def shard_of(company, n):
     import zlib
     return zlib.crc32(_norm(company).encode()) % n
@@ -3349,6 +3358,9 @@ def run_batch(args, api, answers, learned, mode):
             jobs = [j for j in jobs if str(j.get("id")) in wanted]
         done = recent_role_keys(local_history() + server_history(radar.get("jobs")))
         jobs = dedupe(jobs, () if args.only else done)  # --only: Sai picked these ids (e.g. finishing an unconfirmed submit)
+        held = held_companies()
+        if held:
+            jobs = [j for j in jobs if _norm(j.get("company")) not in held]
         gone = expired_ids()
         jobs = [j for j in jobs if j.get("id") not in gone]
         inbox_check = None if args.no_inbox else make_inbox(_s(answers.get("email")) or "sairaghava1318@gmail.com")
