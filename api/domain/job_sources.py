@@ -87,6 +87,7 @@ COMPANIES = [
     ("Glean", "greenhouse", "gleanwork"), ("Grafana Labs", "greenhouse", "grafanalabs"),        # 8, 1 (2026-10-17)
     ("Graviton Research Capital", "greenhouse", "gravitonresearchcapital"),                    # 9, incl. 2027 Graduate roles
     ("AlphaGrep", "greenhouse", "alphagrepsecurities"), ("Commvault", "greenhouse", "commvault"),  # 2, 6 (2026-10-18)
+    ("CloudSEK", "greenhouse", "cloudsek"), ("Skild AI", "greenhouse", "skildai-careers"),     # SDE intern; new-grad-friendly
     # Lever
     ("Paytm", "lever", "paytm"), ("Meesho", "lever", "meesho"), ("Zeta", "lever", "zeta"),      # 148, 54, 21
     ("FamPay", "lever", "fampay"), ("CRED", "lever", "cred"), ("Spotify", "lever", "spotify"),  # 17, 7, 1
@@ -97,6 +98,7 @@ COMPANIES = [
     ("ClickHouse", "ashby", "clickhouse"), ("Sardine", "ashby", "sardine"),                     # 10, 1
     ("Ema", "ashby", "ema"), ("Snowflake", "ashby", "snowflake"),                               # 14, 7
     ("Atlan", "ashby", "atlan"),                                                                # 2 (2026-10-17)
+    ("AiPrise", "ashby", "aiprise"),                                                            # SWE I, 0-2 yrs (2026-10-18)
     # SmartRecruiters (country=in)
     ("Swiggy", "smartrecruiters", "swiggy"), ("ServiceNow", "smartrecruiters", "servicenow"),   # 195, 76
     ("Freshworks", "smartrecruiters", "freshworks"), ("Arista Networks", "smartrecruiters", "aristanetworks"),  # 37, 26
