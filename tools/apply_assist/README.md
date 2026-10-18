@@ -87,19 +87,9 @@ applications at once. Before applying, every worker skips jobs you already appli
 runner's logs from the last 30 days, or with a "thank you for applying" email in your Gmail that names the company
 and the role. Gmail catches the applications you sent yourself.
 
-## Run it every day
+## When it runs
 
-Run these two commands once, in a normal (non-admin) terminal. They make the runner apply every day at 10:30 and
-19:30 (after the morning job scan). The laptop has to be on, and on a network where Gmail works (a hotspot, not campus
-Wi-Fi):
-
-```
-schtasks /Create /TN "ApplyRunner 10-30" /TR "C:\desktop\Sem-7\ML_Fun\tools\apply_assist\daily_run.cmd" /SC DAILY /ST 10:30
-schtasks /Create /TN "ApplyRunner 19-30" /TR "C:\desktop\Sem-7\ML_Fun\tools\apply_assist\daily_run.cmd" /SC DAILY /ST 19:30
-```
-
-To stop them: `schtasks /Delete /TN "ApplyRunner 10-30" /F` (and the same for 19-30). Each run's output goes to
-`tools\apply_assist\runs\daily.log`. Results also appear in Job Radar's Application desk.
+Only when Sai starts it (or asks Claude to). There is no schedule: a window popping up during an online test could disturb it.
 
 ## What the runner has learned (site playbook, 2026-10-17)
 
