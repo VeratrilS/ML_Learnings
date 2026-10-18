@@ -3237,7 +3237,7 @@ def run_batch(args, api, answers, learned, mode):
                         submit=(mode == "submit"), max_jobs=limit, per_company=args.per_company,
                         handoff_wait_s=args.handoff_wait * 60, ask_timeout_s=args.ask_timeout * 60,
                         pending=pending, learned=learned, harvest_first=not args.no_harvest,
-                        emailer=emailer, log=RunLog(),
+                        emailer=emailer, log=RunLog(), pace=tuple(float(x) for x in args.pace.split(",")),
                         workday_password=ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH),
                         code_for=combine_code_sources(make_code_reader(), inbox), attended=args.attended)
         if mode == "harvest":
@@ -3302,6 +3302,8 @@ def main(argv=None):
     ap.add_argument("--url", default=None, help="with --auto: apply to this one posting link (use with --company/--role)")
     ap.add_argument("--company", default=None, help="with --url: company name")
     ap.add_argument("--parallel", type=int, default=1, help="with --auto: run N workers side by side (own browsers)")
+    ap.add_argument("--pace", default="180,420",
+                    help="seconds to wait between submissions, min,max (default 3-7 min: sites rate-limit fast applicants)")
     ap.add_argument("--shard", default=None, help=argparse.SUPPRESS)  # "k/n": set by --parallel for each worker
     ap.add_argument("--profile-dir", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--role", default=None, help="with --url: role title")

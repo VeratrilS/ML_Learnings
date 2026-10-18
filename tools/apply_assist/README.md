@@ -72,7 +72,11 @@ The runner sees the "thank you" page, marks the job applied, and moves on to the
 minutes per code. You can also paste a code into `security_codes.yaml` under the job's id (for example
 `'224': AbC12345`). `--only 5,1,10` limits a run to those Job Radar ids.
 
-## Several at a time
+## Several at a time (careful)
+
+Sites rate-limit fast applicants. On 2026-10-18, 5 workers at once got a "temporarily restricted" message. The
+default is one application at a time, with 3–7 minutes between submissions (`--pace 180,420`). Use `--parallel`
+only for small batches spread across different job sites.
 
 ```
 python tools/apply_assist/assist.py --auto --submit --parallel 5 --max 30
