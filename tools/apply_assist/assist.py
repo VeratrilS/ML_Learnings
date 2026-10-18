@@ -1479,6 +1479,11 @@ class Inbox:
         return None
 
 
+    def confirmation_mails(self, max_age_s=30 * 86400):
+        """[(sender, subject, body, epoch)] of job-site mail that reads like an application confirmation."""
+        return [m for m in self._recent(max_age_s, senders=CODE_SENDERS + CONFIRM_SENDERS)
+                if CONFIRM_MAIL.search(m[1] + " " + m[2][:3000])]
+
     def confirmations(self, max_age_s=7 * 86400):
         """[(subject, epoch)] of 'thank you for applying' / 'application received' emails, newest first."""
         out = []
@@ -1491,6 +1496,21 @@ class Inbox:
 CONFIRM_SENDERS = ("workday", "icims", "taleo", "successfactors", "eightfold", "amazon", "careers", "jobs", "talent")
 CONFIRM_MAIL = re.compile(r"thank(s| you) for (applying|your application|your interest)|application (received|submitted|"
                           r"confirmation)|we('ve| have) received your application|your application (to|for|has been)", re.I)
+
+
+def applied_by_email(mails, jobs):
+    """Job ids already applied to, going by the companies' confirmation emails (also ones Sai applied to himself):
+    the company must be named in the email and the role title must appear in it. -> {job id: email subject}."""
+    out = {}
+    for sender, subject, body, _ts in mails:
+        if not CONFIRM_MAIL.search(subject + " " + body[:3000]) or re.search(r"security code|verify", subject, re.I):
+            continue
+        text = f" {_norm(sender)} {_norm(subject)} {_norm(body[:20000])} "
+        for job in jobs:
+            company, role = _norm(job.get("company")), _norm(job.get("role"))
+            if company and role and f" {company} " in text and f" {role} " in text:
+                out[job.get("id")] = subject
+    return out
 
 
 def confirmed_by_email(confirmations, jobs):
@@ -3146,6 +3166,17 @@ def run_batch(args, api, answers, learned, mode):
         jobs = dedupe(jobs, () if args.only else done)  # --only: Sai picked these ids (e.g. finishing an unconfirmed submit)
         gone = expired_ids()
         jobs = [j for j in jobs if j.get("id") not in gone]
+        inbox_check = None if args.no_inbox else make_inbox(_s(answers.get("email")) or "sairaghava1318@gmail.com")
+        if inbox_check:  # applications Sai sent himself only show up in his inbox
+            try:
+                already = applied_by_email(inbox_check.confirmation_mails(), jobs)
+            except Exception as e:
+                already = {}
+                print(f"(couldn't check Gmail for earlier applications: {str(e)[:60]})")
+            for j in jobs:
+                if j.get("id") in already:
+                    print(f"  already applied (Gmail: {already[j.get('id')][:60]}): {j.get('company')} - {j.get('role')}")
+            jobs = [j for j in jobs if j.get("id") not in already]
         if args.shard:  # parallel worker k of n: a fixed share of the companies, so no company is hit twice at once
             k, n = (int(x) for x in args.shard.split("/"))
             jobs = [j for j in jobs if shard_of(j.get("company"), n) == k - 1]

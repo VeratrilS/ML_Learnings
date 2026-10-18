@@ -72,6 +72,17 @@ The runner sees the "thank you" page, marks the job applied, and moves on to the
 minutes per code. You can also paste a code into `security_codes.yaml` under the job's id (for example
 `'224': AbC12345`). `--only 5,1,10` limits a run to those Job Radar ids.
 
+## Several at a time
+
+```
+python tools/apply_assist/assist.py --auto --submit --parallel 5 --max 30
+```
+
+This starts 5 workers, each with its own Chrome and its own share of the companies, so no company gets two
+applications at once. Before applying, every worker skips jobs you already applied to: those in Job Radar, in the
+runner's logs from the last 30 days, or with a "thank you for applying" email in your Gmail that names the company
+and the role. Gmail catches the applications you sent yourself.
+
 ## Run it every day
 
 Run these two commands once, in a normal (non-admin) terminal. They make the runner apply every day at 10:30 and

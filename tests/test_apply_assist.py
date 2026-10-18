@@ -589,6 +589,19 @@ def test_attempted_from_logs(tmp_path):
     assert [j["id"] for j in aa.attempted_from_logs(runs_dir=tmp_path, now=NOW)] == [5]
 
 
+def test_applied_by_email_needs_company_and_role():
+    mails = [("mastercard@myworkday.com", "Thank you for your application!",
+              "Thank you for applying to the Software Engineer I-1 position at Mastercard.", 0.0),
+             ("no-reply@us.greenhouse-mail.io", "Security code for your application to Okta", "Software Engineer at Okta", 0.0),
+             ("noreply@rubrik.com", "Thank you for applying to Rubrik", "We received your application for Software Engineer - Cloud: Azure.", 0.0)]
+    jobs = [{"id": 430, "company": "Mastercard", "role": "Software Engineer I-1"},
+            {"id": 431, "company": "Mastercard", "role": "Data Engineer"},
+            {"id": 1, "company": "Okta", "role": "Software Engineer"},
+            {"id": 8, "company": "Rubrik", "role": "Software Engineer- SaaS O365"},
+            {"id": 6, "company": "Rubrik", "role": "Software Engineer - Cloud: Azure"}]
+    assert set(aa.applied_by_email(mails, jobs)) == {430, 6}  # other roles at the same company stay
+
+
 def test_parallel_shards_split_companies_and_strip_options():
     companies = ["Okta", "Zscaler", "Rubrik", "IMC", "Point72", "Hevo Data", "GitLab", "Stripe"]
     shards = [{c for c in companies if aa.shard_of(c, 3) == k} for k in range(3)]
