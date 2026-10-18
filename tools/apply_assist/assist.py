@@ -1029,7 +1029,7 @@ SETUP_QUESTIONS = [  # (key, prompt, kind) kind: text | yn
     ("first_name", "First name as forms should show it", "text"),
     ("last_name", "Last name as forms should show it", "text"),
     ("email", "Email", "text"),
-    ("phone", "Phone (with +91)", "text"),
+    ("phone", "Phone (10 digits, no +91)", "text"),
     ("college", "College", "text"),
     ("degree", "Degree", "text"),
     ("grad_year", "Graduation year", "text"),
