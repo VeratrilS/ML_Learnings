@@ -1358,7 +1358,13 @@ def make_ai_answerer(values, generate=None, path=AI_PATH):
             sys.path.insert(0, str(REPO))
         from api.core.clients import LLMClient
         client = LLMClient(budget=45)
-        generate = lambda prompt: client.generate_json(prompt, temperature=0.2, system=AI_SYSTEM)  # noqa: E731
+        def generate(prompt):
+            try:
+                return client.generate_json(prompt, temperature=0.2, system=AI_SYSTEM)
+            except ValueError:  # the model returned prose / an empty reply instead of JSON: ask once more, plainly
+                text = client.generate(prompt + "\nReply with only the answer text (or the single word null).",
+                                       temperature=0.2, system=AI_SYSTEM).strip().strip('"')
+                return {"answer": None if text.lower() in ("null", "none", "") else text}
     bank = QuestionBank(load_yaml(path) if path else {})
     facts = ai_facts(values)
 
