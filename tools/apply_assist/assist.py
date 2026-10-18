@@ -1786,8 +1786,13 @@ OVERLAY_JS = r"""(a) => {
   if (!document.body) return false;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const box = document.createElement('div'); box.id = 'aa-overlay';
-  box.style.cssText = 'position:fixed;z-index:2147483647;right:16px;bottom:16px;max-width:380px;background:#111827;color:#fff;'
+  // Top-right (forms put Submit at the bottom), and it can be hidden so it never covers anything.
+  box.style.cssText = 'position:fixed;z-index:2147483647;right:16px;top:16px;max-width:340px;background:#111827;color:#fff;'
     + 'font:14px/1.45 system-ui,sans-serif;padding:14px 16px;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.35)';
+  const pill = document.createElement('button'); pill.type = 'button'; pill.textContent = 'Runner ▸';
+  pill.style.cssText = 'display:none;position:fixed;z-index:2147483647;right:16px;top:16px;background:#111827;color:#fff;'
+    + 'border:0;border-radius:999px;padding:6px 12px;font:600 12px system-ui,sans-serif;cursor:pointer';
+  pill.onclick = () => { box.style.display = ''; pill.style.display = 'none'; };
   const list = (a.items || []).slice(0, 10).map((x) => `<li>${esc(x)}</li>`).join('');
   box.innerHTML = `<b>${esc(a.title)}</b>`
     + (list ? `<div style="margin-top:6px;color:#fcd34d">Still for you (orange):</div><ul style="margin:4px 0 0 18px;padding:0">${list}</ul>` : '')
@@ -1798,7 +1803,8 @@ OVERLAY_JS = r"""(a) => {
     row.appendChild(b); return b; };
   if (a.cont) { const c = btn('✅ I finished — continue', '#16a34a'); c.onclick = () => { window.__aaContinue = true; c.textContent = 'Continuing…'; }; }
   else { btn('OK', '#f97316').onclick = () => box.remove(); }
-  box.appendChild(row); document.body.appendChild(box); return true;
+  btn('✕ Hide', '#374151').onclick = () => { box.style.display = 'none'; pill.style.display = ''; };
+  box.appendChild(row); document.body.appendChild(box); document.body.appendChild(pill); return true;
 }"""
 
 FIND_ENTRY_JS = r"""(p) => {
@@ -1925,7 +1931,8 @@ class PlaywrightDriver:
             return
         try:
             self._window({"windowState": "normal"})
-            self._window({"left": 40, "top": 30, "width": 1320, "height": 980})
+            self._window({"left": 40, "top": 30, "width": 1320, "height": 980})  # back on-screen first...
+            self._window({"windowState": "maximized"})  # ...then full screen, so the whole form (and Submit) fits
         except Exception:
             pass
         self.page.bring_to_front()
@@ -1993,6 +2000,11 @@ class PlaywrightDriver:
         url, kind = application_url(job["url"], job.get("company"), self.gh_tokens)
         self._goto(url)
         note = kind
+        gh = re.search(r"greenhouse\.io/([^/?#]+)/jobs/(\d+)", url)
+        if kind == "greenhouse" and gh and "greenhouse.io" not in urlparse(self.url()).netloc:
+            # the board redirected to the company's own careers site: open Greenhouse's form directly
+            self._goto(f"https://job-boards.greenhouse.io/embed/job_app?for={gh.group(1)}&token={gh.group(2)}")
+            note = "greenhouse (company site redirect, opened form directly)"
         if kind == "other":
             emb = self.page.evaluate("() => { const f = document.querySelector('iframe[src*=\"greenhouse.io/embed/job_app\"]');"
                                      " return f ? f.src : null; }")
