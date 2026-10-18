@@ -1765,9 +1765,11 @@ def close_leftover_browsers(profile=PROFILE_DIR):
     return n
 
 
-def launch(pw, headless=False, visible=False):
-    """Normal Playwright Chrome with a persistent profile. Off-screen + minimized unless --visible/--headless."""
-    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+def launch(pw, headless=False, visible=False, profile=None):
+    """Normal Playwright Chrome with a persistent profile. Off-screen + minimized unless --visible/--headless.
+    Parallel workers each get their own profile folder (Chrome allows one browser per profile)."""
+    profile = Path(profile) if profile else PROFILE_DIR
+    profile.mkdir(parents=True, exist_ok=True)
     args = BROWSER_ARGS + ([] if headless or visible else OFFSCREEN_ARGS)
     opts = dict(headless=headless, args=args, viewport={"width": 1280, "height": 900}, accept_downloads=False)
     last = None
@@ -1775,11 +1777,11 @@ def launch(pw, headless=False, visible=False):
         for channel in ("chrome", None):  # installed Chrome first, Playwright's Chromium as a fallback
             try:
                 if channel:
-                    return pw.chromium.launch_persistent_context(str(PROFILE_DIR), channel=channel, **opts)
-                return pw.chromium.launch_persistent_context(str(PROFILE_DIR), **opts)
+                    return pw.chromium.launch_persistent_context(str(profile), channel=channel, **opts)
+                return pw.chromium.launch_persistent_context(str(profile), **opts)
             except Exception as e:
                 last = e
-        if attempt == 1 and "existing browser session" in str(last) and close_leftover_browsers():
+        if attempt == 1 and "existing browser session" in str(last) and close_leftover_browsers(profile):
             print("Closed a leftover browser from an earlier run; retrying.")
             time.sleep(2)
             continue
@@ -2563,7 +2565,7 @@ def known_ats(job):
     """True for application systems the runner knows how to submit and confirm (it may press Submit there)."""
     url = job.get("url") or ""
     kind = application_url(url, job.get("company"), {})[1] if url else "other"
-    return kind in AUTO_SUBMIT_BOARDS or (job.get("board") or "").lower() in AUTO_SUBMIT_BOARDS or         "myworkdayjobs.com" in url or "smartrecruiters.com" in url
+    return kind in AUTO_SUBMIT_BOARDS or (job.get("board") or "").lower() in AUTO_SUBMIT_BOARDS or         "myworkdayjobs.com" in url or "smartrecruiters.com" in url or "careers.qualcomm.com" in url  # Qualcomm: confirmed by email
 
 
 NO_HANDOFF = re.compile(r"No application form found|Doesn't look like an application form|blocked this browser|"
@@ -3009,7 +3011,7 @@ def run_assist(args, api, answers, learned):
     make_fc = _fill_context_factory(api, profile, answers, learned, resume, use_ai=not args.no_ai)
     log = RunLog()
     with sync_playwright() as pw:
-        ctx = launch(pw, headless=args.headless, visible=args.visible)
+        ctx = launch(pw, headless=args.headless, visible=args.visible, profile=getattr(args, "profile_dir", None))
         d = PlaywrightDriver(ctx, headless=args.headless, visible=args.visible, resume=resume,
                              resume_name=_resume_name(profile, answers), gh_tokens=greenhouse_tokens())
         d.hide()
@@ -3083,6 +3085,50 @@ def run_sync_email(api, answers):
     print(f"{n} application(s) marked applied from confirmation emails.")
 
 
+def shard_of(company, n):
+    import zlib
+    return zlib.crc32(_norm(company).encode()) % n
+
+
+def strip_option(argv, name):
+    """argv without `name VALUE` / `name=VALUE`."""
+    out, skip = [], False
+    for a in argv:
+        if skip:
+            skip = False
+        elif a == name:
+            skip = True
+        elif not a.startswith(name + "="):
+            out.append(a)
+    return out
+
+
+def run_parallel(argv, n):
+    """Start n workers (separate Chrome profiles, a fixed share of companies each) and relay their output."""
+    import subprocess
+    import threading
+    base = strip_option(strip_option(list(argv), "--parallel"), "--shard")
+    env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+    procs = []
+    for k in range(1, n + 1):
+        cmd = [sys.executable, str(Path(__file__).resolve()), *base, "--shard", f"{k}/{n}",
+               "--profile-dir", str(HERE / f".profile-w{k}")]
+        procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                      encoding="utf-8", errors="replace", env=env, cwd=str(REPO)))
+
+    def relay(k, proc):
+        for line in proc.stdout:
+            if "UserWarning" not in line and "warnings.warn" not in line:
+                print(f"[w{k}] {line.rstrip()}", flush=True)
+    threads = [threading.Thread(target=relay, args=(k, pr), daemon=True) for k, pr in enumerate(procs, 1)]
+    for t in threads:
+        t.start()
+    codes = [pr.wait() for pr in procs]
+    for t in threads:
+        t.join(timeout=5)
+    print(f"All {n} workers finished (exit codes {codes}).")
+
+
 def run_batch(args, api, answers, learned, mode):
     from playwright.sync_api import sync_playwright
     radar = api.radar() or {}
@@ -3100,6 +3146,9 @@ def run_batch(args, api, answers, learned, mode):
         jobs = dedupe(jobs, () if args.only else done)  # --only: Sai picked these ids (e.g. finishing an unconfirmed submit)
         gone = expired_ids()
         jobs = [j for j in jobs if j.get("id") not in gone]
+        if args.shard:  # parallel worker k of n: a fixed share of the companies, so no company is hit twice at once
+            k, n = (int(x) for x in args.shard.split("/"))
+            jobs = [j for j in jobs if shard_of(j.get("company"), n) == k - 1]
     limit = args.max or (40 if mode == "harvest" else 25)
     print(f"{len(jobs)} open jobs after filters and 30-day dedupe; working through up to {limit}.")
     profile = radar.get("profile") or {}
@@ -3110,7 +3159,7 @@ def run_batch(args, api, answers, learned, mode):
     if inbox:
         print("Reading security codes and Workday verification links from your Gmail (read-only).")
     with sync_playwright() as pw:
-        ctx = launch(pw, headless=args.headless, visible=args.visible)
+        ctx = launch(pw, headless=args.headless, visible=args.visible, profile=getattr(args, "profile_dir", None))
         d = PlaywrightDriver(ctx, headless=args.headless, visible=args.visible, resume=resume,
                              resume_name=_resume_name(profile, answers), submit_enabled=(mode == "submit"),
                              gh_tokens=greenhouse_tokens())
@@ -3184,10 +3233,16 @@ def main(argv=None):
     ap.add_argument("--only", default=None, help="only these Job Radar ids, comma-separated (e.g. 5,1,10)")
     ap.add_argument("--url", default=None, help="with --auto: apply to this one posting link (use with --company/--role)")
     ap.add_argument("--company", default=None, help="with --url: company name")
+    ap.add_argument("--parallel", type=int, default=1, help="with --auto: run N workers side by side (own browsers)")
+    ap.add_argument("--shard", default=None, help=argparse.SUPPRESS)  # "k/n": set by --parallel for each worker
+    ap.add_argument("--profile-dir", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--role", default=None, help="with --url: role title")
     ap.add_argument("--boards", default=None,
                     help="only these job boards, e.g. greenhouse,lever,ashby (no account needed)")
     args = ap.parse_args(argv)
+    if args.parallel > 1 and args.auto and not args.shard:
+        _load_env()
+        return run_parallel(sys.argv[1:] if argv is None else argv, args.parallel)
     if args.submit and not args.auto:
         ap.error("--submit only works together with --auto")
     if args.pending and not args.setup:

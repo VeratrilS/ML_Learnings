@@ -589,14 +589,24 @@ def test_attempted_from_logs(tmp_path):
     assert [j["id"] for j in aa.attempted_from_logs(runs_dir=tmp_path, now=NOW)] == [5]
 
 
+def test_parallel_shards_split_companies_and_strip_options():
+    companies = ["Okta", "Zscaler", "Rubrik", "IMC", "Point72", "Hevo Data", "GitLab", "Stripe"]
+    shards = [{c for c in companies if aa.shard_of(c, 3) == k} for k in range(3)]
+    assert set().union(*shards) == set(companies) and sum(len(x) for x in shards) == len(companies)
+    assert aa.shard_of("Okta", 3) == aa.shard_of("okta", 3)  # same company -> same worker, every run
+    argv = ["--auto", "--submit", "--parallel", "3", "--max", "30", "--parallel=2", "--shard", "1/3"]
+    assert aa.strip_option(aa.strip_option(argv, "--parallel"), "--shard") == ["--auto", "--submit", "--max", "30"]
+
+
 def test_unfamiliar_site_is_never_auto_submitted():
     d = FakeDriver(SIMPLE, submit_enabled=True)
     api = FakeApi()
-    out = runner(d, api, attended=True).run_job(job(1, company="Qualcomm", url="https://careers.qualcomm.com/careers/job/1"))
+    out = runner(d, api, attended=True).run_job(job(1, company="Apple", url="https://jobs.apple.com/en-in/details/1"))
     assert d.submits == 0 and api.confirmed == [] and d.shown >= 1
     assert out["outcome"] == "needs-you"
     assert aa.known_ats(job(2)) and aa.known_ats(job(3, url="https://job-boards.greenhouse.io/x/jobs/1"))
-    assert not aa.known_ats(job(4, url="https://careers.qualcomm.com/careers/job/1"))
+    assert not aa.known_ats(job(4, url="https://jobs.apple.com/en-in/details/1"))
+    assert aa.known_ats(job(5, url="https://careers.qualcomm.com/careers/job/1"))
 
 
 def test_dropdown_options_are_read_and_ai_picks_one():
