@@ -567,6 +567,29 @@ def trigger_scan():
         db.close()
 
 
+def _job_from_link(db, data):
+    """Find or add the Job Radar row for a posting given by link (company, role, url, board, posting_id).
+    Same external_id as the scanner uses, so a later scan updates this row instead of adding a second one."""
+    company = (data.get("company") or "").strip()[:120]
+    role = (data.get("role") or "").strip()[:180]
+    url = (data.get("url") or "").strip()
+    board = (data.get("board") or "direct").strip().lower()[:40]
+    posting_id = str(data.get("posting_id") or "").strip()
+    if not (company and role and url.startswith("http") and posting_id):
+        return None
+    ext = f"{board}:{company.lower().replace(' ', '')}:{posting_id}"[:80]
+    job = db.query(JobOpportunity).filter(JobOpportunity.external_id == ext).first()
+    if job is None:
+        now = _utcnow()
+        job = JobOpportunity(external_id=ext, company=company, role=role, ctc_lpa=0.0, location="India",
+                             source=f"{board.title()} (pasted link)"[:120], portal_url=url, skills_required="[]",
+                             match_score=0, shortlist_prob=0.0, status="discovered", discovered_at=now,
+                             last_checked_at=now, board=board)
+        db.add(job)
+        db.flush()
+    return job
+
+
 @job_radar_bp.route("/confirm-applied", methods=["POST"])
 @job_radar_bp.route("/manual-applied", methods=["POST"])
 @job_radar_bp.route("/applied", methods=["POST"])
@@ -584,7 +607,9 @@ def confirm_applied():
     db = SessionLocal()
     try:
         prof = _get_or_create_profile(db)
-        job = db.query(JobOpportunity).filter(JobOpportunity.id == job_id).first()
+        job = db.query(JobOpportunity).filter(JobOpportunity.id == job_id).first() if job_id else None
+        if not job:
+            job = _job_from_link(db, data)  # a posting Sai pasted that the scan hasn't picked up yet
         if not job:
             return jsonify({"status": "error", "message": "Job opening not found."}), 404
 

@@ -225,6 +225,26 @@ def application_url(url, company=None, gh_tokens=None):
     return url, "other"
 
 
+
+def posting_key(url):
+    """The board's own id for a posting (Greenhouse number / gh_jid, Lever or Ashby UUID), or None."""
+    u = urlparse(url or "")
+    jid = parse_qs(u.query).get("gh_jid")
+    if jid:
+        return jid[0]
+    m = re.search(r"/jobs/(\d+)|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", u.path, re.I)
+    return (m.group(1) or m.group(2)).lower() if m else None
+
+
+def job_id_for_url(url, jobs):
+    """Job Radar's id for a pasted posting link, so the Application desk can record it (None if not tracked)."""
+    key = posting_key(url)
+    for j in jobs if key else ():
+        keys = {posting_key(j.get(f)) for f in ("url", "portal_url", "apply_url")} | {str(j.get("external_id") or "").lower()}
+        if j.get("id") and key in keys:
+            return j["id"]
+    return None
+
 # =====================================================================================================
 # The click guard. Every click in this file goes through safe_click().
 # =====================================================================================================
@@ -1251,8 +1271,11 @@ class Api:
     def resume_url(self):
         return (self._get("/api/jobs/resume-file/info").get("data") or {}).get("url")
 
-    def confirm_applied(self, job_id, notes, ref=None, applied_at=None):
+    def confirm_applied(self, job_id, notes, ref=None, applied_at=None, job=None):
         body = {"job_id": job_id, "notes": notes}
+        if not job_id and job:  # a pasted link: Job Radar adds the posting, then records it
+            body.update(company=job.get("company"), role=job.get("role"), url=job.get("url"),
+                        board=job.get("board"), posting_id=posting_key(job.get("url")))
         if applied_at:
             body["applied_at"] = applied_at
         if ref:
@@ -3017,7 +3040,8 @@ class Runner:
         return re.sub(r"\s+", " ", st.get("text") or "").strip()[:400]
 
     def _confirmed(self, job, ref, by_sai=False):
-        ok, msg = self.api.confirm_applied(job.get("id"), SAI_SUBMITTED_NOTE if by_sai else SUBMITTED_NOTE, ref)
+        link = {} if job.get("id") else {"job": job}  # a pasted link: Job Radar adds the posting first
+        ok, msg = self.api.confirm_applied(job.get("id"), SAI_SUBMITTED_NOTE if by_sai else SUBMITTED_NOTE, ref, **link)
         self.d.reset()
         return self._record(job, "submitted", ref=ref, by_sai=by_sai, marked_applied=ok,
                             reason=None if ok else f"confirm-applied failed: {msg}")
@@ -3375,7 +3399,8 @@ def run_batch(args, api, answers, learned, mode):
     from playwright.sync_api import sync_playwright
     radar = api.radar() or {}
     if args.url:  # one posting Sai pasted (not necessarily in Job Radar)
-        jobs = [{"id": None, "company": args.company or urlparse(args.url).netloc, "role": args.role or "",
+        jobs = [{"id": job_id_for_url(args.url, (radar.get("jobs") or []) + api.all_live()),
+                 "company": args.company or urlparse(args.url).netloc, "role": args.role or "",
                  "url": args.url, "board": application_url(args.url)[1]}]
     else:
         types = tuple(t.strip() for t in args.role_types.split(",") if t.strip())

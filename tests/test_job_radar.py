@@ -344,3 +344,19 @@ def test_company_watchlist_and_starring(client):
 
 
 
+
+
+def test_confirm_applied_adds_a_pasted_link_once(client):
+    """A posting Sai pasted (not scanned yet) is added with the scanner's external_id and recorded as applied."""
+    body = {"company": "CloudSEK", "role": "SDE Intern - Backend", "board": "greenhouse", "posting_id": "6222340004",
+            "url": "https://job-boards.greenhouse.io/cloudsek/jobs/6222340004", "notes": "Submitted by the runner"}
+    res = client.post("/api/jobs/confirm-applied", json=body)
+    assert res.status_code == 200
+    assert client.post("/api/jobs/confirm-applied", json=body).status_code == 409  # same row, not a second one
+    db = SessionLocal()
+    try:
+        rows = db.query(JobOpportunity).filter(JobOpportunity.company == "CloudSEK").all()
+        assert [(r.external_id, r.status) for r in rows] == [("greenhouse:cloudsek:6222340004", "manual_applied")]
+    finally:
+        db.close()
+    assert client.post("/api/jobs/confirm-applied", json={"company": "X", "role": "Y"}).status_code == 404

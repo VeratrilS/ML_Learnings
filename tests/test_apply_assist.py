@@ -1385,3 +1385,15 @@ def test_filter_boards():
     jobs = [{"board": "greenhouse"}, {"board": "workday"}, {"board": "Lever"}]
     assert aa.filter_boards(jobs, "greenhouse, lever") == [jobs[0], jobs[2]]
     assert aa.filter_boards(jobs, None) == jobs
+
+
+def test_posting_key_and_job_id_for_url():
+    assert aa.posting_key("https://job-boards.greenhouse.io/cloudsek/jobs/6222340004") == "6222340004"
+    assert aa.posting_key("https://x.com/careers?id=1&gh_jid=6069464") == "6069464"
+    assert aa.posting_key("https://jobs.lever.co/drivetrain/BC1C17BC-86ac-4f00-a1e3-0eb85aae4fdc") == \
+        "bc1c17bc-86ac-4f00-a1e3-0eb85aae4fdc"
+    assert aa.posting_key("https://example.com/careers") is None
+    jobs = [{"id": 7, "portal_url": "https://www.squarepoint-capital.com/open-opportunities?id=6069464&gh_jid=6069464"},
+            {"id": 9, "portal_url": "https://jobs.lever.co/x/other", "external_id": "x"}]
+    assert aa.job_id_for_url("https://job-boards.greenhouse.io/squarepointcapital/jobs/6069464", jobs) == 7
+    assert aa.job_id_for_url("https://job-boards.greenhouse.io/squarepointcapital/jobs/1", jobs) is None
