@@ -1857,6 +1857,40 @@ class PlaywrightDriver:
         except Exception:
             pass
         self.page.bring_to_front()
+        self._raise_native()
+
+    def _raise_native(self):
+        """Windows: put the runner's window above whatever Sai is working in, flash it and chime, so he notices."""
+        if os.name != "nt":
+            return
+        try:
+            import ctypes
+            import winsound
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            title = (self.page.title() or "")[:40]
+            found = []
+
+            @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            def each(hwnd, _):
+                n = user32.GetWindowTextLengthW(hwnd)
+                if n and user32.IsWindowVisible(hwnd):
+                    buf = ctypes.create_unicode_buffer(n + 1)
+                    user32.GetWindowTextW(hwnd, buf, n + 1)
+                    if title and buf.value.startswith(title) and "Chrome" in buf.value:
+                        found.append(hwnd)
+                return True
+            user32.EnumWindows(each, 0)
+            flags = 0x0001 | 0x0002 | 0x0040  # SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
+            for hwnd in found[:1]:
+                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, flags)  # HWND_TOPMOST: jump above everything...
+                user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, flags)  # ...then normal again, so Sai can switch away
+                user32.SetForegroundWindow(hwnd)
+                user32.FlashWindow(hwnd, True)
+            winsound.MessageBeep(winsound.MB_ICONASTERISK)
+        except Exception:
+            pass
 
     # ---- navigation ----
     def url(self):
