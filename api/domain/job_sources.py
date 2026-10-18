@@ -85,6 +85,8 @@ COMPANIES = [
     ("Squarepoint Capital", "greenhouse", "squarepointcapital"), ("Arcesium", "greenhouse", "arcesiumllc"),  # 23, 18
     ("Zeta Global", "greenhouse", "zetaglobal"),                                                # 40
     ("Glean", "greenhouse", "gleanwork"), ("Grafana Labs", "greenhouse", "grafanalabs"),        # 8, 1 (2026-10-17)
+    ("Graviton Research Capital", "greenhouse", "gravitonresearchcapital"),                    # 9, incl. 2027 Graduate roles
+    ("AlphaGrep", "greenhouse", "alphagrepsecurities"), ("Commvault", "greenhouse", "commvault"),  # 2, 6 (2026-10-18)
     # Lever
     ("Paytm", "lever", "paytm"), ("Meesho", "lever", "meesho"), ("Zeta", "lever", "zeta"),      # 148, 54, 21
     ("FamPay", "lever", "fampay"), ("CRED", "lever", "cred"), ("Spotify", "lever", "spotify"),  # 17, 7, 1
