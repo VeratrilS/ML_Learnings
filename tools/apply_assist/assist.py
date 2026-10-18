@@ -1197,10 +1197,14 @@ class Api:
         return api
 
     def reachable(self):
-        try:
-            return self.http.get(self.base + "/api/health", timeout=5).ok
-        except Exception:
-            return False
+        timeout = 3 if self._local() else 20  # Vercel's first request after idle (cold start) can take ~10 s
+        for _ in range(2):
+            try:
+                if self.http.get(self.base + "/api/health", timeout=timeout).ok:
+                    return True
+            except Exception:
+                pass
+        return False
 
     def _local(self):
         return urlparse(self.base).hostname in ("localhost", "127.0.0.1")
