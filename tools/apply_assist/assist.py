@@ -229,7 +229,7 @@ def application_url(url, company=None, gh_tokens=None):
 def posting_key(url):
     """The board's own id for a posting (Greenhouse number / gh_jid, Lever or Ashby UUID), or None."""
     u = urlparse(url or "")
-    jid = parse_qs(u.query).get("gh_jid")
+    jid = parse_qs(u.query).get("gh_jid") or (parse_qs(u.query).get("token") if "job_app" in u.path else None)
     if jid:
         return jid[0]
     m = re.search(r"/jobs/(\d+)|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", u.path, re.I)
@@ -285,6 +285,11 @@ def check_click_allowed(info, purpose, submit_enabled=False):
     if purpose == "pick_option" and info.get("tag") not in ("button", "input", "a") and (
             info.get("role") == "option" or info.get("wdid") in ("promptOption", "promptLeafNode")):
         return True  # a dropdown option ("Yes, I confirm") can't submit the form
+    if purpose == "add_entry":
+        # Workday "My Experience": the Add / Add Another button of a section (type=submit, but it only adds a row)
+        if info.get("wdid") == "add-button" and re.fullmatch(r"\s*Add( Another)?\s*", text, re.I):
+            return True
+        raise SubmitBlocked(f"Refusing to click {text or t!r} as an Add button.")
     if purpose in ("account", "next_page"):
         # Workday: "Create Account" / "Sign In" and "Save and Continue" / "Next". The label may repeat (text + aria-label).
         words = ACCOUNT_BUTTONS if purpose == "account" else NEXT_BUTTONS
@@ -344,6 +349,27 @@ def safe_click(locator, purpose, submit_enabled=False, info=None):
 # field dict: {aid, frame, tag, type, role, label, optlabel, aria, placeholder, name, id, required, value,
 #              checked, files, options, in_form}
 RULES = [  # (pattern, key) in priority order; matched against label, aria-label, placeholder, name and id
+    # Workday "My Experience" entries, by field id (workExperience-4--jobTitle, education-5--degree, ...)
+    (r"workexperience-\d+--jobtitle", "we_title"),
+    (r"workexperience-\d+--companyname", "we_company"),
+    (r"workexperience-\d+--location", "we_location"),
+    (r"workexperience-\d+--roledescription", "we_description"),
+    (r"workexperience-\d+--startdate-datesectionmonth", "we_start_month"),
+    (r"workexperience-\d+--startdate-datesectionyear", "we_start_year"),
+    (r"workexperience-\d+--enddate-datesectionmonth", "we_end_month"),
+    (r"workexperience-\d+--enddate-datesectionyear", "we_end_year"),
+    (r"education-\d+--schoolname", "college"),
+    (r"education-\d+--degree", "edu_degree"),
+    (r"education-\d+--fieldofstudy", "edu_field"),
+    (r"education-\d+--gradeaverage", "cgpa"),
+    # "How would you like your personal data used for future recruitment": keep Sai in the talent pool
+    (r"personal data to be used|how you would like your personal data|future recruitment (process|opportunit)", "data_use_future"),
+    # Before the college rule: "employed by ... government or public institution" is a No, not a school name
+    (r"employed by (the )?(federal|any state|.{0,40}government)|government or public institution|public institution", "govt_official"),
+    (r"education-\d+--firstyearattended", "edu_start_year"),
+    (r"education-\d+--lastyearattended", "edu_end_year"),
+    (r"language-\d+--language$", "language_primary"),
+    (r"language-\d+--[0-9a-f]{32}$", "language_level"),
     (r"preferred\s*(first\s*)?name|nick\s*name", "preferred_name"),  # only from answers.yaml, never guessed
     (r"first\s*name|given\s*name|_systemfield_first|^first$", "first_name"),
     (r"last\s*name|surname|family\s*name|^last$", "last_name"),
@@ -351,6 +377,7 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"e-?mail", "email"),
     (r"phone device type|device type", "phone_device_type"),
     (r"country phone code|phone (country )?code|dialing code|country code", "phone_country_code"),
+    (r"phone extension|^extension\W*$|--extension$", "phone_extension"),  # never filled (Workday's optional box)
     (r"phone|mobile|contact number|whatsapp", "phone"),
     (r"linked\s*in", "linkedin"),
     (r"git\s*hub", "github"),
@@ -374,8 +401,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"pin\s*code|postal code|\bzip\b", "pin_code"),
     (r"address line 1|street address|^street", "address_line1"),
     (r"address line 2", "address_line2"),  # never filled
+    (r"^city\W*$|^town\W*$|addresssection_city|--city$", "address_city"),  # the bare "City" of an address block
     (r"address", "address"),
-    (r"^city\W*$|^town\W*$", "address_city"),  # the bare "City" of an address block
     (r"expected (ctc|salary|compensation|pay)|salary expectation|desired (salary|compensation)", "expected_ctc"),
     (r"current (ctc|salary|compensation)|present (ctc|salary)", "current_ctc"),
     (r"notice period", "notice_period"),
@@ -422,11 +449,19 @@ CONSENT = re.compile(r"privacy|consent|data protection|gdpr|processing of (my )?
                      r"\bi (agree|accept|certify|confirm)\b|agree to|terms (and|&) conditions|confidential", re.I)
 # Extra option texts tried after the saved answer, per rule key (dropdowns word these differently on every site).
 EXTRA_TARGETS = {
+    "data_use_future": ["future opportunities", "future recruitment", "future roles", "talent pool", "talent community",
+                        "all recruitment", "other positions", "other roles", "keep my data", "Yes", "I agree"],
+    "edu_degree": ["Bachelor of Technology", "B.Tech", "BTech", "B. Tech", "Bachelor of Engineering", "B.E.", "BE",
+                   "Bachelor's Degree", "Bachelors Degree", "Bachelor's", "Bachelor", "Undergraduate"],
+    "edu_field": ["Computer Science and Engineering", "Computer Science", "Computer Engineering",
+                  "Computer and Information Science", "Information Technology"],
+    "language_primary": ["English"],
+    "language_level": ["Fluent", "Advanced", "Native", "Proficient", "Full Professional", "Expert", "Excellent"],
     "accept_privacy_notice": ["I agree", "I acknowledge", "I accept", "I consent", "Agree", "Acknowledge",
                               "Acknowledged", "Accept", "I have read"],
     "how_did_you_hear": ["Company website", "Company careers page", "Careers page", "Careers site", "Career site",
                          "Website", "Job board", "Online job board", "LinkedIn", "Other"],
-    "notice_period": ["Immediate", "Immediately", "0 days", "Not applicable", "N/A", "Less than 15 days", "None"],
+    "notice_period": ["Not applicable", "N/A", "None", "No notice period", "0 days", "Less than 15 days"],  # never "Immediate"
     "current_ctc": ["Not applicable", "N/A", "0"],
     "phone_country_code": ["India (+91)", "India", "+91"],
     "current_company": ["Student", "None", "Not applicable", "N/A", "Not currently employed", "Other"],
@@ -737,7 +772,8 @@ AUTO_DEFAULTS = {
     "govt_official": "No",
     "is_adult": "Yes",
     "active_backlogs": "No",
-    "notice_period": "Immediate (final-year student)",
+    "notice_period": "Not applicable (final-year student, available from January 2027)",
+    "data_use_future": "Use my data for future recruitment opportunities too",
     "current_ctc": "0 / Not applicable",
     "expected_ctc": "As per company norms",
     "start_date_fte": "July 2027 (after graduation)",
@@ -844,6 +880,25 @@ def _ask_ai(fc, label, ftype, options):
     return ans or None
 
 
+def stale_contact_fix(f, fc, has_code=False):
+    """For Sai's own contact boxes only: the value to replace a wrong saved one with ("" clears it), else None.
+    Workday keeps drafts, so an earlier wrong fill (whole address in City, phone in Extension) would stick."""
+    key, cur = rule_key(f), _s(f.get("value"))
+    if key == "phone_extension":
+        return "" if cur else None
+    if key not in ("address_city", "address_line1", "pin_code", "phone"):
+        return None
+    want = _s(fc.values.get(key))
+    if not want:
+        return None
+    if key == "phone":
+        if has_code:
+            want = national_number(want)
+        digits = re.sub(r"\D", "", cur)
+        return None if digits.lstrip("0").endswith(re.sub(r"\D", "", want).lstrip("0")[-10:]) else want
+    return None if _norm(cur) == _norm(want) else want
+
+
 def plan_fields(fields, fc):
     actions, todo = [], []
     files = [f for f in fields if f.get("type") == "file"]
@@ -862,9 +917,12 @@ def plan_fields(fields, fc):
             elif is_required(f):
                 todo.append(Todo(f, label, "upload" if not is_resume else "resume not available", "file"))
             continue
-        if has_value(f):
-            continue  # never overwrite what's already there
         is_combo = f.get("role") in ("combobox", "listbox")
+        if has_value(f):
+            fix = None if is_combo or t == "select" else stale_contact_fix(f, fc, has_code)
+            if fix is not None:  # a saved Workday draft with an old/wrong contact value: correct it
+                actions.append(Action(f, "text", fix, "profile", label))
+            continue  # otherwise never overwrite what's already there
         val, src = resolve(f, fc, choice=t == "select" or is_combo)
         if val and src == "profile" and has_code and rule_key(f) == "phone":
             val = national_number(val)
@@ -1743,7 +1801,8 @@ SCAN_JS = r"""() => {
     if (['hidden', 'submit', 'button', 'reset', 'image'].includes(t) || el.disabled) continue;
     const isFile = t === 'file';
     const choice = t === 'radio' || t === 'checkbox';
-    if (!isFile && (!(choice ? boxShown(el) : shown(el)) || el.getAttribute('aria-hidden') === 'true')) continue;
+    const wdDate = /dateSection/i.test(el.id || '');  // Workday month/year boxes: sub-pixel inputs under the visible text
+    if (!isFile && !wdDate && (!(choice ? boxShown(el) : shown(el)) || el.getAttribute('aria-hidden') === 'true')) continue;
     if (!el.dataset.aaId) el.dataset.aaId = String(window.__aaNext++);
     const role = (el.getAttribute('role') || (el.dataset.uxiWidgetType === 'selectinput' ? 'combobox' : '')).toLowerCase();
     const sel = el.tagName === 'SELECT';
@@ -1790,7 +1849,13 @@ STATE_JS = r"""() => {
   const login = [...document.querySelectorAll('input[type="password"]')].some(shown);
   const errors = [...document.querySelectorAll('[aria-invalid="true"], .error-message, [class*="error-message"], [class*="field-error"], [class*="ErrorMessage"]')]
     .filter((e) => shown(e) && (e.matches('[aria-invalid="true"]') || txt(e))).length;
-  return { url: location.href, captcha: capFrame || capEl || capText, login, errors, text: body.slice(0, 20000) };
+  const errtext = [...document.querySelectorAll('[aria-invalid="true"], .error-message, [class*="error-message"], [class*="field-error"], [class*="ErrorMessage"]')]
+    .filter((e) => shown(e)).map((e) => {
+      if (!e.matches('[aria-invalid="true"]')) return txt(e);
+      const lab = e.labels && e.labels[0] ? e.labels[0].innerText : (e.getAttribute('aria-label') || e.name || e.id);
+      return 'invalid: ' + (lab || '').replace(/\s+/g, ' ').trim();
+    }).filter(Boolean).slice(0, 6);
+  return { url: location.href, captcha: capFrame || capEl || capText, login, errors, errtext, text: body.slice(0, 20000) };
 }"""
 
 MARK_JS = r"""(items) => {
@@ -2107,6 +2172,9 @@ class PlaywrightDriver:
                 loc = self._loc(a.f)
                 if a.kind == "text" and loc.evaluate("el => el.classList.contains('location-input')"):
                     self._lever_location(loc, str(a.value))
+                elif a.kind == "text" and "datesection" in str(a.f.get("id") or "").lower():
+                    loc.focus(timeout=6000)  # Workday's month/year boxes only take real keystrokes
+                    loc.press_sequentially(str(a.value), delay=60)
                 elif a.kind == "text":
                     loc.fill(str(a.value), timeout=6000)
                 elif a.kind == "select":
@@ -2293,8 +2361,15 @@ class PlaywrightDriver:
 
     def workday_account(self, email, password):
         """Create the candidate account (or sign in if it exists). -> ok | no-password | verify-email | failed:<why>."""
+        passwords = [password] if isinstance(password, str) or password is None else [p for p in password if p]
+        password = passwords[0] if passwords else ""
         try:
             result = self._workday_account(email, password)
+            for older in passwords[1:]:  # accounts Sai made himself earlier, with an older password
+                if not re.search(r"wrong email address or password", result, re.I) or self._visible(
+                        '[data-automation-id="password"]') is None:
+                    break
+                result = self._wd_credentials(email, older, creating=False)
             if self.inbox and (result == "verify-email" or re.search(r"wrong email address or password", result, re.I)):
                 result = self._verify_from_inbox(email, password) or result
             return result
@@ -2369,6 +2444,11 @@ class PlaywrightDriver:
             safe_click(link, "account")
             self._settle()
             result = self._wd_credentials(email, password, creating=False)
+        for _ in range(2):  # Workday's sign-in often needs a second try (slow page, first click ignored)
+            if result != "failed:still on the sign-in page" or self._visible('[data-automation-id="password"]') is None:
+                break
+            self.page.wait_for_timeout(3000)
+            result = self._wd_credentials(email, password, creating=False)
         return result
 
     def _wd_credentials(self, email, password, creating):
@@ -2402,16 +2482,68 @@ class PlaywrightDriver:
             return "failed:" + re.sub(r"\s+", " ", why).strip()[:160]
         return "ok"
 
-    def workday_step(self):
-        """Name of the current application step (progress bar), or ''."""
-        loc = self._visible('[data-automation-id="progressBarActiveStep"], [data-automation-id="pageHeaderTitle"], h2')
+    WD_EMPTY_SECTIONS_JS = r"""() => {
+      // Workday "My Experience": sections (Work Experience, Education) that have an Add button but no entry yet.
+      const out = [];
+      document.querySelectorAll('[data-automation-id="add-button"]').forEach((b, i) => {
+        if (b.offsetParent === null) return;
+        const group = b.closest('[role="group"], section, fieldset') || b.parentElement.parentElement;
+        const head = (group.querySelector('h3, h4, legend') || {}).textContent || '';
+        if (!/work experience|education/i.test(head)) return;
+        const prefix = /work/i.test(head) ? 'workExperience-' : 'education-';
+        if (!group.querySelector(`[id^="${prefix}"]`)) out.push(i);
+      });
+      return out;
+    }"""
+
+    def workday_wait_form(self, timeout_s=20):
+        """Wait until the current Workday page shows its form fields (or the Review page)."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                n = self.page.evaluate("""() => [...document.querySelectorAll('[data-automation-id^="formField"], '
+                  + '[data-automation-id="add-button"], [data-automation-id="reviewJobApplicationPage"], '
+                  + '[data-automation-id="pageFooterNextButton"]')]
+                  .filter((e) => e.offsetParent !== null).length""")
+            except Exception:
+                n = 0
+            if n:
+                self.page.wait_for_timeout(800)  # let the rest of the page finish rendering
+                return True
+            self.page.wait_for_timeout(500)
+        return False
+
+    def workday_add_entries(self):
+        """Open one Work Experience and one Education entry where the section is still empty. -> how many."""
         try:
-            return re.sub(r"\s+", " ", loc.inner_text(timeout=1000)).strip() if loc is not None else ""
+            idx = self.page.evaluate(self.WD_EMPTY_SECTIONS_JS)
+        except Exception:
+            return 0
+        buttons = self.page.locator('[data-automation-id="add-button"]')
+        for i in reversed(idx):
+            try:
+                safe_click(buttons.nth(i), "add_entry")
+                self.page.wait_for_timeout(1200)
+            except Exception:
+                pass
+        return len(idx)
+
+    def workday_step(self):
+        """Name of the current application step, or ''. The progress bar's active step is screen-reader text (not
+        "visible"), and the first visible h2 is the job title on every page, so read the step text directly."""
+        try:
+            text = self.page.evaluate("""() => {
+              const a = document.querySelector('[data-automation-id="progressBarActiveStep"]');
+              if (a && a.textContent.trim()) return a.textContent;
+              return [...document.querySelectorAll('h2, h3')].filter((h) => h.offsetParent !== null)
+                .map((h) => h.textContent.trim()).filter(Boolean).join(' / ');
+            }""")
+            return re.sub(r"\s+", " ", text or "").strip()
         except Exception:
             return ""
 
     def _next_button(self):
-        for sel in ('[data-automation-id="bottom-navigation-next-button"]',):
+        for sel in ('[data-automation-id="bottom-navigation-next-button"]', '[data-automation-id="pageFooterNextButton"]'):
             loc = self._visible(sel)
             if loc is not None:
                 return loc
@@ -2419,7 +2551,7 @@ class PlaywrightDriver:
 
     def workday_on_review(self):
         """The last page: its bottom button says Submit (Workday reuses the 'next' button for it)."""
-        if re.search(r"\breview\b", self.workday_step(), re.I):
+        if re.search(r"review\b", self.workday_step(), re.I):  # "step 5 of 5Review": no space before it
             return True
         btn = self._next_button()
         try:
@@ -2449,8 +2581,12 @@ class PlaywrightDriver:
                     text = err.inner_text(timeout=1000)
                 except Exception:
                     text = ""
-                if text.strip():
+                if text.strip() and not re.search(r"success", text, re.I):  # "resume successfully uploaded" is a notice
                     return "errors:" + re.sub(r"\s+", " ", text).strip()[:200]
+        text = re.sub(r"\s+", " ", self.page_text() or "")
+        m = re.search(r"Errors? Found\s*(.{0,220})", text, re.I)
+        if m:
+            return "errors:" + m.group(1).strip()
         return "errors:the page did not change after Save and Continue"
 
     CODE_INPUTS_JS = r"""() => {
@@ -2665,13 +2801,19 @@ def fill_workday(driver, fc, email, password, max_pages=8):
         return FillResult([], [], [], []), [reason], [], []
     filled, steps, fill = [], [], FillResult([], [], [], [])
     for _ in range(max_pages):
+        if hasattr(driver, "workday_wait_form"):
+            driver.workday_wait_form()  # Workday renders each page late: reading, filling or clicking before that fails
         steps.append(driver.workday_step())
         if driver.workday_on_review():
             return FillResult(fill.fields, filled, [], []), [], [], steps
+        if hasattr(driver, "workday_add_entries"):
+            driver.workday_add_entries()
         fill = fill_page(driver, fc)
         filled += fill.filled
         reasons, missing, _st = check_page(driver)
-        if missing:  # fields that appear only after another answer (State after Country): one more pass
+        for _ in range(3):  # fields that appear only after another answer (address after Country, follow-up questions)
+            if not (missing or fill.filled):
+                break
             fill = fill_page(driver, fc)
             filled += fill.filled
             reasons, missing, _st = check_page(driver)
@@ -2709,6 +2851,13 @@ def make_code_reader(path=CODES_PATH, sleep=time.sleep, clock=time.monotonic):
 
 def is_workday(driver):
     return bool(getattr(driver, "is_workday", lambda: False)())
+
+
+def workday_passwords(answers, path=ANSWERS_PATH):
+    """The runner's Workday password first, then older ones Sai used for accounts he made himself
+    (answers.yaml: workday_passwords_old)."""
+    old = (answers or {}).get("workday_passwords_old") or []
+    return [ensure_workday_password(answers, path)] + [_s(p) for p in ([old] if isinstance(old, str) else old) if _s(p)]
 
 
 def ensure_workday_password(answers, path=ANSWERS_PATH):
@@ -2983,7 +3132,8 @@ class Runner:
                                     reason=f"security code not entered within {self.code_wait_s // 60} min")
             if st.get("captcha") or st.get("errors"):
                 reasons = (["CAPTCHA appeared after Submit"] if st.get("captcha") else []) + \
-                          (["The site flagged errors after Submit"] if st.get("errors") else [])
+                          ([("The site flagged errors after Submit: " + "; ".join(st.get("errtext") or []))[:300]]
+                           if st.get("errors") else [])
                 missing = []
                 continue
             page = self._evidence(job, st)
@@ -3276,7 +3426,7 @@ def run_assist(args, api, answers, learned):
         note = d.open(job)
         fc = make_fc(job)
         if d.is_workday():
-            password = ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH)
+            password = workday_passwords(answers, Path(args.answers) if args.answers else ANSWERS_PATH)
             fill, reasons, missing, steps = fill_workday(d, fc, fc.values.get("email"), password)
             note += " (Workday: " + " -> ".join(s for s in steps if s) + ")"
         else:
@@ -3453,7 +3603,7 @@ def run_batch(args, api, answers, learned, mode):
                         emailer=emailer, log=RunLog(), pace=tuple(float(x) for x in args.pace.split(",")),
                         gate=SubmitGate(RUNS_DIR / "submit_gate", tuple(float(x) for x in args.pace.split(",")))
                         if args.shard else None,
-                        workday_password=ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH),
+                        workday_password=workday_passwords(answers, Path(args.answers) if args.answers else ANSWERS_PATH),
                         code_for=combine_code_sources(make_code_reader(), inbox), attended=args.attended)
         if mode == "harvest":
             work, _skipped = plan_queue(jobs, limit, args.per_company)

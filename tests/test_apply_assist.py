@@ -1397,3 +1397,7 @@ def test_posting_key_and_job_id_for_url():
             {"id": 9, "portal_url": "https://jobs.lever.co/x/other", "external_id": "x"}]
     assert aa.job_id_for_url("https://job-boards.greenhouse.io/squarepointcapital/jobs/6069464", jobs) == 7
     assert aa.job_id_for_url("https://job-boards.greenhouse.io/squarepointcapital/jobs/1", jobs) is None
+
+
+def test_posting_key_reads_greenhouse_embed_token():
+    assert aa.posting_key("https://job-boards.greenhouse.io/embed/job_app?for=rubrik&token=8258200") == "8258200"
