@@ -639,11 +639,7 @@ def test_gate_makes_runner_submit_through_it():
 
 def test_hold_list(tmp_path):
     f = tmp_path / "hold.txt"
-    f.write_text("# comment
-FamPay  # site broken
-
-Zeta Global
-", encoding="utf-8")
+    f.write_text("# comment\nFamPay  # site broken\n\nZeta Global\n", encoding="utf-8")
     assert aa.held_companies(f) == {"fampay", "zeta global"}
     assert aa.held_companies(tmp_path / "missing.txt") == set()
 
