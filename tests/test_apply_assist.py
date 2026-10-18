@@ -602,6 +602,41 @@ def test_applied_by_email_needs_company_and_role():
     assert set(aa.applied_by_email(mails, jobs)) == {430, 6}  # other roles at the same company stay
 
 
+def test_submit_gate_spaces_submissions_across_workers(tmp_path):
+    clock = {"t": 1000.0}
+    slept = []
+
+    def sleep(s):
+        slept.append(s)
+        clock["t"] += s
+    gate = aa.SubmitGate(tmp_path / "gate", pace=(180, 180), sleep=sleep, now=lambda: clock["t"])
+    with gate.turn():
+        pass  # first submission: no wait
+    assert slept == [] and not (tmp_path / "gate.lock").exists()
+    clock["t"] += 30
+    other = aa.SubmitGate(tmp_path / "gate", pace=(180, 180), sleep=sleep, now=lambda: clock["t"])  # another worker
+    with other.turn():
+        pass
+    assert slept == [150.0]  # 180 s after the previous submit, not 180 s after its own start
+
+
+def test_gate_makes_runner_submit_through_it():
+    turns = []
+
+    class Gate:
+        def turn(self):
+            from contextlib import contextmanager
+
+            @contextmanager
+            def t():
+                turns.append(1)
+                yield
+            return t()
+    d = FakeDriver(SIMPLE, submit_enabled=True)
+    out = runner(d, FakeApi(), gate=Gate()).run_job(job(1))
+    assert out["outcome"] == "submitted" and turns == [1]
+
+
 def test_parallel_shards_split_companies_and_strip_options():
     companies = ["Okta", "Zscaler", "Rubrik", "IMC", "Point72", "Hevo Data", "GitLab", "Stripe"]
     shards = [{c for c in companies if aa.shard_of(c, 3) == k} for k in range(3)]

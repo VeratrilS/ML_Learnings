@@ -2648,17 +2648,68 @@ class RunLog:
         p.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+class SubmitGate:
+    """One Submit at a time across parallel workers, at least `pace` seconds apart (sites rate-limit applicants who
+    submit in bursts: 5 workers at once got "temporarily restricted"). Filling forms stays parallel."""
+
+    STALE_S = 900
+
+    def __init__(self, path, pace=(180, 420), sleep=time.sleep, now=time.time, rng=None):
+        self.lock, self.last = Path(str(path) + ".lock"), Path(str(path) + ".last")
+        self.pace, self.sleep, self.now, self.rng = pace, sleep, now, rng or random.Random()
+
+    def _acquire(self):
+        self.lock.parent.mkdir(parents=True, exist_ok=True)
+        while True:
+            try:
+                os.close(os.open(str(self.lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+                return
+            except FileExistsError:
+                try:
+                    if self.now() - self.lock.stat().st_mtime > self.STALE_S:
+                        self.lock.unlink()  # a worker died holding it
+                        continue
+                except FileNotFoundError:
+                    continue
+                self.sleep(2)
+
+    def turn(self):
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _turn():
+            self._acquire()
+            try:
+                try:
+                    last = float(self.last.read_text())
+                except (OSError, ValueError):
+                    last = 0.0
+                wait = last + self.rng.uniform(*self.pace) - self.now()
+                if wait > 0:
+                    print(f"  waiting {int(wait)} s before submitting (one submission at a time)", flush=True)
+                    self.sleep(wait)
+                yield
+            finally:
+                self.last.write_text(str(self.now()))
+                try:
+                    self.lock.unlink()
+                except FileNotFoundError:
+                    pass
+        return _turn()
+
+
 class Runner:
     def __init__(self, api, driver, context_for, *, submit=False, max_jobs=25, per_company=1,
                  handoff_wait_s=1800, ask_timeout_s=600, poll_s=15, pending=None, pending_path=PENDING_PATH,
                  learned=None, learned_path=LEARNED_PATH, harvest_first=True, emailer=None, log=None,
                  sleep=time.sleep, clock=time.monotonic, rng=None, pace=(90, 240), confirm_wait_s=30,
-                 workday_password="", code_for=None, code_wait_s=600, attended=False):
+                 workday_password="", code_for=None, code_wait_s=600, attended=False, gate=None):
         self.api, self.d, self.context_for = api, driver, context_for
         self.workday_password = workday_password
         self.code_for = code_for  # code_for(job, wait_s) -> the security code the site emailed, or None
         self.code_wait_s = code_wait_s
         self.attended = attended
+        self.gate = gate  # SubmitGate shared by parallel workers
         self.submit, self.max_jobs, self.per_company = submit, max_jobs, per_company
         self.handoff_wait_s, self.ask_timeout_s, self.poll_s = handoff_wait_s, ask_timeout_s, poll_s
         self.pending = pending if pending is not None else {}
@@ -2793,7 +2844,12 @@ class Runner:
                 self.d.reset()
                 return self._record(job, "unconfirmed", reason="no confirmation page after Submit", filled=filled_n)
             clicks += 1
-            if not self.d.submit():
+            if self.gate:  # parallel workers: one Submit at a time, spaced out
+                with self.gate.turn():
+                    pressed = self.d.submit()
+            else:
+                pressed = self.d.submit()
+            if not pressed:
                 reasons, fill = ["Couldn't find the form's Submit button"], None
                 continue
             ok, ref = self.d.wait_confirmation(self.confirm_wait_s)
@@ -2913,8 +2969,8 @@ class Runner:
                 except Exception:
                     pass
                 out = self._record(job, "failed", reason=str(e).splitlines()[0][:120])
-            if out["outcome"] in ("submitted", "unconfirmed") and not out.get("by_sai") and n < len(work):
-                self.sleep(self.rng.uniform(*self.pace))  # pacing between submissions
+            if out["outcome"] in ("submitted", "unconfirmed") and not out.get("by_sai") and n < len(work) and not self.gate:
+                self.sleep(self.rng.uniform(*self.pace))  # pacing between submissions (the gate paces parallel runs)
         if self.harvest_first and not self.submit:
             self._write_pending(self.rows)  # the dry run doubles as the harvest pass
         return self.results
@@ -3238,6 +3294,8 @@ def run_batch(args, api, answers, learned, mode):
                         handoff_wait_s=args.handoff_wait * 60, ask_timeout_s=args.ask_timeout * 60,
                         pending=pending, learned=learned, harvest_first=not args.no_harvest,
                         emailer=emailer, log=RunLog(), pace=tuple(float(x) for x in args.pace.split(",")),
+                        gate=SubmitGate(RUNS_DIR / "submit_gate", tuple(float(x) for x in args.pace.split(",")))
+                        if args.shard else None,
                         workday_password=ensure_workday_password(answers, Path(args.answers) if args.answers else ANSWERS_PATH),
                         code_for=combine_code_sources(make_code_reader(), inbox), attended=args.attended)
         if mode == "harvest":
