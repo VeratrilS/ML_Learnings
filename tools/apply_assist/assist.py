@@ -1015,7 +1015,7 @@ def read_answers(fields, tracked):
 CONFIRM_TEXT = re.compile(
     r"thank(s| you) for (applying|your application|submitting)|application (has been|was) (successfully )?"
     r"(submitted|received)|we('ve| have) received your application|application received|successfully (submitted|applied)|"
-    r"your application is (complete|submitted)", re.I)
+    r"your application is (complete|submitted)|application submitted|you('ve| have) (successfully )?applied", re.I)
 CONFIRM_URL = re.compile(r"/(thanks|thank-you|thank_you|thankyou|confirmation|confirmed|success|submitted|applied)\b", re.I)
 SECURITY_CODE = re.compile(r"security code|verification code|enter the (\d+[- ]character )?code|"
                            r"code (was|has been) sent|sent a code", re.I)
@@ -1643,7 +1643,7 @@ def sync_email_confirmations(api, inbox, jobs, log=None):
 
 TIDY_LABEL = "Job applications"
 CODE_SUBJECT = re.compile(r"security code|verification code|one[- ]time (pass)?code", re.I)
-CALLBACK = re.compile(r"interview|assessment|online test|oa|coding (test|challenge)|shortlist|next step|screen|offer",
+CALLBACK = re.compile(r"interview|assessment|online test|\boa\b|coding (test|challenge)|shortlist|next step|screen|offer",
                       re.I)
 
 
