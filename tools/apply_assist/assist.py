@@ -3090,7 +3090,8 @@ def run_batch(args, api, answers, learned, mode):
         jobs = [{"id": None, "company": args.company or urlparse(args.url).netloc, "role": args.role or "",
                  "url": args.url, "board": application_url(args.url)[1]}]
     else:
-        jobs = select_jobs(api.live_jobs(args.min_score, args.min_ctc), args.min_score, args.min_ctc)
+        types = tuple(t.strip() for t in args.role_types.split(",") if t.strip())
+        jobs = select_jobs(api.live_jobs(args.min_score, args.min_ctc, types), args.min_score, args.min_ctc, types)
         jobs = filter_boards(jobs, args.boards)
         if args.only:
             wanted = {s.strip() for s in args.only.split(",") if s.strip()}
@@ -3175,6 +3176,8 @@ def main(argv=None):
     ap.add_argument("--api", help=f"app base URL (default $APPLY_API_BASE or {DEFAULT_API})")
     ap.add_argument("--min-score", type=int, default=MIN_SCORE)
     ap.add_argument("--min-ctc", type=float, default=MIN_CTC)
+    ap.add_argument("--role-types", default=",".join(ROLE_TYPES),
+                    help="fte,intern_6m by default; add intern for internships of unstated length")
     ap.add_argument("--no-inbox", action="store_true", help="don't read codes / verification links from Gmail")
     ap.add_argument("--attended", action="store_true",
                     help="you're at the laptop: CAPTCHAs / missing answers bring the window straight up (no email)")
