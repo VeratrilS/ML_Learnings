@@ -91,7 +91,7 @@ and the role. Gmail catches the applications you sent yourself.
 
 Only when Sai starts it (or asks Claude to). There is no schedule: a window popping up during an online test could disturb it.
 
-## What the runner has learned (site playbook, 2026-10-17)
+## What the runner has learned (site playbook, updated 2026-10-19)
 
 | Site | What happens | What the runner does |
 |---|---|---|
@@ -99,9 +99,14 @@ Only when Sai starts it (or asks Claude to). There is no schedule: a window popp
 | Greenhouse dropdowns | The choices only appear once the dropdown is opened, and a hidden phone country picker adds 240 invisible "options". | Reads only visible options. For required dropdowns it opens them, reads the real choices and lets the AI pick one. |
 | School search boxes (IMC) | NIT Rourkela isn't in some schools' lists. | Tries "NIT Rourkela" and the full name, then picks "Other". |
 | Lever (Hevo Data) | reCAPTCHA after Submit. | Hands the form to you, never solves it. |
+| Lever "Current location" (Drivetrain) | Typed text alone counts as empty; Lever only accepts a city picked from its suggestions. | Types the city and clicks Lever's suggestion (e.g. "Rourkela, Sundargarh, Odisha, IND"). |
+| Lever puzzle after Submit (FamPay, Drivetrain, Covlant) | A drag-the-animal puzzle; one outline is a decoy. FamPay's check fails even when solved. | Brings the window up for you. Companies you put on hold go in `hold.txt` and are skipped. |
+| Greenhouse link that redirects to the company site (Squarepoint) | The form sits in a frame on the company's careers page. | Opens Greenhouse's form directly. |
 | Workday (Barclays, Lowe's, Cisco, ...) | Create Account is blocked for automated browsers by a hidden bot check, and no email is sent. | You create the account once (password in `answers.yaml`). After that it signs in and fills every page. |
 | Company sites (Qualcomm, Microsoft, Amazon, Apple, Goldman, TI) | Not a standard form. A "thank you" can come from a talent-network signup. | Never auto-submits there. Lists them for you. |
 | Expired postings ("This job has expired") | | Logged as `expired` and never tried again. |
+| Pasted links not in Job Radar yet (`--url`) | | After a confirmed Submit, Job Radar adds the posting and the Application desk records it with the date. |
+| AI answers (Gemini, OpenRouter free tiers) | Both have a daily limit; when it runs out, essay questions ("Why us?") are left. | Uses saved answers in `ai_answers.yaml` first. Company-specific answers written there are reused. |
 | Campus Wi-Fi | Blocks Gmail IMAP (993) and Postgres (5432). | Falls back to the production app. Inbox reading needs a hotspot. |
 
 Facts the AI always uses: 0 years of professional experience (internships only), languages English, Hindi and
