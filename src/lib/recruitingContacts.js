@@ -2,6 +2,8 @@
 // source, marked unconfirmed): never guessed name@company addresses. Most companies publish no email; for those the
 // LinkedIn recruiter search and the careers page are the routes.
 
+import RESEARCHED from '../data/recruitingContacts.json';
+
 const PORTFOLIO = 'https://productivity-automations.vercel.app';
 const GITHUB = 'https://github.com/VeratrilS';
 const LINKEDIN = 'https://www.linkedin.com/in/nandam-venkata-sai-raghava-946b3735b/';
@@ -42,8 +44,21 @@ export const RECRUITING_CONTACTS = {
 
 const key = (company) => String(company || '').trim().toLowerCase();
 
+/** Researched entry (54 companies, every link checked) merged with the hand-written one above. Emails are de-duplicated
+ *  by address, the researched entry wins (it carries the "unconfirmed" / "questions only" flags). */
 export function contactsFor(company) {
-    return RECRUITING_CONTACTS[key(company)] || {};
+    const k = key(company);
+    const found = RESEARCHED[k] || {};
+    const manual = RECRUITING_CONTACTS[k] || {};
+    const emails = [...(found.emails || []), ...(manual.emails || [])]
+        .filter((e, i, all) => all.findIndex((x) => x.address.toLowerCase() === e.address.toLowerCase()) === i);
+    return {
+        ...manual,
+        ...found,
+        emails: emails.length ? emails : undefined,
+        campus: manual.campus || found.campus,
+        note: manual.note,
+    };
 }
 
 export function linkedinRecruiterSearch(company) {

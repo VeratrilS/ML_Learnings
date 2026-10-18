@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Users, Mail, UserSearch, ExternalLink, Copy, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { Users, Mail, UserSearch, ExternalLink, Copy, ShieldCheck, AlertTriangle, Building2, GraduationCap } from 'lucide-react';
 import { Card, cx, useToast } from './ui';
 import { contactsFor, gmailDraftUrl, linkedinNote, linkedinRecruiterSearch } from '../lib/recruitingContacts';
 
@@ -72,11 +72,18 @@ export default function RecruiterContacts({ jobs }) {
                             <div className="flex-1 min-w-0 space-y-1">
                                 {(info.emails || []).map((e) => (
                                     <div key={e.address} className="flex items-center gap-2 flex-wrap text-xs">
-                                        <a href={gmailDraftUrl(e.address, c.company, c.topRole)} target="_blank" rel="noopener noreferrer"
-                                            className="btn btn-primary btn-sm text-xs gap-1" title={`Draft a cold email to ${e.address} in Gmail`}>
-                                            <Mail className="h-3.5 w-3.5" /> Draft email
-                                        </a>
+                                        {e.questionsOnly ? (
+                                            <span className="badge text-[10px] border bg-surface-2 text-subtle border-line" title={e.trust}>
+                                                Questions only, no resume
+                                            </span>
+                                        ) : (
+                                            <a href={gmailDraftUrl(e.address, c.company, c.topRole)} target="_blank" rel="noopener noreferrer"
+                                                className="btn btn-primary btn-sm text-xs gap-1" title={`Draft a cold email to ${e.address} in Gmail`}>
+                                                <Mail className="h-3.5 w-3.5" /> Draft email
+                                            </a>
+                                        )}
                                         <span className="font-mono text-fg break-all">{e.address}</span>
+                                        {e.label && <span className="text-subtle">{e.label}</span>}
                                         <a href={e.source} target="_blank" rel="noopener noreferrer"
                                             className={cx('inline-flex items-center gap-1', e.unconfirmed ? 'text-amber-400' : 'text-subtle hover:text-fg')}
                                             title={e.trust}>
@@ -98,10 +105,22 @@ export default function RecruiterContacts({ jobs }) {
                                     className="btn btn-ghost btn-sm text-xs gap-1" title="Copy a LinkedIn connection note (under 300 characters)">
                                     <Copy className="h-3.5 w-3.5" /> Note
                                 </button>
-                                {(info.campus || c.url) && (
-                                    <a href={info.campus || c.url} target="_blank" rel="noopener noreferrer"
-                                        className="btn btn-ghost btn-sm text-xs gap-1" title={info.campus ? 'Campus / careers page' : 'Job posting'}>
-                                        <ExternalLink className="h-3.5 w-3.5" /> {info.campus ? 'Careers' : 'Job'}
+                                {info.linkedin && (
+                                    <a href={info.linkedin} target="_blank" rel="noopener noreferrer"
+                                        className="btn btn-ghost btn-sm text-xs gap-1" title="Company page on LinkedIn (follow it, see its people and posts)">
+                                        <Building2 className="h-3.5 w-3.5" /> Company page
+                                    </a>
+                                )}
+                                {info.campus && (
+                                    <a href={info.campus} target="_blank" rel="noopener noreferrer"
+                                        className="btn btn-ghost btn-sm text-xs gap-1" title="Official campus / early-careers page">
+                                        <GraduationCap className="h-3.5 w-3.5" /> Campus
+                                    </a>
+                                )}
+                                {c.url && (
+                                    <a href={c.url} target="_blank" rel="noopener noreferrer"
+                                        className="btn btn-ghost btn-sm text-xs gap-1" title="This company's best-matching job posting">
+                                        <ExternalLink className="h-3.5 w-3.5" /> Job
                                     </a>
                                 )}
                             </div>

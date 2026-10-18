@@ -4,5 +4,5 @@ answers.yaml
 learned_answers.yaml
 ai_answers.yaml
 security_codes.yaml
-pending_questions.yaml
+pending_questions*.yaml
 runs/

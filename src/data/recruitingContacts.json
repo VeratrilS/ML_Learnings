@@ -1,0 +1,224 @@
+{
+  "amazon": {
+    "campus": "https://www.amazon.jobs/content/en/career-programs/university",
+    "linkedin": "https://www.linkedin.com/company/amazon"
+  },
+  "analog devices": {
+    "linkedin": "https://www.linkedin.com/company/analog-devices"
+  },
+  "apple": {
+    "campus": "https://www.apple.com/careers/in/work-at-apple/students.html",
+    "linkedin": "https://www.linkedin.com/company/apple"
+  },
+  "arista networks": {
+    "linkedin": "https://www.linkedin.com/company/arista-networks-inc"
+  },
+  "atlassian": {
+    "campus": "https://www.atlassian.com/company/careers/earlycareers",
+    "linkedin": "https://www.linkedin.com/company/atlassian"
+  },
+  "barclays": {
+    "emails": [
+      {
+        "address": "campusrecruitmentmailbox-india@barclays.com",
+        "label": "Barclays India campus hiring team mailbox",
+        "source": "https://sirc-icai.org/vacancy/2024/Recritment%20Notice_ver%203.0_240424120000.pdf",
+        "trust": "Appears in a 2024 notice signed by the Barclays India Campus Hiring Team, but hosted by ICAI (third party) and for a CA trainee programme, so not confirmed on a Barclays page.",
+        "unconfirmed": true
+      }
+    ],
+    "campus": "https://search.jobs.barclays/early-careers",
+    "linkedin": "https://www.linkedin.com/company/barclays-bank"
+  },
+  "blackrock": {
+    "campus": "https://careers.blackrock.com/students-and-graduates",
+    "linkedin": "https://www.linkedin.com/company/blackrock"
+  },
+  "broadcom": {
+    "linkedin": "https://www.linkedin.com/company/broadcom"
+  },
+  "cadence": {
+    "linkedin": "https://www.linkedin.com/company/cadence"
+  },
+  "cisco": {
+    "campus": "https://careers.cisco.com/global/en/entry-level-careers",
+    "linkedin": "https://www.linkedin.com/company/cisco"
+  },
+  "citi": {
+    "campus": "https://jobs.citi.com/early-career-programs",
+    "linkedin": "https://www.linkedin.com/company/citi"
+  },
+  "coinbase": {
+    "campus": "https://www.coinbase.com/en-in/careers/internships",
+    "linkedin": "https://www.linkedin.com/company/coinbase"
+  },
+  "cursor": {
+    "linkedin": "https://www.linkedin.com/company/cursorai"
+  },
+  "deutsche bank": {
+    "campus": "https://careers.db.com/students-graduates/",
+    "linkedin": "https://www.linkedin.com/company/deutsche-bank"
+  },
+  "doordash": {
+    "linkedin": "https://www.linkedin.com/company/doordash"
+  },
+  "fampay": {
+    "linkedin": "https://www.linkedin.com/company/famappbytrio"
+  },
+  "gitlab": {
+    "linkedin": "https://www.linkedin.com/company/gitlab-com"
+  },
+  "goldman sachs": {
+    "campus": "https://www.goldmansachs.com/careers/students",
+    "linkedin": "https://www.linkedin.com/company/goldman-sachs"
+  },
+  "grab": {
+    "campus": "https://www.grab.careers/en/teams/internships/",
+    "linkedin": "https://www.linkedin.com/company/grabapp"
+  },
+  "hp": {
+    "linkedin": "https://www.linkedin.com/company/hp"
+  },
+  "hackerrank": {
+    "linkedin": "https://www.linkedin.com/company/hackerrank"
+  },
+  "hevo data": {
+    "emails": [
+      {
+        "address": "careers@hevodata.com",
+        "label": "Careers (general applications)",
+        "source": "https://hevodata.com/careers/",
+        "trust": "Published on Hevo's own careers page: 'can't find the role you're looking for? Drop us a note on careers@hevodata.com'.",
+        "unconfirmed": false
+      }
+    ],
+    "linkedin": "https://www.linkedin.com/company/hevodata"
+  },
+  "highradius": {
+    "linkedin": "https://www.linkedin.com/company/highradius"
+  },
+  "imc": {
+    "campus": "https://www.imc.com/in/careers/students-graduates",
+    "linkedin": "https://www.linkedin.com/company/imc-trading"
+  },
+  "intel": {
+    "linkedin": "https://www.linkedin.com/company/intel-corporation"
+  },
+  "ion group": {
+    "linkedin": "https://www.linkedin.com/company/iongroup"
+  },
+  "kla": {
+    "campus": "https://www.kla.com/careers/emerging-talent",
+    "linkedin": "https://www.linkedin.com/company/klacorp"
+  },
+  "lseg": {
+    "campus": "https://www.lseg.com/en/careers/graduate-internship-programmes",
+    "linkedin": "https://www.linkedin.com/company/london-stock-exchange-group"
+  },
+  "lowe's": {
+    "linkedin": "https://www.linkedin.com/company/lowe-s-india"
+  },
+  "marvell": {
+    "linkedin": "https://www.linkedin.com/company/marvell"
+  },
+  "mastercard": {
+    "campus": "https://careers.mastercard.com/us/en/early-careers",
+    "linkedin": "https://www.linkedin.com/company/mastercard"
+  },
+  "micron": {
+    "campus": "https://in.micron.com/about/careers/university-recruiting",
+    "linkedin": "https://www.linkedin.com/company/micron-technology"
+  },
+  "microsoft": {
+    "campus": "https://careers.microsoft.com/v2/global/en/programs/students.html",
+    "linkedin": "https://www.linkedin.com/company/microsoft"
+  },
+  "motorola solutions": {
+    "linkedin": "https://www.linkedin.com/company/motorolasolutions"
+  },
+  "nxp": {
+    "campus": "https://www.nxp.com/company/about-nxp/our-team-members/future-talent:FUTURE-TALENT",
+    "linkedin": "https://www.linkedin.com/company/nxp-semiconductors"
+  },
+  "observe.ai": {
+    "linkedin": "https://www.linkedin.com/company/observeai"
+  },
+  "okta": {
+    "campus": "https://www.okta.com/company/careers/intern-program/",
+    "linkedin": "https://www.linkedin.com/company/okta-inc-"
+  },
+  "paypal": {
+    "emails": [
+      {
+        "address": "UniversityPrograms@PayPal.com",
+        "label": "University hiring team (questions from students / recent grads)",
+        "source": "https://careers.pypl.com/university-hiring/asia-pacific/default.aspx",
+        "trust": "Published on PayPal's own university-hiring pages (Asia-Pacific and overview): 'Any more questions? Contact our university hiring team!'.",
+        "unconfirmed": false
+      },
+      {
+        "address": "universityevents@paypal.com",
+        "label": "University virtual events (questions about events only)",
+        "source": "https://careers.pypl.com/university-hiring/university-overview/default.aspx",
+        "trust": "Published on PayPal's university-hiring overview page for questions about its virtual student events. Questions about student events only: no resumes.",
+        "unconfirmed": false,
+        "questionsOnly": true
+      }
+    ],
+    "campus": "https://careers.pypl.com/university-hiring/asia-pacific/default.aspx",
+    "linkedin": "https://www.linkedin.com/company/paypal"
+  },
+  "point72": {
+    "linkedin": "https://www.linkedin.com/company/point72-asset-management-l-p-"
+  },
+  "qualcomm": {
+    "linkedin": "https://www.linkedin.com/company/qualcomm"
+  },
+  "rubrik": {
+    "linkedin": "https://www.linkedin.com/company/rubrik-inc"
+  },
+  "s&p global": {
+    "linkedin": "https://www.linkedin.com/company/spglobal"
+  },
+  "salesforce": {
+    "campus": "https://www.salesforce.com/company/careers/university/",
+    "linkedin": "https://www.linkedin.com/company/salesforce"
+  },
+  "sigmoid": {
+    "linkedin": "https://www.linkedin.com/company/sigmoid-analytics"
+  },
+  "singlestore": {
+    "campus": "https://www.singlestore.com/careers/university/",
+    "linkedin": "https://www.linkedin.com/company/singlestore"
+  },
+  "starburst": {
+    "linkedin": "https://www.linkedin.com/company/starburstdata"
+  },
+  "stripe": {
+    "campus": "https://stripe.com/in/careers/emerging-talent",
+    "linkedin": "https://www.linkedin.com/company/stripe"
+  },
+  "swiggy": {
+    "linkedin": "https://www.linkedin.com/company/swiggy-in"
+  },
+  "target": {
+    "campus": "https://corporate.target.com/careers/career-areas/intern-entry-level",
+    "linkedin": "https://www.linkedin.com/company/target"
+  },
+  "texas instruments": {
+    "linkedin": "https://www.linkedin.com/company/texas-instruments"
+  },
+  "thomson reuters": {
+    "linkedin": "https://www.linkedin.com/company/thomson-reuters"
+  },
+  "zeta global": {
+    "linkedin": "https://www.linkedin.com/company/zetaglobal"
+  },
+  "zscaler": {
+    "linkedin": "https://www.linkedin.com/company/zscaler"
+  },
+  "ebay": {
+    "campus": "https://careers.ebayinc.com/student-opportunities/",
+    "linkedin": "https://www.linkedin.com/company/ebay"
+  }
+}
