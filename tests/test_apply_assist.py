@@ -637,6 +637,17 @@ def test_gate_makes_runner_submit_through_it():
     assert out["outcome"] == "submitted" and turns == [1]
 
 
+def test_answer_pack_is_fetched_only_when_a_free_text_question_needs_it():
+    calls = []
+    pack = aa.LazyPack(lambda: calls.append(1) or {"cover_note": "Dear team..."})
+    fc = ctx({})
+    fc.pack = pack
+    aa.plan_fields([fld(1, "Email *", type="email", required=True), fld(2, "Country*", required=True)], fc)
+    assert calls == []  # no essay question: no pack fetch
+    plan = aa.plan_fields([fld(3, "Cover Letter", type="textarea")], fc)
+    assert calls == [1] and plan.actions[0].value == "Dear team..."
+
+
 def test_parallel_shards_split_companies_and_strip_options():
     companies = ["Okta", "Zscaler", "Rubrik", "IMC", "Point72", "Hevo Data", "GitLab", "Stripe"]
     shards = [{c for c in companies if aa.shard_of(c, 3) == k} for k in range(3)]

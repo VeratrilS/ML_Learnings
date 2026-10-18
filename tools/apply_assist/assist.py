@@ -3075,6 +3075,32 @@ def _load_env():
         pass
 
 
+class LazyPack(dict):
+    """The job's answer pack (cover note, why this company), fetched only when a form has a free-text question that
+    needs it: generating it can take a minute, and most forms never use it."""
+
+    def __init__(self, loader):
+        super().__init__()
+        self._loader, self._loaded = loader, False
+
+    def _load(self):
+        if not self._loaded:
+            self._loaded = True
+            self.update(self._loader() or {})
+
+    def __bool__(self):
+        self._load()
+        return dict.__len__(self) > 0
+
+    def get(self, key, default=None):
+        self._load()
+        return dict.get(self, key, default)
+
+    def __getitem__(self, key):
+        self._load()
+        return dict.__getitem__(self, key)
+
+
 def _fill_context_factory(api, profile, answers, learned, resume, use_ai=True):
     questions = QuestionBank((answers or {}).get("questions") or {})
     packs = {}
@@ -3082,7 +3108,8 @@ def _fill_context_factory(api, profile, answers, learned, resume, use_ai=True):
 
     def make(job):
         if job.get("id") not in packs:
-            packs[job.get("id")] = api.pack(job["id"]) if job.get("id") else {}
+            jid = job.get("id")
+            packs[jid] = LazyPack(lambda: api.pack(jid)) if jid else {}
         return FillContext(values=build_values(profile, answers, job.get("role_type")), company=job.get("company") or "",
                            custom=(answers or {}).get("custom") or [], questions=questions, learned=learned,
                            pack=packs[job.get("id")], resume=bool(resume), ai=ai, role=job.get("role") or "")
