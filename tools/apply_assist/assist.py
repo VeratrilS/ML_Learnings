@@ -255,7 +255,7 @@ class SubmitBlocked(RuntimeError):
 SUBMIT_WORDS = re.compile(r"\b(submit|apply|send|finish|complete|confirm)\b", re.I)
 APPLY_ENTRY = (r"apply|apply now|apply for this (job|role|position)|apply here|apply online|apply to this job|"
                r"apply manually|start (your )?application|i.?m interested")
-ACCOUNT_BUTTONS = r"create account|sign in"
+ACCOUNT_BUTTONS = r"create account|sign in|sign in with email"
 WD_BUTTON_IDS = {"Create Account": "createAccountSubmitButton", "Sign In": "signInSubmitButton"}
 NEXT_BUTTONS = r"save and continue|next|continue"
 
@@ -364,6 +364,12 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"education-\d+--gradeaverage", "cgpa"),
     # "How would you like your personal data used for future recruitment": keep Sai in the talent pool
     (r"personal data to be used|how you would like your personal data|future recruitment (process|opportunit)", "data_use_future"),
+    # Standard Workday screening questions (2026-10-19 run)
+    (r"submit verification of (both )?your identity|proof of (your )?identity and|identity and (employment )?(eligibility|authori[sz]ation)", "identity_docs"),
+    (r"positive declaration|i understand that (a|my) (declaration|disclosure)", "accept_privacy_notice"),
+    (r"ai-assisted screening|hiredscore|use of (ai|artificial intelligence).{0,40}(screen|assess|tool)", "accept_privacy_notice"),
+    (r"citizen of any of the following countries|cuba, iran|north korea, (sudan|syria)", "embargoed_citizen"),
+    (r"(currently|previously) .{0,40}(directly )?employed", "previously_employed"),
     # Before the college rule: "employed by ... government or public institution" is a No, not a school name
     (r"employed by (the )?(federal|any state|.{0,40}government)|government or public institution|public institution", "govt_official"),
     (r"education-\d+--firstyearattended", "edu_start_year"),
@@ -410,6 +416,7 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"join (us )?(immediately|right away|asap|now)|immediate(ly)? (join|joining|start)|join within \d+", "join_immediately"),
     (r"^(are|is|will|would|can|could|do) you\b.{0,25}\b(available|able|willing|open|ready) to", "available"),  # yes/no
     (r"earliest (start|joining)|when can you (start|join)|start date|joining date|available to (start|join)", "start_date"),
+    (r"relocation (assistance|support|package|benefit)|(require|need) relocation", "relocation_assistance"),
     (r"relocat", "willing_to_relocate"),
     (r"preferred (location|cities|city)|location preference", "preferred_cities"),
     (r"\b(require|need)\b.{0,40}\b(visa|work permit|right to work support)", "needs_sponsorship"),
@@ -470,7 +477,7 @@ EXTRA_TARGETS = {
                "Bachelor"],
     "college": ["National Institute of Technology Rourkela", "NIT Rourkela", "National Institute of Technology", "Other"],
     "languages": ["Hindi", "Telugu"],
-    "phone_device_type": ["Mobile", "Mobile Phone", "Cell"],
+    "phone_device_type": ["Mobile", "Mobile Phone", "Personal Mobile", "Pers Mobile", "Mobile (Personal)", "Cell", "Cell Phone"],
 }
 DECLINE_KEYS = ("gender", "pronouns", "diversity")  # unanswered -> pick a decline option if the field offers one
 RESUME_FIELD = re.compile(r"resume|\bcv\b|curriculum", re.I)
@@ -758,6 +765,7 @@ AUTO_DEFAULTS = {
     "work_authorized_india": "Yes",
     "needs_sponsorship": "No",
     "willing_to_relocate": "Yes",
+    "relocation_assistance": "Yes",  # Sai: "yes require relocation assistance if possible" (2026-10-19)
     "office_or_hybrid": "Yes",
     "available": "Yes",
     "join_immediately": "No",
@@ -771,6 +779,8 @@ AUTO_DEFAULTS = {
     "outside_business": "No",
     "govt_official": "No",
     "is_adult": "Yes",
+    "identity_docs": "Yes",
+    "embargoed_citizen": "No",
     "active_backlogs": "No",
     "notice_period": "Not applicable (final-year student, available from January 2027)",
     "data_use_future": "Use my data for future recruitment opportunities too",
@@ -1034,7 +1044,8 @@ def detect_confirmation(text, url, start_url=None):
 EXPIRED = re.compile(r"this job (has expired|is no longer (available|accepting))|job (posting )?(has expired|is closed|"
                      r"no longer available)|position (has been filled|is no longer available)|no longer accepting "
                      r"applications|this (position|role|requisition) (has been )?closed|the job you are looking for "
-                     r"(is no longer|does not exist)|page you requested was not found|job (posting )?(was )?not found", re.I)
+                     r"(is no longer|does not exist)|page you requested was not found|job (posting )?(was )?not found|"
+                     r"page you are looking for (doesn't|does not) exist", re.I)
 
 
 def blockers(state, fields):
@@ -2413,6 +2424,14 @@ class PlaywrightDriver:
         while time.monotonic() < deadline:
             if self._visible(self.WD_AUTH) is not None:
                 return "auth"
+            email_btn = self._visible('[data-automation-id="SignInWithEmailButton"]')
+            if email_btn is not None:  # KLA-style: Apple / Google / LinkedIn / "Sign in with email" first
+                try:
+                    safe_click(email_btn, "account")
+                except SubmitBlocked:
+                    pass
+                self.page.wait_for_timeout(1500)
+                continue
             step = self.workday_step()
             if step and not re.search(r"create account|sign in", step, re.I) and self._next_button() is not None:
                 return "app"
@@ -2501,10 +2520,15 @@ class PlaywrightDriver:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             try:
-                n = self.page.evaluate("""() => [...document.querySelectorAll('[data-automation-id^="formField"], '
-                  + '[data-automation-id="add-button"], [data-automation-id="reviewJobApplicationPage"], '
-                  + '[data-automation-id="pageFooterNextButton"]')]
-                  .filter((e) => e.offsetParent !== null).length""")
+                n = self.page.evaluate("""() => {
+                  const fields = [...document.querySelectorAll('[data-automation-id^="formField"], '
+                    + '[data-automation-id="add-button"], [data-automation-id="reviewJobApplicationPage"]')]
+                    .filter((e) => e.offsetParent !== null).length;
+                  const step = (document.querySelector('[data-automation-id="progressBarActiveStep"]') || {}).textContent || '';
+                  const footer = document.querySelector('[data-automation-id="pageFooterNextButton"]');
+                  // the Review page has no form fields: there the step name plus the footer button is enough
+                  return fields || (/review/i.test(step) && footer && footer.offsetParent !== null ? 1 : 0);
+                }""")
             except Exception:
                 n = 0
             if n:
@@ -2793,6 +2817,8 @@ def fill_workday(driver, fc, email, password, max_pages=8):
     """Workday: account step, then fill each page and press 'Save and Continue' until the Review page (never Submit).
     -> (FillResult over all pages, blocker reasons, missing required labels, step names seen)."""
     account = driver.workday_account(email, password)
+    if account != "ok" and hasattr(driver, "state") and EXPIRED.search((driver.state().get("text") or "")[:3000]):
+        return FillResult([], [], [], []), ["Posting closed (expired or no longer accepting applications)"], [], []
     if account != "ok":
         reason = WD_ACCOUNT_REASONS.get(account) or f"Workday sign-in failed ({account.split(':', 1)[-1]})"
         if re.search(r"wrong email address or password", account, re.I):
