@@ -2200,7 +2200,8 @@ class PlaywrightDriver:
             if not code:
                 self.start_url = self.url()
                 return "oracle (identity code not received)"
-            boxes = page.locator("input[id^='pin-code'], input[autocomplete='one-time-code'], input[inputmode='numeric']")
+            boxes = page.locator("input[id^='pin-code'], input[autocomplete='one-time-code'], input[inputmode='numeric'], "
+                                 "input[aria-label*='verification code digit' i]")
             if boxes.count() >= len(code):
                 for i, ch in enumerate(code):
                     boxes.nth(i).fill(ch)
@@ -3319,6 +3320,8 @@ class Runner:
                             reason=None if ok else f"confirm-applied failed: {msg}")
 
     def _fill_and_check(self, job):
+        if hasattr(self.d, "_oracle_start") and ORACLE_CX.search(self.d.url() or ""):
+            self.d._oracle_start(job)  # reached Oracle late (Goldman Sachs redirects): email step / emailed code
         fc = self.context_for(job)
         workday = is_workday(self.d)
         if workday:
