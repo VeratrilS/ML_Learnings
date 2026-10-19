@@ -92,7 +92,7 @@ def ctc_ok(job, min_ctc=MIN_CTC):
     return not ctc or ctc >= min_ctc
 
 
-SENIOR_TITLE = re.compile(r"(?<![a-z])(senior|sr\.?|lead|staff|principal|manager|director|architect|head of|vp|vice president|ii|iii|iv|sde[- ]?(2|3|ii)|l[4-9]|phd)(?![a-z])", re.I)  # also "Developer_Director_..."
+SENIOR_TITLE = re.compile(r"(?<![a-z])(senior|mgr|avp|principle|sr\.?|lead|staff|principal|manager|director|architect|head of|vp|vice president|ii|iii|iv|sde[- ]?(2|3|ii)|l[4-9]|phd)(?![a-z])", re.I)  # also "Developer_Director_..."
 
 
 def fresher_ok(job):
@@ -419,6 +419,7 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"employment status|current(ly)? (employment|working)|are you (currently )?(employed|working)", "currently_employed"),
     (r"(currently|previously) .{0,40}(directly )?employed", "previously_employed"),
     (r"issued a .{0,30}(employee id|email address)|employee id or .{0,30}email", "previously_employed"),
+    (r"are you a referral|referred by (a|an) (current )?employee|employee referral", "is_referral"),
     # Sai holds no offers (said many times): every wording of "other offers / offer deadline" is No / None
     (r"(any|other|existing|pending|competing|active|current|outstanding|holding|hold|have)\b.{0,30}\boffers?\b|offers? (in hand|deadline|from (any|other))|recruiting[- ]process deadline|deadline we should be aware", "other_offers"),
     # Before the college rule: "employed by ... government or public institution" is a No, not a school name
@@ -841,6 +842,7 @@ AUTO_DEFAULTS = {
     "identity_docs": "Yes",
     "embargoed_citizen": "No",
     "other_offers": "None (no offers)",
+    "is_referral": "No",
     "citizenship": "India",
     "currently_employed": "No (full-time student)",
     "active_backlogs": "No",
@@ -2661,6 +2663,12 @@ class PlaywrightDriver:
 
     def _workday_account(self, email, password):
         state = self._wd_wait_state()
+        if state == "unknown":  # Workday sometimes stalls on first load (several browsers at once): reload once
+            try:
+                self.page.reload(wait_until="domcontentloaded", timeout=60000)
+            except Exception:
+                pass
+            state = self._wd_wait_state(timeout_s=45)
         if state == "app":
             return "ok"  # already signed in (persistent Chrome profile)
         if state == "unknown":
