@@ -997,6 +997,26 @@ def heuristic_answer(question):
     return None
 
 
+YEARS_REQ = re.compile(r"(?:minimum|min\.?|at least)?\s*(\d{1,2})\s*(?:\+|plus)?\s*(?:(?:-|–|to)\s*\d{1,2}\s*\+?)?\s*years?\b"
+                       r"[^.\n]{0,40}?(?:experience|\bexp\b|industry|professional|relevant|working)", re.I)
+HIGHER_DEGREE_REQ = re.compile(r"(master'?s|\bm\.?tech\b|\bm\.?s\.?\b|ph\.?d)[^.\n]{0,60}\b(required|mandatory|must)", re.I)
+OTHER_BATCH = re.compile(r"\b(202[3-6])\s*(?:batch|graduates?|pass(?:ed)?[- ]?outs?)\b", re.I)
+
+
+def min_quals_problem(text):
+    """Why a 2027 B.Tech fresher should not apply, from the posting text; None when nothing rules him out."""
+    t = text or ""
+    years = [int(m.group(1)) for m in YEARS_REQ.finditer(t) if 0 <= int(m.group(1)) <= 15]
+    if years and min(years) >= 2:
+        return f"asks for {min(years)}+ years of experience"
+    m = HIGHER_DEGREE_REQ.search(t)
+    if m and not re.search(r"bachelor|b\.?tech|b\.?e\b", m.group(0), re.I):
+        return "requires a higher degree (" + m.group(1) + ")"
+    if OTHER_BATCH.search(t) and "2027" not in t:
+        return "only for the " + OTHER_BATCH.search(t).group(1) + " batch"
+    return None
+
+
 def plan_fields(fields, fc):
     actions, todo = [], []
     files = [f for f in fields if f.get("type") == "file"]
@@ -3281,7 +3301,20 @@ class Runner:
         return "later", why
 
     # ---- one job ----
+    def _min_quals(self, job):
+        """Read the posting before opening the form (Sai: 'see min quals before opening the link'). -> reason or None."""
+        if not hasattr(self.d, "_goto") or not job.get("url"):
+            return None
+        try:
+            self.d._goto(job["url"])
+            return min_quals_problem(self.d.page_text() or "")
+        except Exception:
+            return None  # can't read it: let the normal flow decide
+
     def run_job(self, job):
+        problem = self._min_quals(job)
+        if problem:
+            return self._record(job, "skipped", reason=f"min qualifications: {problem}")
         try:
             note = self.d.open(job)
         except Exception as e:

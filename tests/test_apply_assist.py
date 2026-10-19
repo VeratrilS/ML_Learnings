@@ -1422,3 +1422,14 @@ def test_national_number_keeps_numbers_that_start_with_91():
     assert aa.national_number("9110307856") == "9110307856"
     assert aa.national_number("+91 9110307856") == "9110307856"
     assert aa.national_number("+91 91103 07856") == "9110307856"
+
+
+def test_min_quals_problem():
+    assert aa.min_quals_problem("Requirements: 3+ years of experience in Java") == "asks for 3+ years of experience"
+    assert aa.min_quals_problem("0-2 years of experience; freshers welcome") is None
+    assert aa.min_quals_problem("Bachelor's in CS. 5 years of relevant experience preferred, 1 year experience required") is None
+    assert aa.min_quals_problem("We have 20 years of industry experience as a company") is None
+    assert aa.min_quals_problem("Master's degree in CS is required.").startswith("requires a higher degree")
+    assert aa.min_quals_problem("Open to 2025 batch graduates") == "only for the 2025 batch"
+    assert aa.min_quals_problem("Open to 2026 and 2027 batch graduates") is None
+    assert aa.min_quals_problem("B.Tech in CSE, strong C++") is None
