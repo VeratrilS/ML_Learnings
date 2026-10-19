@@ -405,6 +405,9 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"(fluent|spoken|written|speak|read)\b.{0,40}\blanguage|\blanguages?\b.{0,40}\b(fluent|spoken|written|speak)",
      "languages"),
     (r"backlog", "active_backlogs"),
+    (r"(dateofbirth|birthdate).*datesectionmonth", "dob_month"),  # Workday splits the date into boxes
+    (r"(dateofbirth|birthdate).*datesectionday", "dob_day"),
+    (r"(dateofbirth|birthdate).*datesectionyear", "dob_year"),
     (r"date of birth|\bdob\b|birth\s*date", "date_of_birth"),
     (r"pin\s*code|postal code|\bzip\b", "pin_code"),
     (r"address line 1|street address|^street", "address_line1"),
@@ -830,6 +833,9 @@ def build_values(profile, answers, role_type=None):
     # Address blocks split into line 1 / city: default to the whole address and the current city.
     v["address_line1"] = _s(a.get("address_line1")) or _s(v.get("address"))
     v["address_city"] = _s(a.get("address_city")) or v["current_city"]
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", _s(a.get("date_of_birth")))
+    if m:  # for forms that split the date into month / day / year boxes
+        v["dob_year"], v["dob_month"], v["dob_day"] = m.groups()
     v.pop("workday_password", None)  # passed to the Workday sign-in only, never to a form field or the AI
     return {k: val for k, val in v.items() if val}
 
@@ -1429,7 +1435,8 @@ AI_SYSTEM = (
     "from January 2027). He can NOT join immediately or before January 2027: answer No to 'join immediately / now / "
     "within N days' questions, or pick the option closest to January 2027.\n"
     'Return JSON: {"answer": "<text>"} or {"answer": null}.')
-AI_PRIVATE_KEYS = {"phone", "address", "address_line1", "pin_code", "date_of_birth", "email", "workday_password"}
+AI_PRIVATE_KEYS = {"phone", "address", "address_line1", "pin_code", "date_of_birth", "dob_day", "dob_month", "dob_year", "email",
+                   "workday_password", "workday_passwords_old"}
 
 
 def ai_facts(values):
