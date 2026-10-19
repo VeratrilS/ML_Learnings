@@ -486,7 +486,7 @@ EXTRA_TARGETS = {
     "language_primary": ["English"],
     "language_level": ["Fluent", "Advanced", "Native", "Proficient", "Full Professional", "Expert", "Excellent"],
     "accept_privacy_notice": ["I agree", "I acknowledge", "I accept", "I consent", "Agree", "Acknowledge",
-                              "Acknowledged", "Accept", "I have read"],
+                              "Acknowledged", "Accept", "I have read", "Yes"],  # "Yes" last: Yes/No acknowledgements
     "how_did_you_hear": ["Company website", "Company careers page", "Careers page", "Careers site", "Career site",
                          "Website", "Job board", "Online job board", "LinkedIn", "Other"],
     "notice_period": ["Not applicable", "N/A", "None", "No notice period", "0 days", "Less than 15 days"],  # never "Immediate"
