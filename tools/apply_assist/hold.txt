@@ -6,3 +6,4 @@ Salesforce  # openings closed (Sai, 2026-10-19)
 Texas Instruments  # Sai: referral via his sister at TI - runner must not apply (SWE 25008954 applied 2026-10-19)
 Barclays  # Sai applied via referral (2026-10-19): runner must not apply
 Goldman Sachs  # GS asked Sai to wait and apply later (2026-10-19) - do not retry until he says
+CRED  # Sai applied via CodeChef contest/JobBoard (2026-10-19)
