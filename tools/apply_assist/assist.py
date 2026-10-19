@@ -3296,6 +3296,9 @@ class Runner:
                 self.d.reset()
                 return self._record(job, "needs-you", filled=filled_n,
                                     reason=f"security code not entered within {self.code_wait_s // 60} min")
+            if re.search(r"\d+ issues? that need to be fixed|this info is required", st.get("text") or "", re.I):
+                st["errors"] = st.get("errors") or 1  # Oracle's banner: "You have 7 issues that need to be fixed"
+                st["errtext"] = (st.get("errtext") or []) + ["Oracle: required questions / sections still empty"]
             if st.get("captcha") or st.get("errors"):
                 reasons = (["CAPTCHA appeared after Submit"] if st.get("captcha") else []) + \
                           ([("The site flagged errors after Submit: " + "; ".join(st.get("errtext") or []))[:300]]
