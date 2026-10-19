@@ -480,7 +480,7 @@ EXTRA_TARGETS = {
     "data_use_future": ["future opportunities", "future recruitment", "future roles", "talent pool", "talent community",
                         "all recruitment", "other positions", "other roles", "keep my data", "Yes", "I agree"],
     "edu_degree": ["Bachelor of Technology", "B.Tech", "BTech", "B. Tech", "Bachelor of Engineering", "B.E.", "BE",
-                   "Bachelor's Degree", "Bachelors Degree", "Bachelor's", "Bachelor", "Undergraduate"],
+                   "Bachelor's Degree", "Bachelors Degree", "Bachelors", "Bachelor's", "Bachelor", "Undergraduate"],
     "edu_field": ["Computer Science and Engineering", "Computer Science", "Computer Engineering",
                   "Computer and Information Science", "Information Technology"],
     "language_primary": ["English"],
