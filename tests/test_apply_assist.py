@@ -1401,3 +1401,18 @@ def test_posting_key_and_job_id_for_url():
 
 def test_posting_key_reads_greenhouse_embed_token():
     assert aa.posting_key("https://job-boards.greenhouse.io/embed/job_app?for=rubrik&token=8258200") == "8258200"
+
+
+def test_guard_allows_untyped_apply_button_outside_forms():
+    # Oracle's "Apply Now" is a <button> with no type attribute, outside any form: the browser calls it "submit"
+    assert aa.check_click_allowed({"tag": "button", "type": "submit", "typeattr": "", "text": "Apply Now", "in_form": False},
+                                  "open_application")
+    with pytest.raises(aa.SubmitBlocked):
+        aa.check_click_allowed({"tag": "button", "type": "submit", "typeattr": "submit", "text": "Apply Now", "in_form": False},
+                               "open_application")
+
+
+def test_oracle_one_time_pass_code_is_read_and_matched_by_alias():
+    body = "Hello Venkata Sai Raghava, You must confirm your identity using the one-time pass code : 803596 Note"
+    assert aa.code_in_mail(body) == "803596"
+    assert aa.ORACLE_CX.search("https://edbz.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/25017908")

@@ -207,6 +207,9 @@ def greenhouse_tokens(repo=REPO):
     return out
 
 
+ORACLE_CX = re.compile(r"oraclecloud\.com/hcmUI/CandidateExperience", re.I)
+
+
 def application_url(url, company=None, gh_tokens=None):
     """Job posting URL -> (URL of the application form, board kind)."""
     u = urlparse(url)
@@ -257,7 +260,7 @@ APPLY_ENTRY = (r"apply|apply now|apply for this (job|role|position)|apply here|a
                r"apply manually|start (your )?application|i.?m interested")
 ACCOUNT_BUTTONS = r"create account|sign in|sign in with email"
 WD_BUTTON_IDS = {"Create Account": "createAccountSubmitButton", "Sign In": "signInSubmitButton"}
-NEXT_BUTTONS = r"save and continue|next|continue"
+NEXT_BUTTONS = r"save and continue|next|continue|verify"
 
 
 def is_submit_like(info):
@@ -279,7 +282,9 @@ def check_click_allowed(info, purpose, submit_enabled=False):
         raise SubmitBlocked(f"Refusing to toggle a non-choice element ({t or info.get('tag')}).")
     if purpose == "open_application":
         # The job page's "Apply" link/button that opens the form: never a submit control, never inside a form.
-        if t != "submit" and not info.get("in_form") and re.fullmatch(rf"\s*({APPLY_ENTRY})\s*", text, re.I):
+        # A plain button outside any form (no type attribute: the browser only defaults it to "submit") can't submit.
+        plain = t != "submit" or (info.get("tag") == "button" and info.get("typeattr", "submit") == "")
+        if plain and not info.get("in_form") and re.fullmatch(rf"\s*({APPLY_ENTRY})\s*", text, re.I):
             return True
         raise SubmitBlocked(f"Refusing to click {text!r}: not a plain 'Apply' entry button.")
     if purpose == "pick_option" and info.get("tag") not in ("button", "input", "a") and (
@@ -306,7 +311,7 @@ def check_click_allowed(info, purpose, submit_enabled=False):
 
 
 ELEMENT_INFO_JS = """(el) => ({
-  tag: el.tagName.toLowerCase(), type: (el.type || el.getAttribute('type') || '').toLowerCase(),
+  tag: el.tagName.toLowerCase(), type: (el.type || el.getAttribute('type') || '').toLowerCase(), typeattr: el.getAttribute('type') || '',
   role: (el.getAttribute('role') || '').toLowerCase(), in_form: !!el.closest('form'), href: el.tagName === 'A' ? el.href : '',
   haspopup: (el.getAttribute('aria-haspopup') || '').toLowerCase(), wdid: el.getAttribute('data-automation-id') || '',
   text: ((el.innerText || '') + ' ' + (el.tagName === 'INPUT' ? (el.value || '') : '') + ' ' + (el.getAttribute('aria-label') || ''))
@@ -411,7 +416,7 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"date of birth|\bdob\b|birth\s*date", "date_of_birth"),
     (r"pin\s*code|postal code|\bzip\b", "pin_code"),
     (r"address line 1|street address|^street", "address_line1"),
-    (r"address line 2", "address_line2"),  # never filled
+    (r"address line [23]", "address_line2"),  # never filled
     (r"^city\W*$|^town\W*$|addresssection_city|--city$", "address_city"),  # the bare "City" of an address block
     (r"address", "address"),
     (r"expected (ctc|salary|compensation|pay)|salary expectation|desired (salary|compensation)", "expected_ctc"),
@@ -489,6 +494,8 @@ EXTRA_TARGETS = {
 DECLINE_KEYS = ("gender", "pronouns", "diversity")  # unanswered -> pick a decline option if the field offers one
 RESUME_FIELD = re.compile(r"resume|\bcv\b|curriculum", re.I)
 COVER_FIELD = re.compile(r"cover", re.I)
+# "Import your profile from resume" (Oracle): re-reads the resume and overwrites the saved profile - never use it
+IMPORT_FIELD = re.compile(r"import (your )?profile|^apply with$|autofill (with|from) (your )?resume", re.I)
 PLACEHOLDER_OPT = re.compile(r"^(|select\b.*|choose\b.*|please select.*|-+.*|none selected|\.\.\.)$", re.I)
 
 PACK_RULES = [
@@ -931,6 +938,8 @@ def plan_fields(fields, fc):
             continue
         if t == "file":
             desc = " ".join(field_bits(f))
+            if any(IMPORT_FIELD.search(b.strip()) for b in field_bits(f)):
+                continue
             is_resume = RESUME_FIELD.search(desc) or (len(files) == 1 and not COVER_FIELD.search(desc))
             if has_value(f):
                 continue
@@ -1492,8 +1501,9 @@ def make_ai_answerer(values, generate=None, path=AI_PATH):
 # ---------------- Sai's inbox, read-only: security codes and Workday verification links ----------------
 WD_LINK = re.compile(r"https://[a-z0-9.-]+\.(?:myworkdayjobs|myworkdaysite|myworkday)\.com/[^\s\"'<>)\]]+", re.I)
 VERIFY_HINT = re.compile(r"activat|verif", re.I)
-CODE_IN_MAIL = re.compile(r"(?:security|verification|one[- ]time)\s+code", re.I)
-CODE_SENDERS = ("greenhouse", "lever", "ashby", "smartrecruiters", "myworkday")
+CODE_IN_MAIL = re.compile(r"(?:security|verification|one[- ]time(?: pass)?)\s+code", re.I)
+CODE_SENDERS = ("greenhouse", "lever", "ashby", "smartrecruiters", "myworkday", "oracle", "recruiting.ti.com")
+MAIL_ALIASES = {"goldman sachs": ("gsrecruiting", "goldman"), "texas instruments": ("recruiting.ti.com", "texas instruments")}
 
 
 def workday_tenant(url):
@@ -1582,7 +1592,9 @@ class Inbox:
     def code_for(self, company, max_age_s=900):
         """Newest unused security code from an email that names this company (last 15 minutes)."""
         for sender, subject, body, _ts in self._recent(max_age_s):
-            if company and company.lower() not in f"{sender} {subject} {body}".lower():
+            text = f"{sender} {subject} {body}".lower()
+            names = (company.lower(),) + MAIL_ALIASES.get(company.lower(), ()) if company else ()
+            if names and not any(n in text for n in names):
                 continue
             code = code_in_mail(body)
             if code and code not in self.used:
@@ -2117,6 +2129,8 @@ class PlaywrightDriver:
             # the board redirected to the company's own careers site: open Greenhouse's form directly
             self._goto(f"https://job-boards.greenhouse.io/embed/job_app?for={gh.group(1)}&token={gh.group(2)}")
             note = "greenhouse (company site redirect, opened form directly)"
+        if kind == "other" and ORACLE_CX.search(self.url()):
+            return self._oracle_start(job)
         if kind == "other":
             emb = self.page.evaluate("() => { const f = document.querySelector('iframe[src*=\"greenhouse.io/embed/job_app\"]');"
                                      " return f ? f.src : null; }")
@@ -2129,8 +2143,61 @@ class PlaywrightDriver:
                     second = self._open_apply_entry(wait_s=8)
                     if second.startswith(("followed", "clicked")):
                         note += ", then " + second
+                if ORACLE_CX.search(self.url()):  # e.g. Goldman Sachs: its site's Apply leads to Oracle
+                    return note + ", then " + self._oracle_start(job)
         self.start_url = self.url()
         return note
+
+    def _oracle_start(self, job, code_wait_s=240):
+        """Oracle Candidate Experience (Texas Instruments, Goldman Sachs): cookie banner, Apply Now, email + terms,
+        then the one-time code it emails. Leaves the browser on the application form."""
+        page = self.page
+        for sel in ("#consent_prompt_submit", "#onetrust-accept-btn-handler"):
+            loc = self._visible(sel)
+            if loc is not None:
+                try:
+                    safe_click(loc, "dismiss")
+                    page.wait_for_timeout(1000)
+                except Exception:
+                    pass
+        if "/apply" not in self.url():
+            btn = page.get_by_role("button", name=re.compile(r"^\s*apply now\s*$", re.I))
+            if btn.count():
+                safe_click(btn.first, "open_application")
+                page.wait_for_timeout(5000)
+        email = self._visible('input[type="email"]')
+        if email is not None:
+            email.fill(_s(getattr(self, "email", "")) or "sairaghava1318@gmail.com", timeout=6000)
+            page.evaluate("""() => { const c = document.getElementById('legal-disclaimer-checkbox');
+                                     if (c && !c.checked) c.dispatchEvent(new MouseEvent('click', {bubbles: true})); }""")  # hidden input
+            nxt = page.get_by_role("button", name=re.compile(r"^\s*next\s*$", re.I))
+            if nxt.count():
+                safe_click(nxt.first, "next_page")
+                page.wait_for_timeout(5000)
+        if re.search(r"confirm your identity|verification code", self.page_text() or "", re.I):
+            code, deadline = None, time.monotonic() + code_wait_s
+            while not code and time.monotonic() < deadline and self.inbox:
+                page.wait_for_timeout(8000)
+                try:
+                    code = self.inbox.code_for(job.get("company") or "")
+                except Exception:
+                    code = None
+            if not code:
+                self.start_url = self.url()
+                return "oracle (identity code not received)"
+            boxes = page.locator("input[id^='pin-code'], input[autocomplete='one-time-code'], input[inputmode='numeric']")
+            if boxes.count() >= len(code):
+                for i, ch in enumerate(code):
+                    boxes.nth(i).fill(ch)
+            elif boxes.count():
+                boxes.first.fill(code)
+            verify = page.get_by_role("button", name=re.compile(r"^\s*verify\s*$", re.I))
+            if verify.count():
+                safe_click(verify.first, "next_page")
+                page.wait_for_timeout(8000)
+        self._settle()
+        self.start_url = self.url()
+        return "oracle (signed in with an emailed code)"
 
     def _open_apply_entry(self, wait_s=15):
         """Single-page career sites render late: wait for either a form or an 'Apply' entry button."""
@@ -2293,7 +2360,8 @@ class PlaywrightDriver:
                 pass
         return list(dict.fromkeys(t for t in texts if t))
 
-    OPTION_SEL = '[role="option"]:visible, [data-automation-id="promptOption"]:visible'
+    OPTION_SEL = ('[role="option"]:visible, [data-automation-id="promptOption"]:visible, '
+                  '.cx-select__list-item:visible')  # last: Oracle Candidate Experience dropdowns
 
     def _wait_options(self, frame, timeout_ms=3500):
         """Wait until the dropdown shows options (or the timeout passes)."""
