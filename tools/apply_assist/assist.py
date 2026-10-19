@@ -3443,7 +3443,8 @@ class Runner:
         if not workday and not reasons and not looks_like_application(fill.fields):
             reasons.append("Doesn't look like an application form (no email or resume field)")
         if any(r.startswith(("No application form", "Doesn't look like")) for r in reasons) and re.search(
-                r"verification code|confirm your identity|one[- ]time (pass)?code", self.d.page_text() or "", re.I):
+                r"verification code|confirm your identity|one[- ]time (pass)?code",
+                (self.d.page_text() if hasattr(self.d, "page_text") else "") or "", re.I):
             # an emailed-code step (Goldman Sachs / Oracle): not a dead end - Sai can type the code in the window
             reasons = ["Enter the verification code from your email, then finish the form"]
         return fill, reasons, missing
