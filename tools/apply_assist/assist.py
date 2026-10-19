@@ -393,7 +393,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"employment status|current(ly)? (employment|working)|are you (currently )?(employed|working)", "currently_employed"),
     (r"(currently|previously) .{0,40}(directly )?employed", "previously_employed"),
     (r"issued a .{0,30}(employee id|email address)|employee id or .{0,30}email", "previously_employed"),
-    (r"offer deadline|recruiting[- ]process deadline|competing offers?|deadline we should be aware", "offer_deadline"),
+    # Sai holds no offers (said many times): every wording of "other offers / offer deadline" is No / None
+    (r"(any|other|existing|pending|competing|active|current|outstanding|holding|hold|have)\b.{0,30}\boffers?\b|offers? (in hand|deadline|from (any|other))|recruiting[- ]process deadline|deadline we should be aware", "other_offers"),
     # Before the college rule: "employed by ... government or public institution" is a No, not a school name
     (r"employed by (the )?(federal|any state|.{0,40}government)|government or public institution|public institution", "govt_official"),
     (r"education-\d+--firstyearattended", "edu_start_year"),
@@ -483,6 +484,7 @@ CONSENT = re.compile(r"privacy|consent|data protection|gdpr|processing of (my )?
                      r"\bi (agree|accept|certify|confirm)\b|agree to|terms (and|&) conditions|confidential", re.I)
 # Extra option texts tried after the saved answer, per rule key (dropdowns word these differently on every site).
 EXTRA_TARGETS = {
+    "other_offers": ["No", "None", "Not applicable", "N/A", "No offers"],
     "citizenship": ["India", "Indian"],
     "currently_employed": ["No", "Student", "Full-time student", "Not employed", "Unemployed"],
     "data_use_future": ["future opportunities", "future recruitment", "future roles", "talent pool", "talent community",
@@ -812,7 +814,7 @@ AUTO_DEFAULTS = {
     "is_adult": "Yes",
     "identity_docs": "Yes",
     "embargoed_citizen": "No",
-    "offer_deadline": "No",
+    "other_offers": "None (no offers)",
     "citizenship": "India",
     "currently_employed": "No (full-time student)",
     "active_backlogs": "No",
