@@ -2321,6 +2321,12 @@ class PlaywrightDriver:
                     loc.press_sequentially(str(a.value), delay=60)
                 elif a.kind == "text":
                     loc.fill(str(a.value), timeout=6000)
+                    try:  # some React forms (HPE) drop pasted values: type it key by key instead
+                        if str(a.value) and loc.input_value(timeout=1500) != str(a.value):
+                            loc.fill("", timeout=3000)
+                            loc.press_sequentially(str(a.value), delay=25)
+                    except Exception:
+                        pass
                 elif a.kind == "select":
                     loc.select_option(index=a.value, timeout=6000)
                 elif a.kind == "toggle":
