@@ -727,9 +727,9 @@ def set_job_outcome(job_id):
                     app_entry.stage = stage_map[outcome]
                     evt = ApplicationEvent(
                         application_id=app_entry.id,
-                        event_type=f"outcome_{outcome}",
-                        notes=f"Outcome updated to {outcome.upper()}" + (f": {notes}" if notes else ""),
-                        timestamp=now,
+                        kind="stage",
+                        text=f"Outcome updated to {outcome.upper()}" + (f": {notes}" if notes else ""),
+                        at=now,
                     )
                     db.add(evt)
 
