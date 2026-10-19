@@ -2005,7 +2005,23 @@ OVERLAY_JS = r"""(a) => {
   if (a.cont) { const c = btn('✅ I finished — continue', '#16a34a'); c.onclick = () => { window.__aaContinue = true; c.textContent = 'Continuing…'; }; }
   else { btn('OK', '#f97316').onclick = () => box.remove(); }
   btn('✕ Hide', '#374151').onclick = () => { box.style.display = 'none'; pill.style.display = ''; };
-  box.appendChild(row); document.body.appendChild(box); document.body.appendChild(pill); return true;
+  box.appendChild(row);
+  // Drag it anywhere (grab the box, not a button); the spot is kept for the next message on this page.
+  const hint = document.createElement('div'); hint.textContent = '⠿ drag to move';
+  hint.style.cssText = 'margin:-6px 0 6px;font-size:11px;color:#9ca3af;cursor:move;user-select:none';
+  box.insertBefore(hint, box.firstChild); box.style.cursor = 'move';
+  const place = (x, y) => { box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.right = 'auto'; };
+  if (window.__aaPos) place(window.__aaPos[0], window.__aaPos[1]);
+  box.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    const r = box.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    box.setPointerCapture(e.pointerId);
+    const move = (ev) => { const x = Math.max(0, Math.min(window.innerWidth - 60, ev.clientX - dx));
+      const y = Math.max(0, Math.min(window.innerHeight - 40, ev.clientY - dy)); place(x, y); window.__aaPos = [x, y]; };
+    const up = () => { box.removeEventListener('pointermove', move); box.removeEventListener('pointerup', up); };
+    box.addEventListener('pointermove', move); box.addEventListener('pointerup', up);
+  });
+  document.body.appendChild(box); document.body.appendChild(pill); return true;
 }"""
 
 FIND_ENTRY_JS = r"""(p) => {
