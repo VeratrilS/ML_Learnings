@@ -858,7 +858,9 @@ def build_values(profile, answers, role_type=None):
 
 def national_number(phone):
     """'+91 91103 07856' -> '9110307856' (for forms with a separate country-code dropdown)."""
-    return re.sub(r"\D", "", re.sub(r"^\s*\+?91[\s-]*", "", phone or ""))
+    digits = re.sub(r"\D", "", phone or "")
+    # only a real country code comes off: "9110307856" is already the 10-digit number (it just starts with 91)
+    return digits[2:] if len(digits) == 12 and digits.startswith("91") else digits
 
 
 def pack_answer(text, pack, company=""):
@@ -1598,9 +1600,12 @@ class Inbox:
                 pass
         return out
 
-    def code_for(self, company, max_age_s=900):
-        """Newest unused security code from an email that names this company (last 15 minutes)."""
-        for sender, subject, body, _ts in self._recent(max_age_s):
+    def code_for(self, company, max_age_s=900, since=None):
+        """Newest unused security code from an email that names this company (last 15 minutes; only mail that
+        arrived after `since` when given, so an older code from a previous application is never reused)."""
+        for sender, subject, body, ts in self._recent(max_age_s):
+            if since and ts < since:
+                continue
             text = f"{sender} {subject} {body}".lower()
             names = (company.lower(),) + MAIL_ALIASES.get(company.lower(), ()) if company else ()
             if names and not any(n in text for n in names):
@@ -2180,6 +2185,7 @@ class PlaywrightDriver:
             page.evaluate("""() => { const c = document.getElementById('legal-disclaimer-checkbox');
                                      if (c && !c.checked) c.dispatchEvent(new MouseEvent('click', {bubbles: true})); }""")  # hidden input
             nxt = page.get_by_role("button", name=re.compile(r"^\s*next\s*$", re.I))
+            self._code_since = time.time() - 60  # mail clocks drift a little
             if nxt.count():
                 safe_click(nxt.first, "next_page")
                 page.wait_for_timeout(5000)
@@ -2188,7 +2194,7 @@ class PlaywrightDriver:
             while not code and time.monotonic() < deadline and self.inbox:
                 page.wait_for_timeout(8000)
                 try:
-                    code = self.inbox.code_for(job.get("company") or "")
+                    code = self.inbox.code_for(job.get("company") or "", since=getattr(self, "_code_since", None))
                 except Exception:
                     code = None
             if not code:
@@ -3004,7 +3010,7 @@ def known_ats(job):
     """True for application systems the runner knows how to submit and confirm (it may press Submit there)."""
     url = job.get("url") or ""
     kind = application_url(url, job.get("company"), {})[1] if url else "other"
-    return kind in AUTO_SUBMIT_BOARDS or (job.get("board") or "").lower() in AUTO_SUBMIT_BOARDS or         "myworkdayjobs.com" in url or "smartrecruiters.com" in url or "careers.qualcomm.com" in url  # Qualcomm: confirmed by email
+    return kind in AUTO_SUBMIT_BOARDS or (job.get("board") or "").lower() in AUTO_SUBMIT_BOARDS or         "myworkdayjobs.com" in url or "smartrecruiters.com" in url or "careers.qualcomm.com" in url or         "oraclecloud.com" in url or "higher.gs.com" in url  # Qualcomm: confirmed by email; Oracle CX flow taught 2026-10-19
 
 
 NO_HANDOFF = re.compile(r"No application form found|Doesn't look like an application form|blocked this browser|"

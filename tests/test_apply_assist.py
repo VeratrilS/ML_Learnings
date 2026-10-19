@@ -1416,3 +1416,9 @@ def test_oracle_one_time_pass_code_is_read_and_matched_by_alias():
     body = "Hello Venkata Sai Raghava, You must confirm your identity using the one-time pass code : 803596 Note"
     assert aa.code_in_mail(body) == "803596"
     assert aa.ORACLE_CX.search("https://edbz.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/25017908")
+
+
+def test_national_number_keeps_numbers_that_start_with_91():
+    assert aa.national_number("9110307856") == "9110307856"
+    assert aa.national_number("+91 9110307856") == "9110307856"
+    assert aa.national_number("+91 91103 07856") == "9110307856"
