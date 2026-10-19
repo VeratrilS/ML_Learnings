@@ -950,6 +950,27 @@ def stale_contact_fix(f, fc, has_code=False):
     return None if _norm(cur) == _norm(want) else want
 
 
+# Last resort for required Yes/No-style questions when no rule, saved answer or AI fits (Sai: "make it take rational
+# decisions"). A final-year student with no work history: never employed/contracted/related/sanctioned -> No;
+# agreements, consents, certifications and eligibility -> Yes.
+HEUR_NO = re.compile(r"\b(ever|previously|formerly|currently)\b.{0,60}\b(employ|work|contract|intern|consult)|related to|relative|family member|"
+                     r"government (official|employee)|public official|sanction|debar|convicted|non-?compet|non-?solicit|"
+                     r"conflict of interest|intellectual property|economic interest|own,? control|export control|citizen of any of|"
+                     r"require (visa|sponsorship)|sponsorship", re.I)
+HEUR_YES = re.compile(r"\bi (agree|acknowledge|understand|certify|confirm|consent|accept)\b|do you (agree|consent|acknowledge|accept)|"
+                      r"agree to|consent to|certify that|true and complete|at least 18", re.I)
+# (work authorisation is NOT guessed here: "authorized to work in the United States" is No for Sai - its own rule decides)
+
+
+def heuristic_answer(question):
+    q = question or ""
+    if HEUR_NO.search(q):
+        return "No"
+    if HEUR_YES.search(q):
+        return "Yes"
+    return None
+
+
 def plan_fields(fields, fc):
     actions, todo = [], []
     files = [f for f in fields if f.get("type") == "file"]
@@ -997,7 +1018,10 @@ def plan_fields(fields, fc):
                 break
             if attempt == 1 and is_required(f) and not val:
                 val = _ask_ai(fc, label, "select" if is_combo else t, f.get("options") or [])
-                src, targets, strict = "ai", choice_targets(val), False
+                src = "ai"
+                if not val and (is_combo or t == "select"):  # AI unavailable: the sensible answer for a student
+                    val, src = heuristic_answer(label), "rule-of-thumb"
+                targets, strict = choice_targets(val), False
                 if val:
                     continue
             if is_required(f):
@@ -1021,6 +1045,8 @@ def plan_fields(fields, fc):
         idx = option_match(opts, targets_for(rule_key(g[0]), val, strict=strict), strict=strict)
         if idx is None and required and not val:
             val, src = _ask_ai(fc, q, g[0].get("type"), opts), "ai"
+            if not val:  # AI unavailable: the sensible answer for a student
+                val, src = heuristic_answer(q), "rule-of-thumb"
             idx = option_match(opts, choice_targets(val)) if val else None
         if idx is not None:
             actions.append(Action(g[idx], "toggle", True, src or "default", q))
