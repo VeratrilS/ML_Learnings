@@ -393,6 +393,7 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"employment status|current(ly)? (employment|working)|are you (currently )?(employed|working)", "currently_employed"),
     (r"(currently|previously) .{0,40}(directly )?employed", "previously_employed"),
     (r"issued a .{0,30}(employee id|email address)|employee id or .{0,30}email", "previously_employed"),
+    (r"offer deadline|recruiting[- ]process deadline|competing offers?|deadline we should be aware", "offer_deadline"),
     # Before the college rule: "employed by ... government or public institution" is a No, not a school name
     (r"employed by (the )?(federal|any state|.{0,40}government)|government or public institution|public institution", "govt_official"),
     (r"education-\d+--firstyearattended", "edu_start_year"),
@@ -811,6 +812,7 @@ AUTO_DEFAULTS = {
     "is_adult": "Yes",
     "identity_docs": "Yes",
     "embargoed_citizen": "No",
+    "offer_deadline": "No",
     "citizenship": "India",
     "currently_employed": "No (full-time student)",
     "active_backlogs": "No",
