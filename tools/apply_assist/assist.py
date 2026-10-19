@@ -400,7 +400,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     # "How would you like your personal data used for future recruitment": keep Sai in the talent pool
     (r"personal data to be used|how you would like your personal data|future recruitment (process|opportunit)", "data_use_future"),
     # Standard Workday screening questions (2026-10-19 run)
-    (r"submit verification of (both )?your identity|proof of (your )?identity and|identity and (employment )?(eligibility|authori[sz]ation)", "identity_docs"),
+    (r"submit verification of (both )?your identity|proof of (your )?identity and|identity and (employment )?(eligibility|authori[sz]ation)|"
+     r"verification check to validate|validate .{0,40}legal (right|authori[sz]ation)", "identity_docs"),
     (r"positive declaration|i understand that (a|my) (declaration|disclosure)", "accept_privacy_notice"),
     (r"ai-assisted screening|hiredscore|use of (ai|artificial intelligence).{0,40}(screen|assess|tool)", "accept_privacy_notice"),
     (r"citizen of any of the following countries|cuba, iran|north korea, (sudan|syria)", "embargoed_citizen"),
