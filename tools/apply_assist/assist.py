@@ -2468,7 +2468,26 @@ class PlaywrightDriver:
         if idx is None:
             return False
         safe_click(opts.nth(seen[idx][0]), "pick_option")
-        self.page.wait_for_timeout(500)
+        self.page.wait_for_timeout(800)
+        # Workday multi-level prompts ("How did you hear": Job Board -> LinkedIn): a new list opens after the click
+        for _depth in range(2):
+            now = []
+            for i in range(min(opts.count(), 120)):
+                try:
+                    if opts.nth(i).is_visible():
+                        now.append((i, opts.nth(i).inner_text(timeout=1000)))
+                except Exception:
+                    continue
+            if not now or [t for _, t in now] == [t for _, t in seen]:
+                break
+            sub = option_match([t for _, t in now], targets, strict=False)
+            pick = now[sub][0] if sub is not None else now[0][0]  # any sub-source is fine (a formality)
+            seen = now
+            try:
+                safe_click(opts.nth(pick), "pick_option")
+            except Exception:
+                break
+            self.page.wait_for_timeout(800)
         return True
 
     def _listbox(self, loc, a):
@@ -3005,7 +3024,8 @@ def fill_workday(driver, fc, email, password, max_pages=8):
             return FillResult(fill.fields, filled, fill.todo, fill.tracked), reasons, missing, steps
         moved = driver.workday_next()
         if moved == "no-button":
-            return FillResult(fill.fields, filled, fill.todo, fill.tracked), ["Couldn't find Save and Continue"], [], steps
+            return FillResult(fill.fields, filled, fill.todo, fill.tracked), [
+                f"Couldn't find Save and Continue (page: {(steps[-1] if steps else '')[:60]})"], [], steps
         if moved.startswith("errors:"):
             return FillResult(fill.fields, filled, fill.todo, fill.tracked), [f"Workday says: {moved[7:]}"], [], steps
     return FillResult(fill.fields, filled, fill.todo, fill.tracked), [f"More than {max_pages} pages"], [], steps
