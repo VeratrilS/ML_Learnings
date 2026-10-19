@@ -92,11 +92,27 @@ def ctc_ok(job, min_ctc=MIN_CTC):
     return not ctc or ctc >= min_ctc
 
 
+SENIOR_TITLE = re.compile(r"\b(senior|sr\.?|lead|staff|principal|manager|director|architect|head of|\bii\b|\biii\b|\biv\b|"
+                          r"sde[- ]?(2|3|ii)|l[4-9]\b|phd)\b", re.I)
+
+
+def fresher_ok(job):
+    """Sai is a 2027 fresher: skip roles asking for 2+ years, batches without 2027, and senior / PhD titles."""
+    m = re.search(r"asks for (\d+)\+? years", job.get("notes") or "")
+    if m and int(m.group(1)) >= 2:
+        return False
+    batches = _s(job.get("eligible_batches"))
+    if batches and "2027" not in batches:
+        return False
+    return not SENIOR_TITLE.search(job.get("role") or "")
+
+
 def select_jobs(jobs, min_score=MIN_SCORE, min_ctc=MIN_CTC, role_types=ROLE_TYPES):
     """Open jobs worth applying to, newest first (posting date, then match score). No approval needed."""
     keep = [j for j in jobs
             if (j.get("status") or "discovered") not in DONE_STATUSES and j.get("url")
-            and j.get("role_type") in role_types and (j.get("match_score") or 0) >= min_score and ctc_ok(j, min_ctc)]
+            and j.get("role_type") in role_types and (j.get("match_score") or 0) >= min_score and ctc_ok(j, min_ctc)
+            and fresher_ok(j)]
     return sorted(keep, key=lambda j: (j.get("posted") or (j.get("discovered_at") or "")[:10],
                                        j.get("match_score") or 0, j.get("discovered_at") or ""), reverse=True)
 
