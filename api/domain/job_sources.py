@@ -104,6 +104,25 @@ COMPANIES = [
     ("Freshworks", "smartrecruiters", "freshworks"), ("Arista Networks", "smartrecruiters", "aristanetworks"),  # 37, 26
     ("Canva", "smartrecruiters", "canva"), ("Wise", "smartrecruiters", "wise"),                 # 5, 31
     # Workday
+    # Boards verified live 2026-10-19 (research agent): scanned so new 2027/fresher roles show up automatically
+    ("PubMatic", "greenhouse", "pubmatic"), ("Five9", "greenhouse", "five9"), ("Anaplan", "greenhouse", "anaplan"),
+    ("Smartsheet", "greenhouse", "smartsheet"), ("NICE", "greenhouse", "nice"), ("SentinelOne", "greenhouse", "sentinellabs"),
+    ("Optiver", "greenhouse", "optiverus"), ("Coursera", "greenhouse", "coursera"), ("JFrog", "greenhouse", "jfrog"),
+    ("Adyen", "greenhouse", "adyen"), ("Hudson River Trading", "greenhouse", "wehrtyou"), ("Jane Street", "greenhouse", "janestreet"),
+    ("Slice", "greenhouse", "slice"), ("Crypto.com", "lever", "crypto"),
+    ("Harvey", "ashby", "harvey"), ("Cognition", "ashby", "cognition"), ("Navi", "ashby", "navi"),
+    ("Bosch", "smartrecruiters", "BoschGroup"), ("NielsenIQ", "smartrecruiters", "NielsenIQ"),
+    ("Experian", "smartrecruiters", "Experian"), ("Continental", "smartrecruiters", "Continental"),
+    ("Unacademy", "smartrecruiters", "Unacademy"),
+    ("Caterpillar", "workday", "cat|wd5|CaterpillarCareers"), ("Kyndryl", "workday", "kyndryl|wd5|KyndrylProfessionalCareers"),
+    ("Wells Fargo", "workday", "wf|wd1|WellsFargoJobs"), ("Carrier", "workday", "carrier|wd5|jobs"),
+    ("Zebra", "workday", "zebra|wd501|Zebra_Careers"), ("PTC", "workday", "ptc|wd1|PTC"),
+    ("Northern Trust", "workday", "ntrs|wd1|northerntrust"), ("RELX", "workday", "relx|wd3|relx"),
+    ("Wolters Kluwer", "workday", "wk|wd3|External"), ("Philips", "workday", "philips|wd3|jobs-and-careers"),
+    ("SS&C Technologies", "workday", "ssctech|wd1|SSCTechnologies"), ("Boeing", "workday", "boeing|wd1|EXTERNAL_CAREERS"),
+    ("Cohesity", "workday", "cohesity|wd5|Cohesity_Careers"), ("Invesco", "workday", "invesco|wd1|IVZ"),
+    ("Ameriprise", "workday", "ameriprise|wd5|Ameriprise"), ("GE HealthCare", "workday", "gehc|wd5|GEHC_ExternalSite"),
+    ("BrowserStack", "workday", "browserstack|wd3|External"), ("Palo Alto Networks", "workday", "paloaltonetworks|wd5|panwexternalcareers"),
     ("NVIDIA", "workday", "nvidia|wd5|NVIDIAExternalCareerSite"),                               # 136
     ("Salesforce", "workday", "salesforce|wd12|External_Career_Site"),                          # 45
     ("Adobe", "workday", "adobe|wd5|external_experienced"),                                     # 29
