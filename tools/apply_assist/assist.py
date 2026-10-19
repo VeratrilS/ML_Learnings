@@ -235,8 +235,17 @@ def posting_key(url):
     jid = parse_qs(u.query).get("gh_jid") or (parse_qs(u.query).get("token") if "job_app" in u.path else None)
     if jid:
         return jid[0]
+    if "myworkday" in u.netloc.lower():  # .../job/Pune-India/Software-Engineer_R-290463 -> "r-290463"
+        m = re.search(r"_([A-Za-z]*-?[0-9][\w-]*)$", u.path.rstrip("/"))
+        if m:
+            return m.group(1).lower()
     m = re.search(r"/jobs/(\d+)|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", u.path, re.I)
     return (m.group(1) or m.group(2)).lower() if m else None
+
+
+def _same_url(a, b):
+    norm = lambda x: re.sub(r"/+$", "", urlparse(x or "")._replace(query="", fragment="").geturl().lower())  # noqa: E731
+    return bool(a and b) and norm(a) == norm(b)
 
 
 def job_id_for_url(url, jobs):
@@ -244,7 +253,7 @@ def job_id_for_url(url, jobs):
     key = posting_key(url)
     for j in jobs if key else ():
         keys = {posting_key(j.get(f)) for f in ("url", "portal_url", "apply_url")} | {str(j.get("external_id") or "").lower()}
-        if j.get("id") and key in keys:
+        if j.get("id") and (key in keys or _same_url(url, j.get("portal_url") or j.get("url"))):
             return j["id"]
     return None
 
