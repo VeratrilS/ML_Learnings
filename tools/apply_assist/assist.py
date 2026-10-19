@@ -353,7 +353,13 @@ def safe_click(locator, purpose, submit_enabled=False, info=None):
         except Exception:
             locator.check(timeout=5000, force=True)
     else:
-        locator.click(timeout=10000)
+        try:
+            locator.click(timeout=10000)
+        except Exception as e:
+            if "intercepts pointer events" not in str(e):
+                raise
+            # Workday lays a transparent click layer over its buttons: click the same spot anyway (already guarded)
+            locator.click(timeout=5000, force=True)
     return info
 
 
