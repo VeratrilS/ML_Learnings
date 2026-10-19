@@ -369,6 +369,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"positive declaration|i understand that (a|my) (declaration|disclosure)", "accept_privacy_notice"),
     (r"ai-assisted screening|hiredscore|use of (ai|artificial intelligence).{0,40}(screen|assess|tool)", "accept_privacy_notice"),
     (r"citizen of any of the following countries|cuba, iran|north korea, (sudan|syria)", "embargoed_citizen"),
+    (r"citizenship|nationality|country of (citizenship|nationality)|citizen of which", "citizenship"),
+    (r"employment status|current(ly)? (employment|working)|are you (currently )?(employed|working)", "currently_employed"),
     (r"(currently|previously) .{0,40}(directly )?employed", "previously_employed"),
     # Before the college rule: "employed by ... government or public institution" is a No, not a school name
     (r"employed by (the )?(federal|any state|.{0,40}government)|government or public institution|public institution", "govt_official"),
@@ -456,6 +458,8 @@ CONSENT = re.compile(r"privacy|consent|data protection|gdpr|processing of (my )?
                      r"\bi (agree|accept|certify|confirm)\b|agree to|terms (and|&) conditions|confidential", re.I)
 # Extra option texts tried after the saved answer, per rule key (dropdowns word these differently on every site).
 EXTRA_TARGETS = {
+    "citizenship": ["India", "Indian"],
+    "currently_employed": ["No", "Student", "Full-time student", "Not employed", "Unemployed"],
     "data_use_future": ["future opportunities", "future recruitment", "future roles", "talent pool", "talent community",
                         "all recruitment", "other positions", "other roles", "keep my data", "Yes", "I agree"],
     "edu_degree": ["Bachelor of Technology", "B.Tech", "BTech", "B. Tech", "Bachelor of Engineering", "B.E.", "BE",
@@ -781,6 +785,8 @@ AUTO_DEFAULTS = {
     "is_adult": "Yes",
     "identity_docs": "Yes",
     "embargoed_citizen": "No",
+    "citizenship": "India",
+    "currently_employed": "No (full-time student)",
     "active_backlogs": "No",
     "notice_period": "Not applicable (final-year student, available from January 2027)",
     "data_use_future": "Use my data for future recruitment opportunities too",
