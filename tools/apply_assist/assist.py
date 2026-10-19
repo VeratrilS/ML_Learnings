@@ -2185,7 +2185,7 @@ class PlaywrightDriver:
             if btn.count():
                 safe_click(btn.first, "open_application")
                 page.wait_for_timeout(5000)
-        email = self._visible('input[type="email"]')
+        email = self._visible('input[type="email"]') if "/apply/email" in self.url() else None  # only the sign-in step
         if email is not None:
             email.fill(_s(getattr(self, "email", "")) or "sairaghava1318@gmail.com", timeout=6000)
             page.evaluate("""() => { const c = document.getElementById('legal-disclaimer-checkbox');
