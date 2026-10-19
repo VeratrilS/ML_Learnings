@@ -366,7 +366,17 @@ def safe_click(locator, purpose, submit_enabled=False, info=None):
         try:
             locator.check(timeout=5000)
         except Exception:
-            locator.check(timeout=5000, force=True)
+            try:
+                locator.check(timeout=5000, force=True)
+            except Exception:
+                pass
+        try:
+            ok = locator.is_checked(timeout=1000)
+        except Exception:
+            ok = False
+        if not ok:  # Workday's styled radios ignore a programmatic check: click the visible label like a person
+            locator.evaluate("""(el) => { const l = (el.labels && el.labels[0]) || el.closest('label') ||
+                                 document.querySelector(`label[for="${el.id}"]`); (l || el).click(); }""")
     else:
         try:
             locator.click(timeout=10000)
