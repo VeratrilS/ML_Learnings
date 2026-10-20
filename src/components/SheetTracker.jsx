@@ -1,14 +1,12 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
     Bookmark, BookOpen, Check, ChevronDown, ChevronRight, ChevronsDownUp,
-    ChevronsUpDown, Code2, ExternalLink, Flame, Layers, ListChecks,
-    RotateCw, Search, Sparkles
+    ChevronsUpDown, Code2, ExternalLink, ListChecks,
+    RotateCw, Search
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApi, useLocalStorage } from '../lib/hooks';
-import { Button, Card, Checkbox, Empty, ProgressBar, Segmented, Skeleton, cx, useToast } from './ui';
-import { TodayPill } from './LearnCard';
-import SprintRunway from './SprintRunway';
+import { Button, Card, Checkbox, Empty, Segmented, Skeleton, cx, useToast } from './ui';
 import DailyFocusCard from './DailyFocusCard';
 
 // Optimistically flip one problem and recompute totals
@@ -595,120 +593,6 @@ export default function SheetTracker({ sheet = 'learnyard' }) {
                     All {data.total} Medium &amp; Hard pattern problems across {totalModules} modules in Fraz&apos;s exact order. Select any topic to practice.
                 </p>
             </header>
-
-            {/* Non-Stop Study Sprint Runway: Oct 15 – 25 with Live Ticking Clock and Today Pointer */}
-            <SprintRunway
-                doneToday={data.done_today || 0}
-                totalDone={data.done || 0}
-                totalProbs={data.total || 1019}
-            />
-
-            {/* Clean Progress Overview Card (Only progress & sprint goal, no leaderboard or clutter) */}
-            <Card className="relative overflow-hidden card-pad space-y-4 shadow-sm border border-line">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    {/* Overall Solved & Progress Bar */}
-                    <div className="flex-1 min-w-[240px] space-y-2">
-                        <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs uppercase tracking-wider font-bold text-fg flex items-center gap-1.5">
-                                <Layers className="h-3.5 w-3.5 text-accent" /> Overall Progress
-                            </span>
-                            <span className="text-xs font-mono font-semibold text-muted">
-                                <span className="text-fg font-bold">{data.done}</span> / {data.total} solved
-                                <span className="text-accent font-bold ml-1.5">({data.progress}%)</span>
-                            </span>
-                        </div>
-                        <ProgressBar value={data.progress} className="h-2.5" color={data.progress >= 100 ? 'var(--ok)' : 'var(--accent)'} />
-                    </div>
-
-                    {/* Sprint Goal & Streak Info */}
-                    <div className="flex flex-wrap items-center gap-3 shrink-0">
-                        {data.target_days && (
-                            <div className="flex items-center gap-2 bg-accent/5 border border-accent/20 rounded-lg px-3 py-1.5">
-                                <Sparkles className="h-3.5 w-3.5 text-accent shrink-0" />
-                                <div className="text-xs">
-                                    <span className="font-semibold text-fg">{data.target_days}-Day Sprint</span>
-                                    <span className="text-subtle font-mono ml-1.5">({data.daily_min}/day)</span>
-                                </div>
-                                <div className="ml-1">
-                                    <TodayPill count={data.done_today || 0} min={data.daily_min} />
-                                </div>
-                            </div>
-                        )}
-
-                        <div
-                            className={cx(
-                                'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold',
-                                data.streak ? 'border-accent/30 bg-accent/10 text-accent' : 'border-line bg-surface-2 text-subtle'
-                            )}
-                            title="Days in a row with at least one problem solved"
-                        >
-                            <Flame className="h-3.5 w-3.5" />
-                            <span>{data.streak || 0}d streak</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Difficulty Breakdown Bars (Medium & Hard only) */}
-                <div className="grid grid-cols-2 gap-4 pt-3 border-t border-line/60">
-                    <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs font-semibold">
-                            <span className="text-amber-500">Medium</span>
-                            <span className="font-mono text-subtle">{med.done} / {med.total}</span>
-                        </div>
-                        <ProgressBar value={med.total ? (100 * med.done) / med.total : 0} color="#f59e0b" className="h-1.5" />
-                    </div>
-
-                    <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs font-semibold">
-                            <span className="text-rose-500">Hard</span>
-                            <span className="font-mono text-subtle">{hard.done} / {hard.total}</span>
-                        </div>
-                        <ProgressBar value={hard.total ? (100 * hard.done) / hard.total : 0} color="#ef4444" className="h-1.5" />
-                    </div>
-                </div>
-
-                {/* Up Next Inline Launcher */}
-                {data.next && (
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-line/60 bg-surface-2/30 -mx-4 -mb-4 px-4 py-2.5">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="badge bg-accent text-accent-fg text-[10px] font-bold shrink-0">
-                                UP NEXT
-                            </span>
-                            <a
-                                href={data.next.practice_url || data.next.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs font-semibold text-fg hover:text-accent truncate transition-colors"
-                                title="Solve next problem directly on LeetCode"
-                            >
-                                <span className="font-mono text-subtle font-normal mr-1">#{data.next.position}.</span>
-                                {data.next.title}
-                            </a>
-                            <DifficultyPill difficulty={data.next.difficulty} />
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                            <a
-                                href={data.next.practice_url || data.next.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="btn btn-secondary btn-sm text-xs font-semibold"
-                            >
-                                <Code2 className="h-3.5 w-3.5 text-accent" />
-                                <span>Solve on LeetCode</span>
-                            </a>
-                            <Button
-                                size="sm"
-                                variant="primary"
-                                icon={Check}
-                                loading={busy}
-                                onClick={() => toggle(data.next, true)}
-                            >
-                                Mark solved
-                            </Button>
-                        </div>
-                    </div>
-                )}
-            </Card>
 
             {/* Daily 25 Focus Set Card: Algorithmic selection across all 24 topics with 1-Med / 1-Hard focus */}
             <DailyFocusCard
