@@ -1446,3 +1446,13 @@ def test_run_retries_page_loading_problems_once_at_the_end():
     r.run_job = run_job
     r.run([job(1), job(2, company="Other Co")])
     assert calls == [1, 2, 1]  # the CAPTCHA one is not retried
+
+
+def test_avature_register_purpose_only_allows_confirm_buttons():
+    aa.check_click_allowed({"tag": "button", "type": "submit", "text": "Confirm"}, "avature_register")
+    for text in ("Submit", "Apply", "Send application"):
+        try:
+            aa.check_click_allowed({"tag": "button", "type": "submit", "text": text}, "avature_register")
+        except aa.SubmitBlocked:
+            continue
+        raise AssertionError(text)

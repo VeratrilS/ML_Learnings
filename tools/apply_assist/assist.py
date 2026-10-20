@@ -160,6 +160,9 @@ def dedupe(jobs, done_keys=()):
     return out
 
 
+# Avature career sites (Siemens, Siemens Energy) send applicants to a sign-in / register page first.
+AVATURE_LOGIN = re.compile(r"/(Login|Register)\?folderId(Pending)?=", re.I)
+
 # Outcomes worth one more try at the end of a run: the page, not the form, was the problem.
 TRANSIENT = re.compile(r"didn't finish loading|Timeout \d+ ?ms exceeded|has been closed|net::ERR_|"
                        r"Couldn't find Save and Continue", re.I)
@@ -290,7 +293,7 @@ class SubmitBlocked(RuntimeError):
 SUBMIT_WORDS = re.compile(r"\b(submit|apply|send|finish|complete|confirm)\b", re.I)
 APPLY_ENTRY = (r"apply|apply now|apply for this (job|role|position)|apply here|apply online|apply to this job|"
                r"apply manually|start (your )?application|i.?m interested")
-ACCOUNT_BUTTONS = r"create account|sign in|sign in with email"
+ACCOUNT_BUTTONS = r"create account|sign in|sign in with email|log ?in|create (?:a |your )?profile|register"  # Avature: Login / Create profile
 WD_BUTTON_IDS = {"Create Account": "createAccountSubmitButton", "Sign In": "signInSubmitButton"}
 NEXT_BUTTONS = r"save and continue|next|continue|verify"
 
@@ -327,6 +330,11 @@ def check_click_allowed(info, purpose, submit_enabled=False):
         if info.get("wdid") == "add-button" and re.fullmatch(r"\s*Add( Another)?\s*", text, re.I):
             return True
         raise SubmitBlocked(f"Refusing to click {text or t!r} as an Add button.")
+    if purpose == "avature_register":
+        # Avature's registration page ("Confirm" creates the candidate profile; the caller checks the /Register URL).
+        if re.fullmatch(r"\s*confirm\s*", text, re.I) and info.get("tag") == "button":
+            return True
+        raise SubmitBlocked(f"Refusing to click {text or t!r} as the Avature registration button.")
     if purpose in ("account", "next_page"):
         # Workday: "Create Account" / "Sign In" and "Save and Continue" / "Next". The label may repeat (text + aria-label).
         words = ACCOUNT_BUTTONS if purpose == "account" else NEXT_BUTTONS
@@ -900,6 +908,7 @@ def build_values(profile, answers, role_type=None):
     if m:  # for forms that split the date into month / day / year boxes
         v["dob_year"], v["dob_month"], v["dob_day"] = m.groups()
     v.pop("workday_password", None)  # passed to the Workday sign-in only, never to a form field or the AI
+    v.pop("avature_password", None)
     return {k: val for k, val in v.items() if val}
 
 
@@ -1549,7 +1558,7 @@ AI_SYSTEM = (
     "within N days' questions, or pick the option closest to January 2027.\n"
     'Return JSON: {"answer": "<text>"} or {"answer": null}.')
 AI_PRIVATE_KEYS = {"phone", "address", "address_line1", "pin_code", "date_of_birth", "dob_day", "dob_month", "dob_year", "email",
-                   "workday_password", "workday_passwords_old"}
+                   "workday_password", "workday_passwords_old", "avature_password"}
 
 
 def ai_facts(values):
@@ -2277,6 +2286,62 @@ class PlaywrightDriver:
                     return note + ", then " + self._oracle_start(job)
         self.start_url = self.url()
         return note
+
+    def _avature_account(self, values, passwords):
+        """Avature career sites (Siemens, Siemens Energy): sign in with the runner's password, or create the candidate
+        profile once (email, name, phone, password, data-sharing choice). Leaves the browser on the application."""
+        page = self.page
+        email = _s(values.get("email"))
+        if not email or not passwords:
+            return "failed:no email or password for the account"
+        if "/Login" in self.url():
+            for pw in passwords:
+                user = self._visible("input[name='username'], input#username, input[type='email']")
+                pwd = self._visible("input[type='password']")
+                if user is None or pwd is None:
+                    break
+                user.fill(email)
+                pwd.fill(pw)
+                btn = page.get_by_role("button", name=re.compile(r"^\s*log ?in\s*$", re.I))
+                if not btn.count():
+                    break
+                safe_click(btn.first, "account")
+                page.wait_for_timeout(5000)
+                if "/Login" not in self.url():
+                    return "avature (signed in)"
+            link = page.get_by_text(re.compile(r"create (a |your )?profile|create (an )?account|^\s*register\s*$", re.I))
+            if not link.count():
+                return "failed:Avature sign-in failed and no Create profile link"
+            safe_click(link.first, "account")
+            page.wait_for_timeout(5000)
+        if "/Register" not in self.url():
+            return "avature"
+        phone = re.sub(r"\D", "", national_number(_s(values.get("phone"))) or "")
+        for rx, val in ((r"^\s*e-?mail", email), (r"first name", values.get("first_name")),
+                        (r"last name", values.get("last_name")), (r"phone", phone),
+                        (r"^\s*password\s*\*?\s*$", passwords[0]), (r"password confirmation|confirm", passwords[0])):
+            loc = page.get_by_label(re.compile(rx, re.I))
+            if val and loc.count():
+                loc.first.fill(_s(val), timeout=6000)
+        radios = page.locator("input[type='radio']")
+        if radios.count():
+            safe_click(radios.first, "toggle")  # share the profile with the group's companies (more roles seen)
+        nxt = page.locator("button:visible").filter(has_text=re.compile(
+            r"^\s*(next|register|create( profile| account)?|continue|confirm)\s*$", re.I))
+        if not nxt.count():
+            return "failed:no Next button on the Avature registration"
+        label = nxt.first.inner_text().strip()
+        if re.fullmatch(r"(?i)confirm", label) and "/Register" in self.url():
+            # Avature's registration page ends with "Confirm": it creates the candidate profile only (the application
+            # steps - Resume, Personal Information, Additional Information - and their Submit come after it)
+            safe_click(nxt.first, "avature_register")
+        else:
+            safe_click(nxt.first, "next_page" if re.fullmatch(r"(?i)next|continue", label) else "account")
+        page.wait_for_timeout(6000)
+        errs = page.locator(".error, [class*='error' i]:visible").all_inner_texts()
+        if "/Register" in self.url() and any(e.strip() for e in errs):
+            return "failed:Avature registration: " + "; ".join(e.strip() for e in errs if e.strip())[:150]
+        return "avature (profile created)"
 
     def _oracle_start(self, job, code_wait_s=240):
         """Oracle Candidate Experience (Texas Instruments, Goldman Sachs): cookie banner, Apply Now, email + terms,
@@ -3156,6 +3221,21 @@ def workday_passwords(answers, path=ANSWERS_PATH):
     return [ensure_workday_password(answers, path)] + [_s(p) for p in ([old] if isinstance(old, str) else old) if _s(p)]
 
 
+def ensure_site_password(key, path=ANSWERS_PATH):
+    """A strong password with nothing personal in it (Avature rejects passwords containing the candidate's name),
+    generated once per site family and appended to answers.yaml. Never printed."""
+    pw = _s((load_yaml(path) or {}).get(key))
+    if pw:
+        return pw
+    import secrets
+    import string
+    pw = "Qx" + "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(14)) + "9#"
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(f'\n# Password for {key.split("_")[0].title()} candidate profiles the runner creates.\n{key}: "{pw}"\n')
+    print(f"Created a password for {key.split('_')[0].title()} profiles and saved it in {Path(path).name} ({key}).")
+    return pw
+
+
 def ensure_workday_password(answers, path=ANSWERS_PATH):
     """One strong password for every Workday candidate account, generated once and appended to answers.yaml.
     Never printed: open answers.yaml to see it."""
@@ -3512,6 +3592,9 @@ class Runner:
         if hasattr(self.d, "_oracle_start") and ORACLE_CX.search(self.d.url() or ""):
             self.d._oracle_start(job)  # reached Oracle late (Goldman Sachs redirects): email step / emailed code
         fc = self.context_for(job)
+        if hasattr(self.d, "_avature_account") and AVATURE_LOGIN.search(self.d.url() or ""):
+            pws = [ensure_site_password("avature_password")] + list(self.workday_password or [])
+            print("  Avature: " + self.d._avature_account(fc.values, pws), flush=True)
         workday = is_workday(self.d)
         if workday:
             fill, reasons, missing, _steps = fill_workday(self.d, fc, fc.values.get("email"), self.workday_password)
