@@ -1433,3 +1433,16 @@ def test_min_quals_problem():
     assert aa.min_quals_problem("Open to 2025 batch graduates") == "only for the 2025 batch"
     assert aa.min_quals_problem("Open to 2026 and 2027 batch graduates") is None
     assert aa.min_quals_problem("B.Tech in CSE, strong C++") is None
+
+
+def test_run_retries_page_loading_problems_once_at_the_end():
+    r = runner(FakeDriver(SIMPLE, submit_enabled=True))
+    calls = []
+
+    def run_job(j):
+        calls.append(j["id"])
+        reason = "Workday sign-in failed (the Workday page didn't finish loading)" if j["id"] == 1 else "CAPTCHA on the page"
+        return r._record(j, "needs-you", reason=reason)
+    r.run_job = run_job
+    r.run([job(1), job(2, company="Other Co")])
+    assert calls == [1, 2, 1]  # the CAPTCHA one is not retried

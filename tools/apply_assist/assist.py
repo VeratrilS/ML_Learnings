@@ -160,6 +160,11 @@ def dedupe(jobs, done_keys=()):
     return out
 
 
+# Outcomes worth one more try at the end of a run: the page, not the form, was the problem.
+TRANSIENT = re.compile(r"didn't finish loading|Timeout \d+ ?ms exceeded|has been closed|net::ERR_|"
+                       r"Couldn't find Save and Continue", re.I)
+
+
 def plan_queue(jobs, max_jobs=25, per_company=1):
     """-> (jobs to work on this run, [(job, reason)] skipped). Keeps list order (newest first)."""
     work, skipped, counts = [], [], {}
@@ -2073,6 +2078,13 @@ FIND_SUBMIT_JS = r"""() => {
 }"""
 
 CAPTCHA_FRAME_URL = re.compile(r"recaptcha|hcaptcha|turnstile|challenges\.cloudflare|arkoselabs|funcaptcha", re.I)
+DIAG_JS = r"""() => { const vis = (e) => e.offsetParent !== null;
+  return {url: location.href, visibility: document.visibilityState,
+    ids: [...new Set([...document.querySelectorAll('[data-automation-id]')].filter(vis)
+      .map((e) => e.getAttribute('data-automation-id')))].slice(0, 120),
+    buttons: [...document.querySelectorAll('button, a[role=button], [role=button]')].filter(vis)
+      .map((b) => (b.innerText || b.getAttribute('aria-label') || '').trim()).filter(Boolean).slice(0, 60),
+    text: document.body ? document.body.innerText.replace(/\s+/g, ' ').slice(0, 2000) : ''}; }"""
 BROWSER_ARGS = ["--disable-renderer-backgrounding", "--disable-background-timer-throttling",
                 "--disable-backgrounding-occluded-windows"]
 OFFSCREEN_ARGS = ["--window-position=-32000,-32000", "--start-minimized"]
@@ -2675,6 +2687,7 @@ class PlaywrightDriver:
         if state == "app":
             return "ok"  # already signed in (persistent Chrome profile)
         if state == "unknown":
+            self.diagnose("workday-" + (workday_tenant(self.url()) or "page"))
             return "failed:the Workday page didn't finish loading"
         if not password:
             return "no-password"
@@ -2907,6 +2920,18 @@ class PlaywrightDriver:
         self._overlay_args = {"title": title, "items": list(items), "message": message, "cont": cont}
         try:
             self.page.evaluate(OVERLAY_JS, self._overlay_args)
+        except Exception:
+            pass
+
+    def diagnose(self, tag):
+        """Screenshot + what a stuck page shows (visible automation ids, buttons, text) in runs/<date>/diag/."""
+        try:
+            out = RUNS_DIR / datetime.now().strftime("%Y-%m-%d") / "diag"
+            out.mkdir(parents=True, exist_ok=True)
+            stem = out / f"{datetime.now():%H%M%S}-{re.sub(r'[^a-z0-9]+', '-', tag.lower())[:50]}"
+            self.page.screenshot(path=f"{stem}.png")
+            Path(f"{stem}.json").write_text(json.dumps(self.page.evaluate(DIAG_JS), indent=1, ensure_ascii=False),
+                                            encoding="utf-8")
         except Exception:
             pass
 
@@ -3507,23 +3532,32 @@ class Runner:
             self._record(job, "skipped", reason=why)
         if self.harvest_first and self.submit:
             self.harvest(work)  # ask Sai all unanswered questions in one email before submitting anything
+        retry = []
         for n, job in enumerate(work, 1):
             print(f"[{n}/{len(work)}] {job.get('company')} - {job.get('role')}")
-            try:
-                out = self.run_job(job)
-            except SubmitBlocked:
-                raise
-            except Exception as e:
-                try:
-                    self.d.reset()
-                except Exception:
-                    pass
-                out = self._record(job, "failed", reason=str(e).splitlines()[0][:120])
+            out = self._attempt(job)
+            if out["outcome"] in ("needs-you", "failed") and TRANSIENT.search(str(out.get("reason") or "")):
+                retry.append(job)
             if out["outcome"] in ("submitted", "unconfirmed") and not out.get("by_sai") and n < len(work) and not self.gate:
                 self.sleep(self.rng.uniform(*self.pace))  # pacing between submissions (the gate paces parallel runs)
+        for n, job in enumerate(retry, 1):  # page-loading problems usually pass on a second try (network blips)
+            print(f"[retry {n}/{len(retry)}] {job.get('company')} - {job.get('role')}")
+            self._attempt(job)
         if self.harvest_first and not self.submit:
             self._write_pending(self.rows)  # the dry run doubles as the harvest pass
         return self.results
+
+    def _attempt(self, job):
+        try:
+            return self.run_job(job)
+        except SubmitBlocked:
+            raise
+        except Exception as e:
+            try:
+                self.d.reset()
+            except Exception:
+                pass
+            return self._record(job, "failed", reason=str(e).splitlines()[0][:120])
 
     # ---- harvest: collect unanswered required questions in one batch (never submits) ----
     def harvest(self, jobs, record=False):
