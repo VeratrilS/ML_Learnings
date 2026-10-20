@@ -28,11 +28,11 @@ GITHUB = "https://github.com/VeratrilS"
 GAP = timedelta(days=30)
 
 
-def compose(company, role=None):
+def compose(company, role=None, name=None):
     what = f"the {role} role" if role else "software engineering roles"
     subject = f"{role or 'Software Engineer'} at {company}: Nandam Venkata Sai Raghava, NIT Rourkela 2027"
     body = "\n".join([
-        "Hi,",
+        f"Hi {name}," if name else "Hi,",
         "",
         f"I'm a final-year B.Tech CSE student at NIT Rourkela (CGPA 8.99, graduating 2027) and I'm very interested in "
         f"{what} at {company}.",
@@ -71,8 +71,8 @@ def sent_recently(address, now=None, log=LOG):
     return False
 
 
-def build_message(to, company, role=None, resume=RESUME):
-    subject, body = compose(company, role)
+def build_message(to, company, role=None, resume=RESUME, name=None):
+    subject, body = compose(company, role, name)
     msg = EmailMessage()
     msg["From"] = f"Nandam Venkata Sai Raghava <{SENDER}>"
     msg["To"] = to
@@ -89,6 +89,7 @@ def main(argv=None):
     ap.add_argument("--to", required=True)
     ap.add_argument("--company", required=True)
     ap.add_argument("--role")
+    ap.add_argument("--name", help="recipient's first name for the greeting")
     ap.add_argument("--send", action="store_true", help="really send (default: preview only)")
     args = ap.parse_args(argv)
     try:
@@ -98,7 +99,7 @@ def main(argv=None):
         pass
     if sent_recently(args.to) and args.to.lower() != SENDER:
         sys.exit(f"Already emailed {args.to} in the last 30 days: not sending again.")
-    msg = build_message(args.to, args.company, args.role)
+    msg = build_message(args.to, args.company, args.role, name=args.name)
     print(f"To: {msg['To']}\nSubject: {msg['Subject']}\n\n{msg.get_body(('plain',)).get_content()}")
     print(f"[attachment: {'resume.pdf' if RESUME.exists() else 'NONE'}]")
     if not args.send:
