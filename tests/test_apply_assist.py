@@ -1456,3 +1456,7 @@ def test_avature_register_purpose_only_allows_confirm_buttons():
         except aa.SubmitBlocked:
             continue
         raise AssertionError(text)
+
+
+def test_posting_key_reads_keka_job_ids():
+    assert aa.posting_key("https://peepalco.keka.com/careers/jobdetails/92951?src=Linkedin") == "92951"

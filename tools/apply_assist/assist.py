@@ -265,7 +265,8 @@ def posting_key(url):
         m = re.search(r"_([A-Za-z]*-?[0-9][\w-]*)$", u.path.rstrip("/"))
         if m:
             return m.group(1).lower()
-    m = re.search(r"/jobs?/(\d+)|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", u.path, re.I)
+    m = re.search(r"/(?:jobs?|jobdetails|job-details)/(\d+)|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+                  u.path, re.I)  # Keka: /careers/jobdetails/92951
     return (m.group(1) or m.group(2)).lower() if m else None
 
 
