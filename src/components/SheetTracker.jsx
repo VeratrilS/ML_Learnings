@@ -200,16 +200,34 @@ function SubmoduleAccordion({
     revisions, onToggleBookmark
 }) {
     const isComplete = submodule.total > 0 && submodule.done === submodule.total;
+    const [subDiff, setSubDiff] = useLocalStorage(`sheet:subdiff:${submodule.key}`, 'all');
+    const counts = { medium: 0, hard: 0 };
+    submodule.problems.forEach((p) => {
+        const d = (p.difficulty || '').toLowerCase();
+        if (d in counts) counts[d] += 1;
+    });
+    const shown = subDiff === 'all'
+        ? submodule.problems
+        : submodule.problems.filter((p) => (p.difficulty || '').toLowerCase() === subDiff);
+    const diffChoices = [
+        { value: 'all', label: 'All', n: submodule.problems.length, on: 'bg-accent/15 text-accent border-accent/40' },
+        { value: 'medium', label: 'Medium', n: counts.medium, on: 'bg-amber-500/15 text-amber-500 border-amber-500/40' },
+        { value: 'hard', label: 'Hard', n: counts.hard, on: 'bg-rose-500/15 text-rose-500 border-rose-500/40' },
+    ];
 
     return (
         <div className="border-t border-line/60 first:border-t-0">
+            <div className={cx(
+                'flex items-center transition-colors',
+                isOpen ? 'bg-surface-2/60' : 'bg-surface-2/20 hover:bg-surface-2/50'
+            )}>
             {/* Submodule header button: collapsed by default, click to open */}
             <button
                 type="button"
                 onClick={onToggle}
                 className={cx(
-                    'w-full flex items-center justify-between gap-3 pl-6 sm:pl-10 pr-4 sm:pr-6 py-2.5 text-left transition-colors',
-                    isOpen ? 'bg-surface-2/60 font-semibold' : 'bg-surface-2/20 hover:bg-surface-2/50'
+                    'flex-1 min-w-0 flex items-center justify-between gap-3 pl-6 sm:pl-10 pr-3 py-2.5 text-left',
+                    isOpen && 'font-semibold'
                 )}
                 aria-expanded={isOpen}
             >
@@ -232,13 +250,35 @@ function SubmoduleAccordion({
                             <span className={submodule.done > 0 ? 'text-fg font-semibold' : ''}>{submodule.done}</span> / {submodule.total}
                         </span>
                     )}
-                    {submodule.problems.length !== submodule.total && (
+                    {shown.length !== submodule.total && (
                         <span className="badge bg-accent-soft text-accent text-[11px]">
-                            {submodule.problems.length} shown
+                            {shown.length} shown
                         </span>
                     )}
                 </div>
             </button>
+
+            {/* Difficulty filter for this subtopic only */}
+            {isOpen && (
+                <div className="flex items-center gap-1 pr-4 sm:pr-6 shrink-0" role="group" aria-label={`Filter ${submodule.name} by difficulty`}>
+                    {diffChoices.map((c) => (
+                        <button
+                            key={c.value}
+                            type="button"
+                            onClick={() => setSubDiff(c.value)}
+                            disabled={c.value !== 'all' && c.n === 0}
+                            aria-pressed={subDiff === c.value}
+                            className={cx(
+                                'rounded-md border px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                                subDiff === c.value ? c.on : 'border-line text-subtle hover:text-fg hover:bg-surface-2'
+                            )}
+                        >
+                            {c.label} <span className="font-mono opacity-70">{c.n}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+            </div>
 
             {/* Submodule Problems Table — ONLY shown when user clicks to open this specific subtopic */}
             {isOpen && (
@@ -255,7 +295,10 @@ function SubmoduleAccordion({
                     </div>
 
                     <ul className="bg-surface-1/40 divide-y divide-line/30">
-                        {submodule.problems.map((p) => (
+                        {shown.length === 0 && (
+                            <li className="py-3 text-center text-xs text-subtle">No {subDiff} problems in this subtopic.</li>
+                        )}
+                        {shown.map((p) => (
                             <ProblemRow
                                 key={p.id}
                                 problem={p}
