@@ -100,6 +100,9 @@ def fresher_ok(job):
     m = re.search(r"asks for (\d+)\+? years", job.get("notes") or "")
     if m and int(m.group(1)) >= 2:
         return False
+    t = re.search(r"(\d{1,2})\s*(?:\+|to|-|–)?\s*\d{0,2}\s*(?:yrs?|years?)\b", job.get("role") or "", re.I)
+    if t and int(t.group(1)) >= 2:  # "Software Engineer - Java |8 to 14yrs|"
+        return False
     batches = _s(job.get("eligible_batches"))
     if batches and "2027" not in batches:
         return False
@@ -999,7 +1002,7 @@ def heuristic_answer(question):
     return None
 
 
-YEARS_REQ = re.compile(r"(?:minimum|min\.?|at least)?\s*(\d{1,2})\s*(?:\+|plus)?\s*(?:(?:-|–|to)\s*\d{1,2}\s*\+?)?\s*years?\b"
+YEARS_REQ = re.compile(r"(?:minimum|min\.?|at least)?\s*(\d{1,2})\s*(?:\+|plus)?\s*(?:(?:-|–|to)\s*\d{1,2}\s*\+?)?\s*(?:years?|yrs?)\b"
                        r"[^.\n]{0,40}?(?:experience|\bexp\b|industry|professional|relevant|working)", re.I)
 HIGHER_DEGREE_REQ = re.compile(r"(master'?s|\bm\.?tech\b|\bm\.?s\.?\b|ph\.?d)[^.\n]{0,60}\b(required|mandatory|must)", re.I)
 OTHER_BATCH = re.compile(r"\b(202[3-6])\s*(?:batch|graduates?|pass(?:ed)?[- ]?outs?)\b", re.I)
