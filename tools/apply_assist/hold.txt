@@ -8,3 +8,4 @@ Barclays  # Sai applied via referral (2026-10-19): runner must not apply
 Goldman Sachs  # GS asked Sai to wait and apply later (2026-10-19) - do not retry until he says
 CRED  # Sai applied via CodeChef contest/JobBoard (2026-10-19)
 Qualcomm  # Sai asking his senior for a referral (2026-10-20): runner must not apply (2027 Campus Hire SW 446719783573 / 446719784235, Intern 446719785836)
+Wayfair  # Sai got a rejection for the SWE intern (2026-10-20): do not apply again

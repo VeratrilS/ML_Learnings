@@ -2290,11 +2290,23 @@ class PlaywrightDriver:
                     page.wait_for_timeout(1000)
                 except Exception:
                     pass
+        accept = page.get_by_role("button", name=re.compile(r"^\s*accept( all)?( cookies)?\s*$", re.I))
+        if accept.count() and accept.first.is_visible():  # Akamai: a plain ACCEPT button
+            try:
+                safe_click(accept.first, "dismiss")
+                page.wait_for_timeout(800)
+            except Exception:
+                pass
         if "/apply" not in self.url():
             btn = page.get_by_role("button", name=re.compile(r"^\s*apply now\s*$", re.I))
             if btn.count():
                 safe_click(btn.first, "open_application")
-                page.wait_for_timeout(5000)
+        for _ in range(20):  # slow sites: wait for the email step or the form itself, not a fixed delay
+            if "/apply/email" in self.url() and self._visible('input[type="email"]') is not None:
+                break
+            if "/apply" in self.url() and len(pick_form_fields(self.scan())) >= 3:
+                break
+            page.wait_for_timeout(1000)
         email = self._visible('input[type="email"]') if "/apply/email" in self.url() else None  # only the sign-in step
         if email is not None:
             email.fill(_s(getattr(self, "email", "")) or "sairaghava1318@gmail.com", timeout=6000)
