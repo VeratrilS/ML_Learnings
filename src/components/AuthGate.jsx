@@ -35,7 +35,12 @@ export default function AuthGate({ children }) {
     const openLogin = () => setLogin(true);
     const closeLogin = () => {
         setLogin(false);
-        if (hash() === '#/login') history.replaceState(null, '', window.location.pathname);
+        // Back goes to the portfolio from #/login or any locked app page. replaceState fires no hashchange,
+        // so reset the route here too, or isAppRoute keeps the lock screen up.
+        if (hash() !== '#/portfolio') {
+            history.replaceState(null, '', window.location.pathname);
+            setRoute('');
+        }
     };
     const unlocked = () => {
         setLogin(false);
