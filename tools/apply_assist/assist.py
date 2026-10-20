@@ -92,7 +92,7 @@ def ctc_ok(job, min_ctc=MIN_CTC):
     return not ctc or ctc >= min_ctc
 
 
-SENIOR_TITLE = re.compile(r"(?<![a-z])(senior|mgr|avp|principle|sr\.?|lead|staff|principal|manager|director|architect|head of|vp|vice president|ii|iii|iv|sde[- ]?(2|3|ii)|l[4-9]|phd)(?![a-z])", re.I)  # also "Developer_Director_..."
+SENIOR_TITLE = re.compile(r"(?<![a-z])(senior|mgr|avp|principle|officer|sr\.?|lead|staff|principal|manager|director|architect|head of|vp|vice president|ii|iii|iv|sde[- ]?(2|3|ii)|l[4-9]|phd)(?![a-z])", re.I)  # also "Developer_Director_..."
 
 
 def fresher_ok(job):
