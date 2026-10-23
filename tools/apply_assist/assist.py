@@ -1360,7 +1360,9 @@ def unblockable_jobs(rows):
 def compose_pending_email(pending, unblock_count):
     subject = f"Answer these once: {len(pending)} questions (unblocks {unblock_count} applications)"
     lines = ["These required questions are holding up applications. Answer them once and the runner fills them",
-             "from then on.", "", "Run:  python tools/apply_assist/assist.py --setup --pending", ""]
+             "from then on.", "",
+             "Reply to this email with your answers (question number + answer, e.g. '2. 15 LPA'), or run:",
+             "  python tools/apply_assist/assist.py --setup --pending", ""]
     for i, e in enumerate(pending.values(), 1):
         lines.append(f"{i}. {e['question']}  [{e.get('type') or 'text'}] - blocks {e['blocks']} job(s)")
         if e.get("options"):
@@ -3667,6 +3669,8 @@ class Runner:
             self._attempt(job)
         if self.harvest_first and not self.submit:
             self._write_pending(self.rows)  # the dry run doubles as the harvest pass
+        elif self.submit and not self.harvest_first:
+            self._write_pending(self.rows)  # Sai: mail me the basic questions the runner couldn't answer
         return self.results
 
     def _attempt(self, job):
