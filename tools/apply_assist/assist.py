@@ -2955,12 +2955,26 @@ class PlaywrightDriver:
             return "no-button"
         before = self.workday_step()
         try:
+            self.page.keyboard.press("Escape")  # an open dropdown (Country Phone Code) eats the first click otherwise
+            self.page.wait_for_timeout(400)
+        except Exception:
+            pass
+        try:
             safe_click(btn, "next_page")
         except SubmitBlocked as e:
             return f"errors:{e}"
         deadline = time.monotonic() + timeout_s
+        clicked_again = False
         while time.monotonic() < deadline:
             self.page.wait_for_timeout(1000)
+            if not clicked_again and time.monotonic() > deadline - timeout_s + 8 and self.workday_step() == before:
+                clicked_again = True  # the first click only closed a popup: press Save and Continue once more
+                again = self._next_button()
+                if again is not None:
+                    try:
+                        safe_click(again, "next_page")
+                    except Exception:
+                        pass
             if self.workday_step() != before:
                 self._settle()
                 return "moved"
