@@ -2758,14 +2758,27 @@ class PlaywrightDriver:
             self.page.wait_for_timeout(1000)
         return "unknown"
 
+    def _wd_press_apply(self):
+        """Still on the job posting (it rendered after open() stopped waiting): press Apply, then Apply Manually."""
+        if self._visible('[data-automation-id="adventureButton"]') is None:
+            return False
+        first = self._open_apply_entry(wait_s=20)
+        if first.startswith(("followed", "clicked")):
+            self._open_apply_entry(wait_s=10)
+        return True
+
     def _workday_account(self, email, password):
         state = self._wd_wait_state()
+        if state == "unknown" and self._wd_press_apply():
+            state = self._wd_wait_state(timeout_s=45)
         if state == "unknown":  # Workday sometimes stalls on first load (several browsers at once): reload once
             try:
                 self.page.reload(wait_until="domcontentloaded", timeout=60000)
             except Exception:
                 pass
             state = self._wd_wait_state(timeout_s=45)
+            if state == "unknown" and self._wd_press_apply():
+                state = self._wd_wait_state(timeout_s=45)
         if state == "app":
             return "ok"  # already signed in (persistent Chrome profile)
         if state == "unknown":
