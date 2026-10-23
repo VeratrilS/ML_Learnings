@@ -96,12 +96,12 @@ SENIOR_TITLE = re.compile(r"(?<![a-z])(senior|mgr|avp|principle|officer|sr\.?|le
 
 
 def fresher_ok(job):
-    """Sai is a 2027 fresher: skip roles asking for 2+ years, batches without 2027, and senior / PhD titles."""
+    """Sai is a 2027 fresher: skip roles asking for any experience, batches without 2027, and senior / PhD titles."""
     m = re.search(r"asks for (\d+)\+? years", job.get("notes") or "")
-    if m and int(m.group(1)) >= 2:
+    if m and int(m.group(1)) >= 1:  # Sai: 0 experience is a must
         return False
     t = re.search(r"(\d{1,2})\s*(?:\+|to|-|–)?\s*\d{0,2}\s*(?:yrs?|years?)\b", job.get("role") or "", re.I)
-    if t and int(t.group(1)) >= 2:  # "Software Engineer - Java |8 to 14yrs|"
+    if t and int(t.group(1)) >= 1:  # "Software Engineer - Java |8 to 14yrs|"
         return False
     batches = _s(job.get("eligible_batches"))
     if batches and "2027" not in batches:
@@ -1020,6 +1020,8 @@ def heuristic_answer(question):
 YEARS_REQ = re.compile(r"(?:minimum|min\.?|at least)?\s*(\d{1,2})\s*(?:\+|plus)?\s*(?:(?:-|–|to)\s*\d{1,2}\s*\+?)?\s*(?:years?|yrs?)\b"
                        r"[^.\n]{0,40}?(?:experience|\bexp\b|industry|professional|relevant|working)", re.I)
 HIGHER_DEGREE_REQ = re.compile(r"(master'?s|\bm\.?tech\b|\bm\.?s\.?\b|ph\.?d)[^.\n]{0,60}\b(required|mandatory|must)", re.I)
+# "6 months of experience", "at least 3 months work experience" (not "6-month internship")
+MONTHS_REQ = re.compile(r"(?:minimum|min.?|at least)?\s*(\d{1,2})\s*\+?\s*months?\s+(?:of\s+)?(?:(?:professional|work|industry|relevant|hands-on)\s+)?(?:work\s+)?experience", re.I)
 OTHER_BATCH = re.compile(r"\b(202[3-6])\s*(?:batch|graduates?|pass(?:ed)?[- ]?outs?)\b", re.I)
 
 
@@ -1027,8 +1029,11 @@ def min_quals_problem(text):
     """Why a 2027 B.Tech fresher should not apply, from the posting text; None when nothing rules him out."""
     t = text or ""
     years = [int(m.group(1)) for m in YEARS_REQ.finditer(t) if 0 <= int(m.group(1)) <= 15]
-    if years and min(years) >= 2:
+    if years and min(years) >= 1:  # Sai: 0 experience is a must ("0-1 years" / "0 to 2 years" still pass)
         return f"asks for {min(years)}+ years of experience"
+    months = [int(m.group(1)) for m in MONTHS_REQ.finditer(t) if 3 <= int(m.group(1)) <= 36]
+    if months:
+        return f"asks for {min(months)}+ months of work experience"
     m = HIGHER_DEGREE_REQ.search(t)
     if m and not re.search(r"bachelor|b\.?tech|b\.?e\b", m.group(0), re.I):
         return "requires a higher degree (" + m.group(1) + ")"

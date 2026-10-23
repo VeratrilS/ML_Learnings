@@ -1427,7 +1427,9 @@ def test_national_number_keeps_numbers_that_start_with_91():
 def test_min_quals_problem():
     assert aa.min_quals_problem("Requirements: 3+ years of experience in Java") == "asks for 3+ years of experience"
     assert aa.min_quals_problem("0-2 years of experience; freshers welcome") is None
-    assert aa.min_quals_problem("Bachelor's in CS. 5 years of relevant experience preferred, 1 year experience required") is None
+    assert aa.min_quals_problem("Bachelor's in CS. 5 years of relevant experience preferred, 1 year experience required") ==         "asks for 1+ years of experience"  # Sai: 0 experience is a must
+    assert aa.min_quals_problem("At least 6 months of work experience") == "asks for 6+ months of work experience"
+    assert aa.min_quals_problem("A 6-month internship from January 2027") is None
     assert aa.min_quals_problem("We have 20 years of industry experience as a company") is None
     assert aa.min_quals_problem("Master's degree in CS is required.").startswith("requires a higher degree")
     assert aa.min_quals_problem("Open to 2025 batch graduates") == "only for the 2025 batch"
