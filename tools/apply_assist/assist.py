@@ -2764,9 +2764,10 @@ class PlaywrightDriver:
         """Still on the job posting (it rendered after open() stopped waiting): press Apply, then Apply Manually."""
         if self._visible('[data-automation-id="adventureButton"]') is None:
             return False
-        first = self._open_apply_entry(wait_s=20)
-        if first.startswith(("followed", "clicked")):
-            self._open_apply_entry(wait_s=10)
+        # Apply only opens a menu (Autofill with Resume / Apply Manually / Use My Last Application): go straight to
+        # the Apply Manually form, which is the posting URL + /apply/applyManually
+        base = re.sub(r"/apply(/.*)?$", "", urlparse(self.url())._replace(query="", fragment="").geturl().rstrip("/"))
+        self._goto(base + "/apply/applyManually")
         return True
 
     def _workday_account(self, email, password):
