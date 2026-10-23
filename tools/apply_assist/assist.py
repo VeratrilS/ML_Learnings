@@ -31,7 +31,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse, urlunparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse, urlunparse
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
@@ -2355,6 +2355,16 @@ class PlaywrightDriver:
             return "failed:Avature registration: " + "; ".join(e.strip() for e in errs if e.strip())[:150]
         return "avature (profile created)"
 
+    def _oracle_cookies(self):
+        """Dismiss an Oracle / Akamai cookie banner ("ACCEPT ALL", "ACCEPT") if it is showing."""
+        accept = self.page.get_by_role("button", name=re.compile(r"^\s*accept( all)?( cookies)?\s*$", re.I))
+        try:
+            if accept.count() and accept.first.is_visible():
+                safe_click(accept.first, "dismiss")
+                self.page.wait_for_timeout(800)
+        except Exception:
+            pass
+
     def _oracle_start(self, job, code_wait_s=240):
         """Oracle Candidate Experience (Texas Instruments, Goldman Sachs): cookie banner, Apply Now, email + terms,
         then the one-time code it emails. Leaves the browser on the application form."""
@@ -2367,18 +2377,13 @@ class PlaywrightDriver:
                     page.wait_for_timeout(1000)
                 except Exception:
                     pass
-        accept = page.get_by_role("button", name=re.compile(r"^\s*accept( all)?( cookies)?\s*$", re.I))
-        if accept.count() and accept.first.is_visible():  # Akamai: a plain ACCEPT button
-            try:
-                safe_click(accept.first, "dismiss")
-                page.wait_for_timeout(800)
-            except Exception:
-                pass
+        self._oracle_cookies()
         if "/apply" not in self.url():
             btn = page.get_by_role("button", name=re.compile(r"^\s*apply now\s*$", re.I))
             if btn.count():
                 safe_click(btn.first, "open_application")
         for _ in range(20):  # slow sites: wait for the email step or the form itself, not a fixed delay
+            self._oracle_cookies()  # Oracle's own cookie modal appears ~2 s late and blocks NEXT (Honeywell)
             if "/apply/email" in self.url() and self._visible('input[type="email"]') is not None:
                 break
             if "/apply" in self.url() and len(pick_form_fields(self.scan())) >= 3:
@@ -2389,9 +2394,13 @@ class PlaywrightDriver:
             email.fill(_s(getattr(self, "email", "")) or "sairaghava1318@gmail.com", timeout=6000)
             page.evaluate("""() => { const c = document.getElementById('legal-disclaimer-checkbox');
                                      if (c && !c.checked) c.dispatchEvent(new MouseEvent('click', {bubbles: true})); }""")  # hidden input
+            self._oracle_cookies()
             nxt = page.get_by_role("button", name=re.compile(r"^\s*next\s*$", re.I))
             self._code_since = time.time() - 60  # mail clocks drift a little
-            if nxt.count():
+            for _attempt in range(3):  # a late cookie modal can swallow the click: still on the email step -> again
+                if not nxt.count() or "/apply/email" not in self.url():
+                    break
+                self._oracle_cookies()
                 safe_click(nxt.first, "next_page")
                 page.wait_for_timeout(5000)
         if re.search(r"confirm your identity|verification code", self.page_text() or "", re.I):
@@ -2767,6 +2776,12 @@ class PlaywrightDriver:
 
     def _wd_press_apply(self):
         """Still on the job posting (it rendered after open() stopped waiting): press Apply, then Apply Manually."""
+        draft = self._visible('[data-automation-id="continueButton"]')
+        if draft is not None:  # an application started earlier: "Continue Application" links to the saved draft
+            href = draft.get_attribute("href") or ""
+            if href:
+                self._goto(urljoin(self.url(), href))
+                return True
         if self._visible('[data-automation-id="adventureButton"]') is None:
             return False
         # Apply only opens a menu (Autofill with Resume / Apply Manually / Use My Last Application): go straight to
@@ -2789,6 +2804,8 @@ class PlaywrightDriver:
                 state = self._wd_wait_state(timeout_s=45)
         if state == "app":
             return "ok"  # already signed in (persistent Chrome profile)
+        if state == "unknown" and EXPIRED.search((self.page_text() or "")[:3000]):
+            return "expired"  # "The page you are looking for doesn't exist" (Wolters Kluwer)
         if state == "unknown":
             self.diagnose("workday-" + (workday_tenant(self.url()) or "page"))
             return "failed:the Workday page didn't finish loading"
@@ -3171,6 +3188,7 @@ def check_page(driver):
 WD_ACCOUNT_REASONS = {
     "no-password": "Workday needs an account: add workday_password to answers.yaml",
     "verify-email": "Workday sent you a verification email: click the link in it, then run this job again",
+    "expired": "Posting closed (expired or no longer accepting applications)",
 }
 
 
@@ -3221,6 +3239,8 @@ def fill_workday(driver, fc, email, password, max_pages=8):
             return FillResult(fill.fields, filled, fill.todo, fill.tracked), [
                 f"Couldn't find Save and Continue (page: {(steps[-1] if steps else '')[:60]})"], [], steps
         if moved.startswith("errors:"):
+            if hasattr(driver, "diagnose"):
+                driver.diagnose("workday-errors")
             return FillResult(fill.fields, filled, fill.todo, fill.tracked), [f"Workday says: {moved[7:]}"], [], steps
     return FillResult(fill.fields, filled, fill.todo, fill.tracked), [f"More than {max_pages} pages"], [], steps
 
