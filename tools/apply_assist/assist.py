@@ -165,7 +165,7 @@ AVATURE_LOGIN = re.compile(r"/(Login|Register)\?folderId(Pending)?=", re.I)
 
 # Outcomes worth one more try at the end of a run: the page, not the form, was the problem.
 TRANSIENT = re.compile(r"didn't finish loading|Timeout \d+ ?ms exceeded|has been closed|net::ERR_|"
-                       r"Couldn't find Save and Continue", re.I)
+                       r"Couldn't find Save and Continue|Workday sent you a verification email", re.I)
 
 
 def plan_queue(jobs, max_jobs=25, per_company=1):
@@ -2087,7 +2087,11 @@ FIND_SUBMIT_JS = r"""() => {
   const b = c[c.length - 1]; b.setAttribute('data-aa-submit', '1'); return label(b);
 }"""
 
-CAPTCHA_FRAME_URL = re.compile(r"recaptcha|hcaptcha|turnstile|challenges\.cloudflare|arkoselabs|funcaptcha", re.I)
+CAPTCHA_FRAME_URL = re.compile(r"recaptcha|hcaptcha|turnstile|challenges\.cloudflare|arkoselabs|funcaptcha|"
+                               r"captcha-delivery\.com", re.I)
+# A bot wall that covers the whole page (DataDome on SmartRecruiters' Bosch pages): always a CAPTCHA for Sai, never
+# "no form" (invisible reCAPTCHA frames on normal forms don't count)
+BOT_WALL_URL = re.compile(r"captcha-delivery\.com", re.I)
 DIAG_JS = r"""() => { const vis = (e) => e.offsetParent !== null;
   return {url: location.href, visibility: document.visibilityState,
     ids: [...new Set([...document.querySelectorAll('[data-automation-id]')].filter(vis)
@@ -2979,6 +2983,7 @@ class PlaywrightDriver:
         st = {"url": self.url(), "captcha": False, "login": False, "errors": 0, "text": ""}
         for fr in self.page.frames:
             if CAPTCHA_FRAME_URL.search(fr.url or ""):
+                st["captcha"] = st["captcha"] or bool(BOT_WALL_URL.search(fr.url or ""))
                 continue
             try:
                 s = fr.evaluate(STATE_JS)
