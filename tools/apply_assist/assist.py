@@ -3183,7 +3183,15 @@ def fill_workday(driver, fc, email, password, max_pages=8):
         if reasons or missing:
             return FillResult(fill.fields, filled, fill.todo, fill.tracked), reasons, missing, steps
         moved = driver.workday_next()
+        if moved == "no-button" and hasattr(driver, "workday_wait_form"):
+            # half-rendered page (several browsers at once): wait for it once more before giving up
+            if getattr(driver, "page", None) is not None:
+                driver.page.wait_for_timeout(8000)
+            driver.workday_wait_form()
+            moved = driver.workday_next()
         if moved == "no-button":
+            if hasattr(driver, "diagnose"):
+                driver.diagnose("workday-no-next")
             return FillResult(fill.fields, filled, fill.todo, fill.tracked), [
                 f"Couldn't find Save and Continue (page: {(steps[-1] if steps else '')[:60]})"], [], steps
         if moved.startswith("errors:"):
