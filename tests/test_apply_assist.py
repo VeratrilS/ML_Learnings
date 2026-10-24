@@ -62,7 +62,13 @@ def test_select_jobs_filters_and_sorts_newest_first():
         job(13, status="approved", posted="2026-09-03"),         # approval not required, but allowed
     ]
     got = [j["id"] for j in aa.select_jobs(jobs)]
-    assert got == [3, 2, 6, 1, 13, 12, 11]
+    assert got == [1, 3, 6, 13, 12, 11, 2]  # best resume match first, then newest (same company tier)
+
+
+def test_select_jobs_puts_top_companies_first():
+    jobs = [job(1, company="Tiny Startup", match_score=95), job(2, company="Micron", match_score=60),
+            job(3, company="Google", match_score=50)]
+    assert [j["id"] for j in aa.select_jobs(jobs)] == [3, 2, 1]
 
 
 def test_dedupe_30_days_and_within_list():

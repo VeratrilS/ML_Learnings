@@ -109,14 +109,38 @@ def fresher_ok(job):
     return not SENIOR_TITLE.search(job.get("role") or "")
 
 
+# Sai: "give priority to top companies". Tier 1 first, then tier 2, then everyone else; inside a tier the best resume
+# match first, then the newest posting.
+TOP_TIER_1 = re.compile(r"\b(google|microsoft|apple|amazon|meta|nvidia|adobe|atlassian|uber|linkedin|salesforce|netflix|"
+                        r"stripe|databricks|snowflake|rubrik|cohesity|nutanix|palo alto|zscaler|servicenow|intuit|"
+                        r"goldman|morgan stanley|jp ?morgan|de shaw|d\. ?e\. ?shaw|tower research|graviton|quadeye|optiver|"
+                        r"jane street|citadel|squarepoint|worldquant|imc|alphagrep|qualcomm|samsung|oracle|sap|vmware|"
+                        r"broadcom|cisco|intel|amd|arista|texas instruments|visa|mastercard|american express|amex|"
+                        r"walmart|flipkart|phonepe|razorpay|cred|zomato|swiggy|meesho|groww|zepto|sprinklr|"
+                        r"rippling|postman|browserstack|media\.net|blackrock|arcesium|trexquant)\b", re.I)
+TOP_TIER_2 = re.compile(r"\b(micron|kla|lseg|deutsche bank|barclays|citi|hsbc|ubs|nomura|bny|state street|wells fargo|"
+                        r"paypal|expedia|booking|agoda|target|lowe'?s|honeywell|siemens|bosch|philips|caterpillar|"
+                        r"hp|hpe|hewlett|dell|netapp|synopsys|cadence|marvell|nxp|analog devices|western digital|"
+                        r"devrev|freshworks|zoho|chargebee|juspay|zeta|cars24|meesho|dream11|myntra|nykaa|"
+                        r"godaddy|akamai|autodesk|workday|okta|twilio|mongodb|confluent|wolters kluwer|kyndryl)\b", re.I)
+
+
+def company_tier(company):
+    c = company or ""
+    return 0 if TOP_TIER_1.search(c) else 1 if TOP_TIER_2.search(c) else 2
+
+
 def select_jobs(jobs, min_score=MIN_SCORE, min_ctc=MIN_CTC, role_types=ROLE_TYPES):
-    """Open jobs worth applying to, newest first (posting date, then match score). No approval needed."""
+    """Open jobs worth applying to: top companies first (company_tier), then best resume match, then newest."""
     keep = [j for j in jobs
             if (j.get("status") or "discovered") not in DONE_STATUSES and j.get("url")
             and j.get("role_type") in role_types and (j.get("match_score") or 0) >= min_score and ctc_ok(j, min_ctc)
             and fresher_ok(j)]
-    return sorted(keep, key=lambda j: (j.get("posted") or (j.get("discovered_at") or "")[:10],
-                                       j.get("match_score") or 0, j.get("discovered_at") or ""), reverse=True)
+    keep.sort(key=lambda j: (j.get("posted") or (j.get("discovered_at") or "")[:10], j.get("discovered_at") or ""),
+              reverse=True)  # newest first inside equal tier and match (stable sorts)
+    keep.sort(key=lambda j: j.get("match_score") or 0, reverse=True)
+    keep.sort(key=lambda j: company_tier(j.get("company")))
+    return keep
 
 
 def filter_boards(jobs, boards=None):
