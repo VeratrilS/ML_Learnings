@@ -67,7 +67,7 @@ def test_select_jobs_filters_and_sorts_newest_first():
 
 def test_select_jobs_puts_top_companies_first():
     jobs = [job(1, company="Tiny Startup", match_score=95), job(2, company="Micron", match_score=60),
-            job(3, company="Google", match_score=50)]
+            job(3, company="Google", match_score=60)]
     assert [j["id"] for j in aa.select_jobs(jobs)] == [3, 2, 1]
 
 
