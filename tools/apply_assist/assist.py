@@ -2185,6 +2185,26 @@ def close_leftover_browsers(profile=PROFILE_DIR):
     return n
 
 
+LEAN_BLOCK = {"image", "media", "font"}
+
+
+def lean_browsing(ctx):
+    """Unattended workers don't need pictures, video or web fonts: skip them (faster pages, less RAM per browser).
+    Visible windows Sai looks at load normally. Opt-in with APPLY_LEAN=1 (it broke a Workday Save and Continue test)."""
+    def handle(route):
+        try:
+            if route.request.resource_type in LEAN_BLOCK:
+                route.abort()
+            else:
+                route.continue_()
+        except Exception:
+            pass
+    try:
+        ctx.route("**/*", handle)
+    except Exception:
+        pass
+
+
 def launch(pw, headless=False, visible=False, profile=None):
     """Normal Playwright Chrome with a persistent profile. Off-screen + minimized unless --visible/--headless.
     Parallel workers each get their own profile folder (Chrome allows one browser per profile)."""
@@ -2197,8 +2217,12 @@ def launch(pw, headless=False, visible=False, profile=None):
         for channel in ("chrome", None):  # installed Chrome first, Playwright's Chromium as a fallback
             try:
                 if channel:
-                    return pw.chromium.launch_persistent_context(str(profile), channel=channel, **opts)
-                return pw.chromium.launch_persistent_context(str(profile), **opts)
+                    ctx = pw.chromium.launch_persistent_context(str(profile), channel=channel, **opts)
+                else:
+                    ctx = pw.chromium.launch_persistent_context(str(profile), **opts)
+                if not visible and os.getenv("APPLY_LEAN", "0") == "1":  # off by default: Workday lost its Save button
+                    lean_browsing(ctx)
+                return ctx
             except Exception as e:
                 last = e
         if attempt == 1 and "existing browser session" in str(last) and close_leftover_browsers(profile):
