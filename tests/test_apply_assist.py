@@ -1462,3 +1462,21 @@ def test_avature_register_purpose_only_allows_confirm_buttons():
 
 def test_posting_key_reads_keka_job_ids():
     assert aa.posting_key("https://peepalco.keka.com/careers/jobdetails/92951?src=Linkedin") == "92951"
+
+
+def test_toggle_label_purpose_only_allows_labels():
+    aa.check_click_allowed({"tag": "label", "text": "I have read the Important Privacy Information"}, "toggle_label")
+    try:
+        aa.check_click_allowed({"tag": "button", "type": "submit", "text": "Next"}, "toggle_label")
+    except aa.SubmitBlocked:
+        return
+    raise AssertionError("a button must not pass as a checkbox label")
+
+
+def test_dismiss_purpose_allows_only_banner_buttons():
+    aa.check_click_allowed({"tag": "button", "type": "submit", "text": "ACCEPT"}, "dismiss")
+    try:
+        aa.check_click_allowed({"tag": "button", "type": "submit", "text": "Submit application"}, "dismiss")
+    except aa.SubmitBlocked:
+        return
+    raise AssertionError("dismiss must not press a submit button")

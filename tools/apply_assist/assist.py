@@ -331,6 +331,14 @@ def check_click_allowed(info, purpose, submit_enabled=False):
         if info.get("wdid") == "add-button" and re.fullmatch(r"\s*Add( Another)?\s*", text, re.I):
             return True
         raise SubmitBlocked(f"Refusing to click {text or t!r} as an Add button.")
+    if purpose == "dismiss" and re.fullmatch(
+            r"\s*(accept( all)?( cookies)?|i accept|i agree|agree|ok|okay|got it|close|decline|reject all)\s*", text, re.I):
+        return True  # a cookie banner / privacy-notice dialog button (Oracle's ACCEPT is type=submit inside its dialog)
+    if purpose == "toggle_label":
+        # the visible <label> of a styled checkbox (Oracle's terms box): a label can't submit anything
+        if (info.get("tag") or "").lower() == "label":
+            return True
+        raise SubmitBlocked(f"Refusing to click {text or t!r} as a checkbox label.")
     if purpose == "avature_register":
         # Avature's registration page ("Confirm" creates the candidate profile; the caller checks the /Register URL).
         if re.fullmatch(r"\s*confirm\s*", text, re.I) and info.get("tag") == "button":
@@ -2357,11 +2365,31 @@ class PlaywrightDriver:
 
     def _oracle_cookies(self):
         """Dismiss an Oracle / Akamai cookie banner ("ACCEPT ALL", "ACCEPT") if it is showing."""
-        accept = self.page.get_by_role("button", name=re.compile(r"^\s*accept( all)?( cookies)?\s*$", re.I))
+        accept = self.page.locator("button:visible").filter(has_text=re.compile(r"^\s*accept( all)?( cookies)?\s*$", re.I))
         try:
             if accept.count() and accept.first.is_visible():
                 safe_click(accept.first, "dismiss")
                 self.page.wait_for_timeout(800)
+        except Exception:
+            pass
+
+    def _oracle_terms(self):
+        """Tick the terms box on the email step. Some sites (Honeywell) open an "Important Privacy Information" dialog
+        from the box and only tick it after ACCEPT; others take a click on the hidden input."""
+        page = self.page
+        box = page.locator("#legal-disclaimer-checkbox")
+        try:
+            if not box.count() or box.first.is_checked():
+                return
+            label = page.locator("label[for='legal-disclaimer-checkbox']")
+            if label.count():
+                safe_click(label.first, "toggle_label")
+                page.wait_for_timeout(1500)
+                self._oracle_cookies()  # the dialog's ACCEPT button (same matcher as the cookie banner)
+                page.wait_for_timeout(1000)
+            if not box.first.is_checked():
+                page.evaluate("""() => { const c = document.getElementById('legal-disclaimer-checkbox');
+                                         if (c && !c.checked) c.dispatchEvent(new MouseEvent('click', {bubbles: true})); }""")
         except Exception:
             pass
 
@@ -2392,8 +2420,7 @@ class PlaywrightDriver:
         email = self._visible('input[type="email"]') if "/apply/email" in self.url() else None  # only the sign-in step
         if email is not None:
             email.fill(_s(getattr(self, "email", "")) or "sairaghava1318@gmail.com", timeout=6000)
-            page.evaluate("""() => { const c = document.getElementById('legal-disclaimer-checkbox');
-                                     if (c && !c.checked) c.dispatchEvent(new MouseEvent('click', {bubbles: true})); }""")  # hidden input
+            self._oracle_terms()
             self._oracle_cookies()
             nxt = page.get_by_role("button", name=re.compile(r"^\s*next\s*$", re.I))
             self._code_since = time.time() - 60  # mail clocks drift a little
