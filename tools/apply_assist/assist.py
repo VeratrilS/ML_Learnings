@@ -95,6 +95,17 @@ def ctc_ok(job, min_ctc=MIN_CTC):
 SENIOR_TITLE = re.compile(r"(?<![a-z])(senior|mgr|avp|principle|officer|sr\.?|lead|staff|principal|manager|director|architect|head of|vp|vice president|ii|iii|iv|sde[- ]?(2|3|ii)|l[4-9]|phd)(?![a-z])", re.I)  # also "Developer_Director_..."
 
 
+# Sai: "according to my quals only" (B.Tech CSE, software). Hardware / VLSI / non-software titles are skipped.
+NOT_MY_FIELD = re.compile(
+    r"\b(design verification|logic design|silicon|asic|rtl|physical design|analog|mixed[- ]signal|hardware|vlsi|"
+    r"layout|pcb|eda tools?|cad engineer|timing|power analysis|dft|post[- ]silicon|soc|fpga|circuit|"
+    r"mechanical|electrical|civil|chemical|manufacturing|process engineer|quality engineer(?!.*(software|automation))|"
+    r"sap|servicenow|salesforce admin|mainframe|cobol|oracle (ebs|apps)|"
+    r"sales|marketing|finance|accountant|hr|recruiter|legal|procurement|buyer|"
+    r"technician|field (service|engineer)|commissioning|site engineer|support engineer|help ?desk|"
+    r"network (engineer|administrator)|system administrator|it support)\b", re.I)
+
+
 def fresher_ok(job):
     """Sai is a 2027 fresher: skip roles asking for any experience, batches without 2027, and senior / PhD titles."""
     m = re.search(r"asks for (\d+)\+? years", job.get("notes") or "")
@@ -105,6 +116,8 @@ def fresher_ok(job):
         return False
     batches = _s(job.get("eligible_batches"))
     if batches and "2027" not in batches:
+        return False
+    if NOT_MY_FIELD.search(job.get("role") or ""):
         return False
     return not SENIOR_TITLE.search(job.get("role") or "")
 
