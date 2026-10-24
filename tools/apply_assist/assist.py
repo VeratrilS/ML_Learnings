@@ -2600,6 +2600,18 @@ class PlaywrightDriver:
         frame = self._frames[a.f["frame"]]
         pick = lambda: self._pick_option(frame, a)  # noqa: E731
 
+        if rule_key(a.f) == "how_did_you_hear" and self.is_workday():
+            # Workday source pickers list categories (Company Website, Job Posting Sites, ...): typed searches only
+            # match the leaves, so open the full list and pick a category (then its first sub-source) directly
+            try:
+                self.page.keyboard.press("Escape")  # close any other open picker (phone code) first
+                loc.focus(timeout=5000)
+                loc.press("ArrowDown")
+                self._wait_options(frame)
+                if pick():
+                    return True
+            except Exception:
+                pass
         extra = [t for t in (a.targets or [])[1:] if len(t) <= 40]  # e.g. "NIT Rourkela", then "Other"
         for term in list(dict.fromkeys(combo_terms(a.value) + extra))[:7]:
             loc.fill("", timeout=5000)
@@ -3540,7 +3552,10 @@ class Runner:
     def handoff(self, job, reasons, fill):
         missing = [t.label for t in fill.todo] if fill else []
         reason = "; ".join(reasons)
-        hid = None if self.attended else self.api.create_handoff(job, reason, missing or reasons, url=self.d.url())
+        # A hand-off record (and its "Need you" email) only when someone will answer it: with --ask-timeout 0 the job
+        # is just logged for later (Sai found the per-job emails unnecessary)
+        hid = None if self.attended or not self.ask_timeout_s else \
+            self.api.create_handoff(job, reason, missing or reasons, url=self.d.url())
         choice = "now" if self.attended else "pending"  # attended: Sai is at the laptop, bring the window straight up
         if hid:
             deadline = self.clock() + self.ask_timeout_s
@@ -4182,7 +4197,7 @@ def run_batch(args, api, answers, learned, mode):
     if mode != "harvest":
         subject, body = runner.summary(mode)
         print("\n" + subject + "\n" + body)
-        emailer(subject, body)
+        # Sai: no per-run summary emails ("unnecessary"); only the unanswered-questions email goes out.
     api.runner_report(runner.report(mode))
 
 
