@@ -2906,6 +2906,12 @@ class PlaywrightDriver:
             loc = self._visible(sel)
             if loc is not None and val:
                 loc.fill(val, timeout=6000)
+                try:
+                    if loc.input_value(timeout=2000) != val:  # React sign-in forms can drop a pasted value
+                        loc.fill("", timeout=3000)
+                        loc.press_sequentially(val, delay=40)
+                except Exception:
+                    pass
         if creating:
             box = self._visible('[data-automation-id="createAccountCheckbox"]')
             if box is not None and not box.is_checked():
