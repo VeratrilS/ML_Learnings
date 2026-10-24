@@ -2299,11 +2299,11 @@ class PlaywrightDriver:
             return ""
 
     def _settle(self):
-        try:
-            self.page.wait_for_load_state("networkidle", timeout=8000)
+        try:  # sites with trackers never go network-idle: cap the wait (the fill steps poll for their own fields)
+            self.page.wait_for_load_state("networkidle", timeout=3000)
         except Exception:
             pass
-        self.page.wait_for_timeout(1500)
+        self.page.wait_for_timeout(800)
 
     def _goto(self, url):
         try:
