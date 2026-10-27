@@ -512,7 +512,9 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"employment status|current(ly)? (employment|working)|are you (currently )?(employed|working)", "currently_employed"),
     (r"(currently|previously) .{0,40}(directly )?employed", "previously_employed"),
     (r"issued a .{0,30}(employee id|email address)|employee id or .{0,30}email", "previously_employed"),
-    (r"are you a referral|referred by (a|an) (current )?employee|employee referral", "is_referral"),
+    (r"are you a referral|referred by (a|an) (current )?employee|employee referral|"
+     r"do you (know|have) (anyone|someone|any (friends?|family|employees?|relatives?)).{0,40}(work|employ|at|from)",
+     "is_referral"),  # Sai: "if they ask do you know anyone from the company keep no"
     # Sai holds no offers (said many times): every wording of "other offers / offer deadline" is No / None
     (r"(any|other|existing|pending|competing|active|current|outstanding|holding|hold|have)\b.{0,30}\boffers?\b|offers? (in hand|deadline|from (any|other))|recruiting[- ]process deadline|deadline we should be aware", "other_offers"),
     # Before the college rule: "employed by ... government or public institution" is a No, not a school name

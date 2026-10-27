@@ -1576,6 +1576,12 @@ def test_previously_employed_with_previously_after_the_company():
     assert aa.rule_key({"label": "Have you worked for Edwards previously?*"}) == "previously_employed"
 
 
+def test_know_anyone_at_the_company_is_no():
+    assert aa.rule_key({"label": "Do you know anyone who works at Smartsheet?*"}) == "is_referral"
+    assert aa.rule_key({"label": "Do you have any friends or family employed at Rubrik?"}) == "is_referral"
+    assert aa.rule_key({"label": "Do you know Python?"}) is None
+
+
 def test_how_soon_can_you_join_and_number_only_ctc():
     assert aa.rule_key({"label": "How soon can you join?"}) == "start_date"
     ctc = fld(1, "Current CTC", type="number", required=True)
