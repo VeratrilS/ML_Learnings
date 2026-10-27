@@ -549,7 +549,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     # Sai is a student: he can't join before January 2027, so "join immediately / within N days" is always No.
     (r"join (us )?(immediately|right away|asap|now)|immediate(ly)? (join|joining|start)|join within \d+", "join_immediately"),
     (r"^(are|is|will|would|can|could|do) you\b.{0,25}\b(available|able|willing|open|ready) to", "available"),  # yes/no
-    (r"earliest (start|joining)|when can you (start|join)|start date|joining date|available to (start|join)", "start_date"),
+    (r"earliest (start|joining)|(when|how soon) can you (start|join)|start date|joining date|available to (start|join)",
+     "start_date"),
     (r"relocation (assistance|support|package|benefit)|(require|need) relocation", "relocation_assistance"),
     (r"relocat", "willing_to_relocate"),
     (r"preferred (location|cities|city)|location preference", "preferred_cities"),
@@ -1143,6 +1144,9 @@ def plan_fields(fields, fc):
                 actions.append(Action(f, "text", fix, "profile", label))
             continue  # otherwise never overwrite what's already there
         val, src = resolve(f, fc, choice=t == "select" or is_combo)
+        if val and t == "number":  # number-only boxes: "0 / Not applicable" -> "0"; no leading number -> leave it
+            m = re.match(r"\s*(\d+(?:\.\d+)?)", str(val))
+            val = m.group(1) if m else None
         if val and src == "profile" and has_code and rule_key(f) == "phone":
             val = national_number(val)
         strict = src in ("question", "learned")

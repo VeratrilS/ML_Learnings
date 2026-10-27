@@ -1551,3 +1551,10 @@ def test_model_safety_labels_are_not_saved_as_answers():
 
 def test_previously_employed_with_previously_after_the_company():
     assert aa.rule_key({"label": "Have you worked for Edwards previously?*"}) == "previously_employed"
+
+
+def test_how_soon_can_you_join_and_number_only_ctc():
+    assert aa.rule_key({"label": "How soon can you join?"}) == "start_date"
+    ctc = fld(1, "Current CTC", type="number", required=True)
+    plan = aa.plan_fields([ctc], ctx({"current_ctc": "0 / Not applicable"}))
+    assert [(a.kind, a.value) for a in plan.actions] == [("text", "0")]
