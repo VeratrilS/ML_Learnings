@@ -5,9 +5,11 @@ Stores run metadata, submitted jobs, handoffs needed, failures, and learned rule
 Endpoints (blueprint job_runner_report_bp, prefix /api/jobs; passcode-protected):
   POST /api/jobs/runner-report        Stores the runner's run summary JSON
   GET  /api/jobs/runner-report?limit= Returns the last N runner runs
+  POST /api/jobs/runner-email         {subject, text, html?} -> emails Sai (the laptop's network can block SMTP)
 """
 from datetime import datetime, timezone
 import json
+import os
 from flask import Blueprint, jsonify, request
 from sqlalchemy import Column, DateTime, Integer, Text
 from api.core.db import Base, SessionLocal, engine
@@ -121,3 +123,20 @@ def get_runner_report():
         return jsonify({"status": "success", "data": result})
     finally:
         db.close()
+
+
+@job_runner_report_bp.route("/runner-email", methods=["POST"])
+def runner_email():
+    """Sends the runner's end-of-run email from the server. Always to Sai (RECEIVER_EMAIL), never elsewhere."""
+    from api.core.clients import EmailClient
+    from api.core.config import RECEIVER_EMAIL
+    data = request.get_json(silent=True) or {}
+    subject, text = str(data.get("subject") or "").strip()[:200], str(data.get("text") or "")[:100000]
+    if not subject or not text:
+        return jsonify({"status": "error", "message": "subject and text are required"}), 400
+    sender, password = os.getenv("SENDER_EMAIL"), os.getenv("SENDER_PASSWORD")
+    if not (sender and password):
+        return jsonify({"status": "error", "message": "Email not configured"}), 503
+    html = str(data.get("html") or "")[:300000] or None
+    ok = EmailClient(sender, password).send_email(RECEIVER_EMAIL, subject, text, html=html)
+    return jsonify({"status": "success" if ok else "error", "data": {"sent": bool(ok)}}), (200 if ok else 502)

@@ -119,7 +119,21 @@ def fresher_ok(job):
         return False
     if NOT_MY_FIELD.search(job.get("role") or ""):
         return False
+    if other_campus(job.get("role")):
+        return False
     return not SENIOR_TITLE.search(job.get("role") or "")
+
+
+# Sai is at NIT Rourkela: "Campus Graduate Program - IIT BHU" style roles are another college's on-campus drive.
+COLLEGE = re.compile(r"\b(IITs?|IIITs?|IISc|BITS|NITs?|DTU|NSUT|VIT|IIMs?|ISI|IIEST|campus)\b", re.I)
+MY_COLLEGE = re.compile(r"rourkela|nitr\b", re.I)
+
+
+def other_campus(role):
+    """True when the title names a college drive that isn't NIT Rourkela (a bare "Campus Hire" is fine)."""
+    role = role or ""
+    names = [m.group(1).lower() for m in COLLEGE.finditer(role)]
+    return any(n != "campus" for n in names) and not MY_COLLEGE.search(role)
 
 
 # Sai: "give priority to top companies". Tier 1 first, then tier 2, then everyone else; inside a tier the best resume
@@ -1068,11 +1082,13 @@ HIGHER_DEGREE_REQ = re.compile(r"(master'?s|\bm\.?tech\b|\bm\.?s\.?\b|ph\.?d)[^.
 # "6 months of experience", "at least 3 months work experience" (not "6-month internship")
 MONTHS_REQ = re.compile(r"(?:minimum|min.?|at least)?\s*(\d{1,2})\s*\+?\s*months?\s+(?:of\s+)?(?:(?:professional|work|industry|relevant|hands-on)\s+)?(?:work\s+)?experience", re.I)
 OTHER_BATCH = re.compile(r"\b(202[3-6])\s*(?:batch|graduates?|pass(?:ed)?[- ]?outs?)\b", re.I)
+FORM_QUESTION = re.compile(r"[^.?!\n]*\?", re.I)  # any sentence ending in "?"
 
 
 def min_quals_problem(text):
     """Why a 2027 B.Tech fresher should not apply, from the posting text; None when nothing rules him out."""
-    t = text or ""
+    # Form questions on the same page ("Do you have over 2 years of industry experience?") aren't requirements
+    t = FORM_QUESTION.sub(" ", text or "")
     years = [int(m.group(1)) for m in YEARS_REQ.finditer(t) if 0 <= int(m.group(1)) <= 15]
     if years and min(years) >= 1:  # Sai: 0 experience is a must ("0-1 years" / "0 to 2 years" still pass)
         return f"asks for {min(years)}+ years of experience"
@@ -1084,7 +1100,15 @@ def min_quals_problem(text):
         return "requires a higher degree (" + m.group(1) + ")"
     if OTHER_BATCH.search(t) and "2027" not in t:
         return "only for the " + OTHER_BATCH.search(t).group(1) + " batch"
+    m = ONLY_CAMPUS.search(t)
+    if m and not MY_COLLEGE.search(m.group(0)):
+        return "on-campus drive for another college (" + m.group(1) + ")"
     return None
+
+
+# "open only to students of IIT Kanpur", "eligible: candidates from IIT BHU only"
+ONLY_CAMPUS = re.compile(r"only (?:open )?(?:to|for) (?:current )?(?:students|candidates|graduates)[^.\n]{0,20}?"
+                         r"\b(?:of|from|at) ((?:IITs?|IIITs?|IISc|BITS|NITs?)\b[^.,;\n]{0,30})", re.I)
 
 
 def plan_fields(fields, fc):
@@ -1569,6 +1593,16 @@ class Api:
             return False
         return r.ok
 
+    def runner_email(self, subject, text, html=None):
+        """Email Sai through the app server (campus Wi-Fi blocks SMTP from the laptop)."""
+        try:
+            r = self.http.post(self.base + "/api/jobs/runner-email", json={"subject": subject, "text": text, "html": html},
+                               timeout=90)
+            return r.ok
+        except Exception as e:
+            print(f"runner-email failed: {str(e)[:100]}")
+            return False
+
 
 def ensure_resume(api, path=RESUME_PATH):
     """Download Sai's resume PDF once (the URL carries a read-only key: never print it)."""
@@ -1931,18 +1965,26 @@ def combine_code_sources(file_reader, inbox, every_s=20, clock=time.monotonic):
     return code_for
 
 
-def make_emailer():
-    """send(subject, body) -> bool via api.core.clients.EmailClient (SENDER_EMAIL / SENDER_PASSWORD / RECEIVER_EMAIL)."""
+def make_emailer(api=None):
+    """send(subject, body) -> bool via api.core.clients.EmailClient (SENDER_EMAIL / SENDER_PASSWORD / RECEIVER_EMAIL),
+    falling back to the app server's /api/jobs/runner-email when SMTP is blocked here."""
     def send(subject, body):
         sender, password = os.getenv("SENDER_EMAIL"), os.getenv("SENDER_PASSWORD")
         receiver = os.getenv("RECEIVER_EMAIL") or "sairaghava1318@gmail.com"
-        if not (sender and password):
-            print("Email not configured (SENDER_EMAIL / SENDER_PASSWORD): skipped.")
-            return False
-        if str(REPO) not in sys.path:
-            sys.path.insert(0, str(REPO))
-        from api.core.clients import EmailClient
-        return EmailClient(sender, password).send_email(receiver, subject, body)
+        ok = False
+        if sender and password:
+            if str(REPO) not in sys.path:
+                sys.path.insert(0, str(REPO))
+            from api.core.clients import EmailClient
+            try:
+                ok = EmailClient(sender, password).send_email(receiver, subject, body)
+            except Exception:
+                ok = False
+        if not ok and api is not None:
+            ok = api.runner_email(subject, body)
+        if not ok:
+            print("Email not sent (SMTP unavailable and the app server didn't send it).")
+        return ok
     return send
 
 
@@ -3520,8 +3562,10 @@ class Runner:
                  handoff_wait_s=1800, ask_timeout_s=600, poll_s=15, pending=None, pending_path=PENDING_PATH,
                  learned=None, learned_path=LEARNED_PATH, harvest_first=True, emailer=None, log=None,
                  sleep=time.sleep, clock=time.monotonic, rng=None, pace=(90, 240), confirm_wait_s=30,
-                 workday_password="", code_for=None, code_wait_s=600, attended=False, gate=None):
+                 workday_password="", code_for=None, code_wait_s=600, attended=False, gate=None, tailor=None):
         self.api, self.d, self.context_for = api, driver, context_for
+        self.tailor = tailor  # tailor(job, posting_text) -> resume PDF bytes worded for this posting, or None
+        self._posting, self._base_resume = "", None
         self.workday_password = workday_password
         self.code_for = code_for  # code_for(job, wait_s) -> the security code the site emailed, or None
         self.code_wait_s = code_wait_s
@@ -3613,14 +3657,30 @@ class Runner:
             return None
         try:
             self.d._goto(job["url"])
-            return min_quals_problem(self.d.page_text() or "")
+            self._posting = self.d.page_text() or ""
+            return min_quals_problem(self._posting)
         except Exception:
             return None  # can't read it: let the normal flow decide
 
+    def _use_tailored_resume(self, job):
+        """Upload a resume worded for this posting (Sai's ask); the original resume.pdf on any failure."""
+        if not self.tailor or not hasattr(self.d, "resume"):
+            return
+        if self._base_resume is None:
+            self._base_resume = self.d.resume
+        pdf = None
+        try:
+            pdf = self.tailor(job, self._posting) if len(self._posting) >= 300 else None
+        except Exception as e:
+            print(f"  (resume tailoring failed, using the original: {str(e)[:80]})")
+        self.d.resume = pdf or self._base_resume
+
     def run_job(self, job):
+        self._posting = ""
         problem = self._min_quals(job)
         if problem:
             return self._record(job, "skipped", reason=f"min qualifications: {problem}")
+        self._use_tailored_resume(job)
         try:
             note = self.d.open(job)
         except Exception as e:
@@ -4056,6 +4116,22 @@ def run_assist(args, api, answers, learned):
         print("Marked as applied in Job Radar." if ok else f"Could not mark it applied: {msg}")
 
 
+def make_tailor():
+    """tailor(job, posting_text) -> PDF bytes via tailor_resume.py; each tailored copy and its changes are saved in
+    runs/<date>/resumes/ for Sai to check."""
+    import tailor_resume
+    generate = tailor_resume.default_generate()
+    out_dir = RUNS_DIR / datetime.now().strftime("%Y-%m-%d") / "resumes"
+
+    def tailor(job, text):
+        pdf, changes = tailor_resume.tailored_pdf(text, job.get("role") or "", job.get("company") or "",
+                                                  generate=generate, out_dir=out_dir)
+        if pdf:
+            print(f"  resume worded for this posting ({len(changes)} changes)")
+        return pdf
+    return tailor
+
+
 def _resume_name(profile, answers):
     name = _s((answers or {}).get("full_name")) or _s((profile or {}).get("full_name")) or "Resume"
     return re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_") + "_Resume.pdf"
@@ -4175,7 +4251,7 @@ def run_batch(args, api, answers, learned, mode):
     print(f"{len(jobs)} open jobs after filters and 30-day dedupe; working through up to {limit}.")
     profile = radar.get("profile") or {}
     resume = ensure_resume(api)
-    emailer = make_emailer()
+    emailer = make_emailer(api)
     pending = load_yaml(PENDING_PATH)
     inbox = None if args.no_inbox else make_inbox(_s(answers.get("email")) or "sairaghava1318@gmail.com")
     if inbox:
@@ -4195,7 +4271,8 @@ def run_batch(args, api, answers, learned, mode):
                         gate=SubmitGate(RUNS_DIR / "submit_gate", tuple(float(x) for x in args.pace.split(",")))
                         if args.shard else None,
                         workday_password=workday_passwords(answers, Path(args.answers) if args.answers else ANSWERS_PATH),
-                        code_for=combine_code_sources(make_code_reader(), inbox), attended=args.attended)
+                        code_for=combine_code_sources(make_code_reader(), inbox), attended=args.attended,
+                        tailor=None if args.no_tailor or mode == "harvest" else make_tailor())
         if mode == "harvest":
             work, _skipped = plan_queue(jobs, limit, args.per_company)
             pend, _rows = runner.harvest(work, record=True)
@@ -4249,6 +4326,7 @@ def main(argv=None):
     ap.add_argument("--ask-timeout", type=int, default=10, help="minutes to wait for your email choice")
     ap.add_argument("--no-harvest", action="store_true", help="with --auto --submit: skip the harvest pass")
     ap.add_argument("--no-ai", action="store_true", help="don't ask the AI about unusual required questions")
+    ap.add_argument("--no-tailor", action="store_true", help="upload resume.pdf as is (no wording for each posting)")
     ap.add_argument("--visible", action="store_true", help="keep Chrome on-screen (debugging)")
     ap.add_argument("--headless", action="store_true", help="no window at all (checks only; never waits for you)")
     ap.add_argument("--screenshot", help="with --headless: where to save a full-page screenshot")

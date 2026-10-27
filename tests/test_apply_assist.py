@@ -1486,3 +1486,40 @@ def test_dismiss_purpose_allows_only_banner_buttons():
     except aa.SubmitBlocked:
         return
     raise AssertionError("dismiss must not press a submit button")
+
+
+def test_other_college_campus_drives_are_skipped():
+    assert aa.other_campus("2027 Software Engineer - Campus Graduate Program - IIT BHU")
+    assert aa.other_campus("Software Engineer (BITS Pilani)")
+    assert not aa.other_campus("Campus Hire 2027 - Software Engineer")
+    assert not aa.other_campus("Graduate Engineer - NIT Rourkela")
+    assert not aa.fresher_ok({"role": "2027 SWE - Campus Graduate Program - IIT Kanpur"})
+    assert "another college" in aa.min_quals_problem("This program is only open to students of IIT Kanpur.")
+    assert aa.min_quals_problem("Open to all 2027 graduates.") is None
+
+
+def test_min_quals_ignores_form_questions():
+    page = ("New Grad Software Engineer. Graduating between December 2026 and July 2027.\n"
+            "Do you have over 2 years of industry work experience (non-internship experience)? *\nYes\nNo")
+    assert aa.min_quals_problem(page) is None
+    assert "2+ years" in aa.min_quals_problem("Requirements: 2+ years of professional experience. Apply now?")
+
+
+def test_tailored_resume_is_used_and_falls_back():
+    class D:
+        resume = b"original"
+    seen = []
+    r = runner(D(), tailor=lambda job, text: seen.append(text) or b"tailored")
+    r._posting = "x" * 400
+    r._use_tailored_resume({"company": "Acme"})
+    assert r.d.resume == b"tailored" and seen == ["x" * 400]
+
+    def boom(job, text):
+        raise RuntimeError("quota")
+    r.tailor = boom
+    r._use_tailored_resume({"company": "Acme"})
+    assert r.d.resume == b"original"
+    r.tailor = lambda job, text: b"tailored"
+    r._posting = "short"  # posting not readable: never tailor blind
+    r._use_tailored_resume({"company": "Acme"})
+    assert r.d.resume == b"original"

@@ -41,3 +41,22 @@ def test_runner_report_auth(monkeypatch):
     c = app.test_client()
     assert c.post("/api/jobs/runner-report", json={}).status_code == 401
     assert c.get("/api/jobs/runner-report").status_code == 401
+
+
+def test_runner_email_goes_to_sai_only(monkeypatch):
+    monkeypatch.setenv("APP_PASSCODE", "")
+    monkeypatch.setenv("SENDER_EMAIL", "bot@example.com")
+    monkeypatch.setenv("SENDER_PASSWORD", "x")
+    sent = []
+    from api.core import clients
+    monkeypatch.setattr(clients.EmailClient, "send_email", lambda self, to, subject, body, html=None: sent.append((to, subject)) or True)
+    c = app.test_client()
+    assert c.post("/api/jobs/runner-email", json={"subject": "Report", "text": "hi", "to": "someone@else.com"}).status_code == 200
+    from api.core.config import RECEIVER_EMAIL
+    assert sent == [(RECEIVER_EMAIL, "Report")]
+    assert c.post("/api/jobs/runner-email", json={"subject": ""}).status_code == 400
+
+
+def test_runner_email_auth(monkeypatch):
+    monkeypatch.setenv("APP_PASSCODE", "secretpass")
+    assert app.test_client().post("/api/jobs/runner-email", json={"subject": "a", "text": "b"}).status_code == 401
