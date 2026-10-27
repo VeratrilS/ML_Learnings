@@ -97,6 +97,29 @@ def test_local_history_reads_submitted_runs(tmp_path):
     assert [h["company"] for h in aa.local_history(tmp_path)] == ["A"]
 
 
+def test_applied_before_matches_the_same_posting_by_any_link():
+    # Rubrik Cloud: Azure was sent three times: once from Job Radar, then twice from pasted/researched links
+    history = [{"company": "Rubrik", "role": "Software Engineer - Cloud: Azure", "ts": "2026-10-17T10:51:20Z", "id": 6,
+                "url": "https://www.rubrik.com/company/careers/departments/job.8258200?gh_jid=8258200"}]
+    embed = {"company": "rubrik", "role": "", "url": "https://job-boards.greenhouse.io/embed/job_app?for=rubrik&token=8258200"}
+    assert aa.applied_before(embed, history)["id"] == 6
+    retitled = {"company": "Hevo Data", "role": "SDE Intern", "id": 229, "url": "https://jobs.lever.co/hevodata/x"}
+    assert aa.applied_before(retitled, [{"company": "Hevo Data", "role": "SDE", "id": 229}])
+    same_role = {"company": "Rubrik", "role": "Software Engineer - Cloud: Azure", "url": "https://example.com/other"}
+    assert aa.applied_before(same_role, history)
+    assert aa.applied_before(same_role, history, same_role=False) is None
+    other = {"company": "Rubrik", "role": "SWE Intern", "url": "https://job-boards.greenhouse.io/rubrik/jobs/8166537"}
+    assert aa.applied_before(other, history) is None
+
+
+def test_local_history_keeps_the_link(tmp_path):
+    d = tmp_path / "2026-10-10"
+    d.mkdir()
+    (d / "log.jsonl").write_text(json.dumps({"ts": "2026-10-10T00:00:00Z", "company": "A", "role": "R",
+                                             "url": "https://jobs.lever.co/a/1", "outcome": "submitted"}) + "\n")
+    assert aa.local_history(tmp_path)[0]["url"] == "https://jobs.lever.co/a/1"
+
+
 # ------------------------------------------------------------------ URLs
 def test_application_urls():
     assert aa.application_url("https://jobs.lever.co/hevodata/95ab9f01") == ("https://jobs.lever.co/hevodata/95ab9f01/apply", "lever")

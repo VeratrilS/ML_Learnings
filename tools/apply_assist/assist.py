@@ -243,7 +243,8 @@ def local_history(runs_dir=RUNS_DIR):
             except ValueError:
                 continue
             if e.get("outcome") in ("submitted", "unconfirmed"):
-                out.append({"company": e.get("company"), "role": e.get("role"), "ts": e.get("ts"), "id": e.get("job_id")})
+                out.append({"company": e.get("company"), "role": e.get("role"), "ts": e.get("ts"), "id": e.get("job_id"),
+                            "url": e.get("url")})
             elif e.get("outcome") == "unmarked":  # Sai said it wasn't really submitted: may be applied to again
                 out = [h for h in out if h.get("id") != e.get("job_id")]
     return out
@@ -264,8 +265,21 @@ def expired_ids(runs_dir=RUNS_DIR):
 
 
 def server_history(radar_jobs):
-    return [{"company": j.get("company"), "role": j.get("role"), "ts": j.get("applied_at")}
+    return [{"company": j.get("company"), "role": j.get("role"), "ts": j.get("applied_at"), "id": j.get("id"),
+             "url": j.get("portal_url") or j.get("url")}
             for j in radar_jobs or [] if j.get("status") in APPLIED_STATUSES]
+
+
+def applied_before(job, history, same_role=True):
+    """The earlier application to this same posting (same board id, link, Job Radar id or company+role), or None.
+    No time limit: a posting already sent (Rubrik Cloud: Azure went three times) is never resent."""
+    key, rk = posting_key(job.get("url")), role_key(job.get("company"), job.get("role"))
+    for h in history:
+        if ((key and key == posting_key(h.get("url"))) or _same_url(job.get("url"), h.get("url"))
+                or (job.get("id") is not None and job.get("id") == h.get("id"))
+                or (same_role and job.get("role") and rk == role_key(h.get("company"), h.get("role")))):
+            return h
+    return None
 
 
 # =====================================================================================================
@@ -4270,6 +4284,11 @@ def run_batch(args, api, answers, learned, mode):
         jobs = [{"id": job_id_for_url(args.url, (radar.get("jobs") or []) + api.all_live()),
                  "company": args.company or urlparse(args.url).netloc, "role": args.role or "",
                  "url": args.url, "board": application_url(args.url)[1]}]
+        before = None if args.again else applied_before(jobs[0], local_history() + server_history(radar.get("jobs")))
+        if before:
+            print(f"Already applied on {str(before.get('ts') or '?')[:10]}: {before.get('company')} - "
+                  f"{before.get('role')}. Not sending it again (--again to override).")
+            return
     else:
         types = tuple(t.strip() for t in args.role_types.split(",") if t.strip())
         jobs = select_jobs(api.live_jobs(args.min_score, args.min_ctc, types), args.min_score, args.min_ctc, types)
@@ -4277,8 +4296,10 @@ def run_batch(args, api, answers, learned, mode):
         if args.only:
             wanted = {s.strip() for s in args.only.split(",") if s.strip()}
             jobs = [j for j in jobs if str(j.get("id")) in wanted]
-        done = recent_role_keys(local_history() + server_history(radar.get("jobs")))
-        jobs = dedupe(jobs, () if args.only else done)  # --only: Sai picked these ids (e.g. finishing an unconfirmed submit)
+        history = local_history() + server_history(radar.get("jobs"))
+        jobs = dedupe(jobs, () if args.only else recent_role_keys(history))  # --only: Sai picked these ids
+        if not args.only:  # same posting under a new title or a new Job Radar row: role keys miss it
+            jobs = [j for j in jobs if not applied_before(j, history, same_role=False)]
         held = held_companies()
         if held:
             jobs = [j for j in jobs if _norm(j.get("company")) not in held]
@@ -4392,6 +4413,7 @@ def main(argv=None):
                     help="you're at the laptop: CAPTCHAs / missing answers bring the window straight up (no email)")
     ap.add_argument("--only", default=None, help="only these Job Radar ids, comma-separated (e.g. 5,1,10)")
     ap.add_argument("--url", default=None, help="with --auto: apply to this one posting link (use with --company/--role)")
+    ap.add_argument("--again", action="store_true", help="with --url: apply even if this posting was applied to before")
     ap.add_argument("--company", default=None, help="with --url: company name")
     ap.add_argument("--no-tidy", action="store_true", help="don't tidy Gmail (codes to Trash, confirmations to a label)")
     ap.add_argument("--tidy-inbox", action="store_true", help="only tidy Gmail now and exit")
