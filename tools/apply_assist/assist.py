@@ -565,6 +565,7 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"(work|working) (from|in|at) .{0,30}office|hybrid|on-?site|in-?office", "office_or_hybrid"),
     # Standard screening questions a student applicant answers the same way every time (see AUTO_DEFAULTS).
     (r"(currently|previously|ever|in the past|before)\b.{0,40}\b(work(ed)?|employed|contracted)\b.{0,40}\b(for|by|at|with)\b|"
+     r"\b(worked|employed)\b (for|by|at|with)\b.{0,40}\b(previously|before|in the past)\b|"  # "worked for Edwards previously"
      r"former employee|contracted to provide services|employed by .{0,60} in the past", "previously_employed"),
     (r"family members?|relatives?\b|related to (any|an) (current )?employee|personal relationships?", "relatives_at_company"),
     (r"outside (business|employment|activit)|side business|conflicts? of interest", "outside_business"),

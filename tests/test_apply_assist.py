@@ -1547,3 +1547,7 @@ def test_workday_search_select_box_may_be_opened_but_not_buttons():
 def test_model_safety_labels_are_not_saved_as_answers():
     ai = aa.make_ai_answerer({}, generate=lambda p: {"answer": "User Safety: safe"}, path=None)
     assert ai("Country*", "text", [], "SingleStore") is None
+
+
+def test_previously_employed_with_previously_after_the_company():
+    assert aa.rule_key({"label": "Have you worked for Edwards previously?*"}) == "previously_employed"
