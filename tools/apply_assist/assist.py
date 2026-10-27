@@ -100,6 +100,8 @@ NOT_MY_FIELD = re.compile(
     r"\b(design verification|logic design|silicon|asic|rtl|physical design|analog|mixed[- ]signal|hardware|vlsi|"
     r"layout|pcb|eda tools?|cad engineer|timing|power analysis|dft|post[- ]silicon|soc|fpga|circuit|"
     r"mechanical|electrical|civil|chemical|manufacturing|process engineer|quality engineer(?!.*(software|automation))|"
+    r"(?<!software )design (engineer|evaluation)|evaluation engineer|model[- ]based|transmission|drivetrain|powertrain|"
+    r"thermal|hydraulics?|structural engineer|mechatronics|calibration|"
     r"sap|servicenow|salesforce admin|mainframe|cobol|oracle (ebs|apps)|"
     r"sales|marketing|finance|accountant|hr|recruiter|legal|procurement|buyer|"
     r"technician|field (service|engineer)|commissioning|site engineer|support engineer|help ?desk|"

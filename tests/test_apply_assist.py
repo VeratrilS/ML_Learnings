@@ -1587,3 +1587,11 @@ def test_how_soon_can_you_join_and_number_only_ctc():
     ctc = fld(1, "Current CTC", type="number", required=True)
     plan = aa.plan_fields([ctc], ctx({"current_ctc": "0 / Not applicable"}))
     assert [(a.kind, a.value) for a in plan.actions] == [("text", "0")]
+
+
+def test_mechanical_and_hardware_design_titles_are_not_my_field():
+    # Caterpillar and Analog Devices went through as "engineer" roles
+    for role in ("Model Based Developer  - Transmission / Drivetrain", "Associate Design Engineer", "Design Evaluation Engineer"):
+        assert aa.NOT_MY_FIELD.search(role), role
+    for role in ("Software Design Engineer", "Software Engineer - Structural Data", "Data Engineer"):
+        assert not aa.NOT_MY_FIELD.search(role), role
