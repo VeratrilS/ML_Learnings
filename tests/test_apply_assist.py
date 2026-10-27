@@ -1523,3 +1523,13 @@ def test_tailored_resume_is_used_and_falls_back():
     r._posting = "short"  # posting not readable: never tailor blind
     r._use_tailored_resume({"company": "Acme"})
     assert r.d.resume == b"original"
+
+
+def test_month_ranges_from_zero_pass_and_phone_code_lists_are_ignored():
+    assert aa.min_quals_problem("Experience: 0-6 months of experience in software development.") is None
+    assert "6+ months" in aa.min_quals_problem("At least 6 months of work experience required.")
+    assert aa.phone_codes_only("How Did You Hear About Us?*", ["Aruba (+297)", "India (+91)"])
+    assert not aa.phone_codes_only("Country Phone Code*", ["India (+91)"])
+    assert not aa.phone_codes_only("How Did You Hear About Us?*", ["Job Board", "India (+91)"])
+    ai = aa.make_ai_answerer({}, generate=lambda p: {"answer": "India (+91)"}, path=None)
+    assert ai("How Did You Hear About Us?*", "select", ["India (+91)"], "JLL") is None

@@ -1092,7 +1092,8 @@ def min_quals_problem(text):
     years = [int(m.group(1)) for m in YEARS_REQ.finditer(t) if 0 <= int(m.group(1)) <= 15]
     if years and min(years) >= 1:  # Sai: 0 experience is a must ("0-1 years" / "0 to 2 years" still pass)
         return f"asks for {min(years)}+ years of experience"
-    months = [int(m.group(1)) for m in MONTHS_REQ.finditer(t) if 3 <= int(m.group(1)) <= 36]
+    months = [int(m.group(1)) for m in MONTHS_REQ.finditer(t) if 3 <= int(m.group(1)) <= 36
+              and not re.search(r"\d\s*(?:-|–|to)\s*$", t[max(0, m.start(1) - 6):m.start(1)])]  # "0-6 months"
     if months:
         return f"asks for {min(months)}+ months of work experience"
     m = HIGHER_DEGREE_REQ.search(t)
@@ -1661,6 +1662,15 @@ def ai_facts(values):
     return facts + "\n" + extra
 
 
+PHONE_CODE_OPTION = re.compile(r"\(\+\d{1,4}\)\s*$")  # "India (+91)"
+
+
+def phone_codes_only(question, options):
+    """True when a non-phone question was scanned with a phone-code dropdown's options (Workday leaves it open)."""
+    opts = [o for o in (options or []) if _s(o)]
+    return bool(opts) and all(PHONE_CODE_OPTION.search(_s(o)) for o in opts) and         not re.search(r"phone|country|code|dial", question or "", re.I)
+
+
 def make_ai_answerer(values, generate=None, path=AI_PATH):
     """ai(question, ftype, options, company, role) -> answer or None. Answers are cached in ai_answers.yaml (reused
     for the same question, company-specific ones only for that company); fix any wrong one there."""
@@ -1683,6 +1693,8 @@ def make_ai_answerer(values, generate=None, path=AI_PATH):
     facts = ai_facts(values)
 
     def ai(question, ftype, options, company, role=""):
+        if phone_codes_only(question, options):
+            return None
         _key, e = bank.find(question, company)
         if e and (not options or option_match(options, e["answer"]) is not None):
             return e["answer"]
@@ -2767,6 +2779,8 @@ class PlaywrightDriver:
                     seen.append((i, opts.nth(i).inner_text(timeout=1000)))
             except Exception:
                 continue
+        if rule_key(a.f) != "phone_country_code":
+            seen = [s for s in seen if not PHONE_CODE_OPTION.search(s[1])]  # Workday leaves the phone-code list open
         idx = option_match([t for _, t in seen], targets, strict=strict)
         if idx is None:
             return False
