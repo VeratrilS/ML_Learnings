@@ -404,6 +404,8 @@ def check_click_allowed(info, purpose, submit_enabled=False):
     if purpose == "open_dropdown":
         if info.get("haspopup") == "listbox" and t != "submit" and not SUBMIT_WORDS.search(text):
             return True
+        if info.get("uxi") == "selectinput" and info.get("tag") == "input" and t == "text":
+            return True  # Workday search-select box ("How did you hear about us"): its list opens on a click
         raise SubmitBlocked(f"Refusing to click {text or t!r}: not a dropdown.")
     if is_submit_like(info):
         raise SubmitBlocked(f"Refusing to click {text or t!r}: looks like a submit/apply/send control.")
@@ -414,6 +416,7 @@ ELEMENT_INFO_JS = """(el) => ({
   tag: el.tagName.toLowerCase(), type: (el.type || el.getAttribute('type') || '').toLowerCase(), typeattr: el.getAttribute('type') || '',
   role: (el.getAttribute('role') || '').toLowerCase(), in_form: !!el.closest('form'), href: el.tagName === 'A' ? el.href : '',
   haspopup: (el.getAttribute('aria-haspopup') || '').toLowerCase(), wdid: el.getAttribute('data-automation-id') || '',
+  uxi: el.getAttribute('data-uxi-widget-type') || '',
   text: ((el.innerText || '') + ' ' + (el.tagName === 'INPUT' ? (el.value || '') : '') + ' ' + (el.getAttribute('aria-label') || ''))
         .replace(/\\s+/g, ' ').trim().slice(0, 200)})"""
 
@@ -2042,10 +2045,15 @@ SCAN_JS = r"""() => {
   };
   const comboValue = (el) => {
     if (el.value) return el.value;
+    const VAL = '[class*="single-value"], [class*="singleValue"], [class*="multi-value__label"], [class*="multiValue"], '
+      + '[data-automation-id="selectedItem"]';
+    // Workday: only this field's own box (walking up reached the phone code's "India (+91)" chip)
+    const own = el.closest('[data-automation-id^="formField-"]');
+    if (own) { const v = own.querySelector(VAL); return v ? txt(v) : ''; }
     let n = el.parentElement;
     for (let i = 0; n && i < 5; i++, n = n.parentElement) {
-      const v = n.querySelector('[class*="single-value"], [class*="singleValue"], [class*="multi-value__label"], [class*="multiValue"], '
-        + '[data-automation-id="selectedItem"]');
+      if (n.querySelectorAll('input:not([type="hidden"]), select, textarea').length > 1) break;  // another field's box
+      const v = n.querySelector(VAL);
       if (v) return txt(v);
     }
     return '';
@@ -2680,16 +2688,21 @@ class PlaywrightDriver:
 
         if rule_key(a.f) == "how_did_you_hear" and self.is_workday():
             # Workday source pickers list categories (Company Website, Job Posting Sites, ...): typed searches only
-            # match the leaves, so open the full list and pick a category (then its first sub-source) directly
-            try:
-                self.page.keyboard.press("Escape")  # close any other open picker (phone code) first
-                loc.focus(timeout=5000)
-                loc.press("ArrowDown")
-                self._wait_options(frame)
-                if pick():
-                    return True
-            except Exception:
-                pass
+            # match the leaves, so open the full list and pick a category (then its first sub-source) directly.
+            # Newer Workday opens the list only on a click; any source is a formality, so fall back to the first one.
+            for opener in ("click", "arrow"):
+                try:
+                    self.page.keyboard.press("Escape")  # close any other open picker (phone code) first
+                    if opener == "click":
+                        safe_click(loc, "open_dropdown")
+                    else:
+                        loc.focus(timeout=5000)
+                        loc.press("ArrowDown")
+                    self._wait_options(frame)
+                    if pick() or self._pick_option(frame, a, any_option=True):
+                        return True
+                except Exception:
+                    pass
         extra = [t for t in (a.targets or [])[1:] if len(t) <= 40]  # e.g. "NIT Rourkela", then "Other"
         for term in list(dict.fromkeys(combo_terms(a.value) + extra))[:7]:
             loc.fill("", timeout=5000)
@@ -2767,8 +2780,9 @@ class PlaywrightDriver:
             self.page.wait_for_timeout(400)
             waited += 400
 
-    def _pick_option(self, frame, a):
-        """Click the visible dropdown option that best matches the action's targets. False if none matches."""
+    def _pick_option(self, frame, a, any_option=False):
+        """Click the visible dropdown option that best matches the action's targets. False if none matches
+        (any_option: then the first visible option, for formality questions like "How did you hear about us")."""
         strict = a.source in ("question", "learned")
         targets = a.targets or choice_targets(a.value)
         opts = frame.locator(self.OPTION_SEL)
@@ -2782,9 +2796,12 @@ class PlaywrightDriver:
         if rule_key(a.f) != "phone_country_code":
             seen = [s for s in seen if not PHONE_CODE_OPTION.search(s[1])]  # Workday leaves the phone-code list open
         idx = option_match([t for _, t in seen], targets, strict=strict)
+        if idx is None and any_option and seen:
+            idx = 0
         if idx is None:
             return False
         safe_click(opts.nth(seen[idx][0]), "pick_option")
+        clicked = seen[idx][1].strip()
         self.page.wait_for_timeout(800)
         # Workday multi-level prompts ("How did you hear": Job Board -> LinkedIn): a new list opens after the click
         for _depth in range(2):
@@ -2795,11 +2812,14 @@ class PlaywrightDriver:
                         now.append((i, opts.nth(i).inner_text(timeout=1000)))
                 except Exception:
                     continue
+            if rule_key(a.f) != "phone_country_code":
+                now = [s for s in now if not PHONE_CODE_OPTION.search(s[1])]
             if not now or [t for _, t in now] == [t for _, t in seen]:
                 break
+            now = [s for s in now if s[1].strip() != clicked] or now  # the sub-list repeats its category as a header
             sub = option_match([t for _, t in now], targets, strict=False)
             pick = now[sub][0] if sub is not None else now[0][0]  # any sub-source is fine (a formality)
-            seen = now
+            seen, clicked = now, (now[sub] if sub is not None else now[0])[1].strip()
             try:
                 safe_click(opts.nth(pick), "pick_option")
             except Exception:
@@ -3401,6 +3421,8 @@ def fill_workday(driver, fc, email, password, max_pages=8):
         # A page of only buttons/uploads (My Experience) is fine on Workday.
         reasons = [r for r in reasons if not r.startswith("No application form")]
         if reasons or missing:
+            if missing and hasattr(driver, "diagnose"):
+                driver.diagnose("workday-missing")
             return FillResult(fill.fields, filled, fill.todo, fill.tracked), reasons, missing, steps
         moved = driver.workday_next()
         if moved == "no-button" and hasattr(driver, "workday_wait_form"):

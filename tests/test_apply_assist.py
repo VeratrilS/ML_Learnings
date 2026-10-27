@@ -1533,3 +1533,12 @@ def test_month_ranges_from_zero_pass_and_phone_code_lists_are_ignored():
     assert not aa.phone_codes_only("How Did You Hear About Us?*", ["Job Board", "India (+91)"])
     ai = aa.make_ai_answerer({}, generate=lambda p: {"answer": "India (+91)"}, path=None)
     assert ai("How Did You Hear About Us?*", "select", ["India (+91)"], "JLL") is None
+
+
+def test_workday_search_select_box_may_be_opened_but_not_buttons():
+    box = {"tag": "input", "type": "text", "uxi": "selectinput", "text": "", "role": ""}
+    assert aa.check_click_allowed(box, "open_dropdown", False) is True
+    with pytest.raises(aa.SubmitBlocked):
+        aa.check_click_allowed({"tag": "button", "type": "submit", "uxi": "", "text": "Submit"}, "open_dropdown", False)
+    with pytest.raises(aa.SubmitBlocked):
+        aa.check_click_allowed({"tag": "input", "type": "text", "uxi": "", "text": ""}, "open_dropdown", False)
