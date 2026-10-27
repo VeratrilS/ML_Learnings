@@ -2659,8 +2659,16 @@ class PlaywrightDriver:
                 elif a.kind == "toggle":
                     safe_click(loc, "toggle")
                 elif a.kind == "file":
+                    if self.is_workday() and self.page.locator('[data-automation-id="file-upload-item"]').count():
+                        filled.append(a)  # Workday empties the file input after an upload: one resume is enough
+                        continue
                     loc.set_input_files({"name": self.resume_name, "mimeType": "application/pdf", "buffer": self.resume},
                                         timeout=10000)
+                    if self.is_workday():  # "Next" stays disabled while the upload spins
+                        try:
+                            self.page.locator('[data-automation-id="file-upload-successful"]').first.wait_for(timeout=30000)
+                        except Exception:
+                            pass
                 elif a.kind == "combo" and a.f.get("role") == "listbox":
                     if not self._listbox(loc, a):
                         raise ValueError(f"no option matches {a.value!r}")
