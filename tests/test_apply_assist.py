@@ -1542,3 +1542,8 @@ def test_workday_search_select_box_may_be_opened_but_not_buttons():
         aa.check_click_allowed({"tag": "button", "type": "submit", "uxi": "", "text": "Submit"}, "open_dropdown", False)
     with pytest.raises(aa.SubmitBlocked):
         aa.check_click_allowed({"tag": "input", "type": "text", "uxi": "", "text": ""}, "open_dropdown", False)
+
+
+def test_model_safety_labels_are_not_saved_as_answers():
+    ai = aa.make_ai_answerer({}, generate=lambda p: {"answer": "User Safety: safe"}, path=None)
+    assert ai("Country*", "text", [], "SingleStore") is None
