@@ -772,6 +772,12 @@ def targets_for(key, value, strict=False):
         return list(DECLINE)
     if key == "accept_privacy_notice" and _norm(value) != "yes":
         return out  # Sai opted out: never tick or pick "I agree"
+    if key == "start_date":  # Stripe offers quarters: "May 2027" -> "Q2 2027 (April - June)"
+        m = re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(20\d\d)", _s(value), re.I)
+        if m:
+            q = "Q%d %s" % ((["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+                             .index(m.group(1).lower()) // 3) + 1, m.group(2))
+            out = out + [q] if q not in out else out
     return out + [t for t in EXTRA_TARGETS.get(key, []) if t not in out] if out else out
 
 

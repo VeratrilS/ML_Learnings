@@ -1616,3 +1616,9 @@ def test_start_date_follows_the_role():
     assert aa.build_values({}, {}, None, "Software Engineer (CPD) - Winter Intern")["start_date"] == "December 2026"
     assert aa.build_values({}, {}, None, "Intern, Software Engineer")["start_date"] == "January 2027"
     assert aa.build_values({}, {}, None, "SDE I")["start_date"] == "May 2027 (after graduation)"
+
+
+def test_start_month_maps_to_quarter_options():
+    opts = ["Q4 2026 (October - December)", "Q1 2027 (January - March)", "Q2 2027 (April - June)", "Q3 2027 (July - September)"]
+    assert aa.option_match(opts, aa.targets_for("start_date", "May 2027 (after graduation)")) == 2
+    assert aa.option_match(opts, aa.targets_for("start_date", "December 2026")) == 0
