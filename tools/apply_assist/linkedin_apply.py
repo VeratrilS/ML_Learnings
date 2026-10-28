@@ -172,7 +172,7 @@ class LinkedIn:
         btn.click()
         self.page.wait_for_timeout(2000)
         fc = self.fc_for(job)
-        all_filled, stuck_rounds = [], 0
+        all_filled, stuck_rounds, dropped_entry = [], 0, False
         for _step in range(14):
             modal = self._modal()
             if modal is None:
@@ -225,6 +225,26 @@ class LinkedIn:
             m2 = self._modal()
             errs = self._errors(m2) if m2 is not None else []
             if not errs and m2 is not None and "This field is required" in m2.inner_text():  # 2026 layout: no error class
+                text = m2.inner_text()
+                drop = m2.locator("button:has-text('Delete experience')").first
+                if "Work experience" in text and drop.count() and not dropped_entry:
+                    # LinkedIn parsed an undated entry ("Member, Axiom NIT Rourkela") from an old resume into the form; it
+                    # isn't on Sai's profile. Deleting it here only changes this application.
+                    try:
+                        drop.scroll_into_view_if_needed(timeout=3000)
+                        drop.click(timeout=5000)
+                    except Exception:
+                        drop.evaluate("b => b.click()")  # off-screen window: a DOM click still works
+                    self.page.wait_for_timeout(1500)
+                    ok = self.page.locator("button:text-is('Delete'), button:text-is('Yes, delete')").last
+                    if ok.count() and ok.is_visible():  # "Delete this experience?" confirmation, if LinkedIn asks
+                        try:
+                            ok.click(timeout=5000)
+                        except Exception:
+                            ok.evaluate("b => b.click()")
+                        self.page.wait_for_timeout(1500)
+                    dropped_entry = True
+                    continue
                 errs = ["a required field LinkedIn takes from your profile is empty (e.g. dates of a work-experience entry)"]
             if errs and m2 is not None and m2.inner_text()[:600] == before:
                 stuck_rounds += 1

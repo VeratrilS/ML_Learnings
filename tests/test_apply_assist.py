@@ -1622,3 +1622,10 @@ def test_start_month_maps_to_quarter_options():
     opts = ["Q4 2026 (October - December)", "Q1 2027 (January - March)", "Q2 2027 (April - June)", "Q3 2027 (July - September)"]
     assert aa.option_match(opts, aa.targets_for("start_date", "May 2027 (after graduation)")) == 2
     assert aa.option_match(opts, aa.targets_for("start_date", "December 2026")) == 0
+
+
+def test_meet_minimum_qualifications_is_yes_not_the_degree():
+    # P&G: "Do you meet the minimum qualification requirements...?" was answered with "B.Tech, CSE"
+    q = "Do you meet the minimum qualification requirements for this role as stated in the job description?*"
+    assert aa.rule_key({"label": q}) == "meets_requirements"
+    assert aa.rule_key({"label": "Highest qualification"}) == "degree"

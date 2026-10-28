@@ -544,6 +544,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"10th|tenth|class x\b|\bssc\b|secondary school", "class_10"),
     (r"12th|twelfth|class xii|intermediate|higher secondary|\bhsc\b", "class_12"),
     (r"school|university|college|institution", "college"),
+    (r"(do|does) (you|your profile) (meet|satisfy|fulfil+)|meet the (minimum|basic|required|stated)|"
+     r"(minimum|basic) (qualification|requirement)s? .{0,40}\?", "meets_requirements"),  # P&G: a Yes, not the degree
     (r"degree|qualification|major|discipline|field of study", "degree"),
     (r"grad(uation)?\s*(year|date)|year of (graduation|passing)|class of|\bbatch\b|passing year", "grad_year"),
     (r"cgpa|\bgpa\b|grade point", "cgpa"),
@@ -953,6 +955,7 @@ AUTO_DEFAULTS = {
     "is_referral": "No",
     "citizenship": "India",
     "other_citizenship": "No",
+    "meets_requirements": "Yes",
     "currently_employed": "No (full-time student)",
     "active_backlogs": "No",
     "notice_period": "Not applicable (final-year student: internship from January 2027, full-time from May 2027)",
