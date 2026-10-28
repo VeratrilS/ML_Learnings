@@ -1112,10 +1112,13 @@ def min_quals_problem(text):
     """Why a 2027 B.Tech fresher should not apply, from the posting text; None when nothing rules him out."""
     # Form questions on the same page ("Do you have over 2 years of industry experience?") aren't requirements
     t = FORM_QUESTION.sub(" ", text or "")
-    years = [int(m.group(1)) for m in YEARS_REQ.finditer(t) if 0 <= int(m.group(1)) <= 15]
+    def ceiling(m):  # "no more than 18 months of experience" is a maximum (Stripe new grad), not a requirement
+        return re.search(r"(?:no|not) more than|less than|fewer than|up to|at most|maximum(?: of)?|max\.?\s*$",
+                         t[max(0, m.start(1) - 25):m.start(1)].strip(), re.I) is not None
+    years = [int(m.group(1)) for m in YEARS_REQ.finditer(t) if 0 <= int(m.group(1)) <= 15 and not ceiling(m)]
     if years and min(years) >= 1:  # Sai: 0 experience is a must ("0-1 years" / "0 to 2 years" still pass)
         return f"asks for {min(years)}+ years of experience"
-    months = [int(m.group(1)) for m in MONTHS_REQ.finditer(t) if 3 <= int(m.group(1)) <= 36
+    months = [int(m.group(1)) for m in MONTHS_REQ.finditer(t) if 3 <= int(m.group(1)) <= 36 and not ceiling(m)
               and not re.search(r"\d\s*(?:-|–|to)\s*$", t[max(0, m.start(1) - 6):m.start(1)])]  # "0-6 months"
     if months:
         return f"asks for {min(months)}+ months of work experience"

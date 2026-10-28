@@ -1602,3 +1602,10 @@ def test_nested_json_answer_is_unwrapped():
     assert aa._unwrap_answer("January 2027") == "January 2027"
     assert aa._unwrap_answer("{not json") == "{not json"
     assert aa._unwrap_answer('```json\n{"answer": "B.Tech"}\n```') == "B.Tech"
+
+
+def test_experience_ceiling_is_not_a_requirement():
+    # Stripe new grad: "no more than 18 months of professional experience" was read as "18+ months required"
+    assert aa.min_quals_problem("New grad candidates should have no more than 18 months of professional experience") is None
+    assert aa.min_quals_problem("Requires 18 months of work experience") == "asks for 18+ months of work experience"
+    assert aa.min_quals_problem("3+ years of experience") == "asks for 3+ years of experience"
