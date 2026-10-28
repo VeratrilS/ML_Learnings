@@ -103,7 +103,7 @@ NOT_MY_FIELD = re.compile(
     r"(?<!software )design (engineer|evaluation)|evaluation engineer|model[- ]based|transmission|drivetrain|powertrain|"
     r"thermal|hydraulics?|structural engineer|mechatronics|calibration|"
     r"sap|servicenow|salesforce admin|mainframe|cobol|oracle (ebs|apps)|"
-    r"sales|marketing|finance|accountant|hr|recruiter|legal|procurement|buyer|"
+    r"sales|marketing|finance|accountant|hr|recruiter|recruitment|talent acquisition|human resources|legal|procurement|buyer|"
     r"technician|field (service|engineer)|commissioning|site engineer|support engineer|help ?desk|"
     r"network (engineer|administrator)|system administrator|it support)\b", re.I)
 
