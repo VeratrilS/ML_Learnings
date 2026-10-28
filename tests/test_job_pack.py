@@ -112,7 +112,7 @@ def test_pack_shape(client, llm):
 
 def test_highlights_follow_job_skills(client, llm):
     backend = _pack(client, _job(role="Backend Engineer", skills=["Kafka", "PostgreSQL", "Microservices"]))
-    assert backend["resume_highlights"][0].startswith("Distributed Railway Reservation")
+    assert backend["resume_highlights"][0].startswith("SR-CarRentals")
     web = _pack(client, _job(company="Webco", role="Frontend Engineer", skills=["React", "JavaScript", "Node.js"]))
     assert web["resume_highlights"][0].startswith("Software Engineering Intern, Maruti Suzuki")
     cpp = _pack(client, _job(company="Sys", role="Software Engineer", skills=["C++", "Multithreading"]))
@@ -134,7 +134,7 @@ def test_cache_hit_skips_llm(client, llm):
 def test_refresh_regenerates(client, llm):
     job_id = _job()
     _pack(client, job_id)
-    llm.reply = {**GOOD_LLM, "cover_note": "I built a Redis-compatible cache server in C++ with 30 commands."}
+    llm.reply = {**GOOD_LLM, "cover_note": "I built a Redis-compatible cache server in C++ with 29 commands."}
     data = _pack(client, job_id, refresh=True)
     assert len(llm.calls) == 2 and data["cached"] is False
     assert data["cover_note"].startswith("I built a Redis-compatible cache server")

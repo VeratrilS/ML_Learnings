@@ -52,11 +52,12 @@ RESUME_FACTS = {
     # Each highlight: resume bullet, first-person sentence, and skill tags (canonical form) used for matching.
     "highlights": [
         {"id": "railway",
-         "bullet": "Distributed Railway Reservation: 8 microservices, 13 Kafka topics, Redis Lua locks with Postgres "
-                   "row locks, Saga-based rollback, API gateway with rate limiting and circuit breakers, Elasticsearch search.",
-         "sentence": "I built a distributed railway reservation system with 8 microservices and 13 Kafka topics, using "
-                     "Redis Lua locks with Postgres row locks, the Saga pattern, and an API gateway with rate limiting "
-                     "and circuit breakers.",
+         "bullet": "SR-CarRentals: car rental and shared-ride platform of 8 microservices over 14 Kafka topics with DLQs, "
+                   "3-layer concurrency control (Redis locks, row locks, exclusion constraints), Saga pattern, API gateway "
+                   "with rate limiting and circuit breakers.",
+         "sentence": "I built SR-CarRentals, a car rental and shared-ride platform of 8 microservices over 14 Kafka topics, "
+                     "using Redis locks, Postgres row locks and exclusion constraints against double-booking, the Saga "
+                     "pattern, and an API gateway with rate limiting and circuit breakers.",
          "tags": ["kafka", "redis", "postgresql", "elasticsearch", "microservices", "distributed", "sql", "rest"]},
         {"id": "maruti",
          "bullet": "Software Engineering Intern, Maruti Suzuki (May–Jul 2026): built a MERN portal with 13 React pages "
@@ -65,10 +66,10 @@ RESUME_FACTS = {
                      "with 13 React pages and more than 120 REST APIs, secured with JWT and role-based access control.",
          "tags": ["react", "node", "express", "mongodb", "javascript", "rest"]},
         {"id": "cache",
-         "bullet": "Cache Server (C++): Redis-compatible server speaking RESP with 30 commands, TTL expiry, O(1) LRU/LFU "
-                   "eviction and a thread pool.",
-         "sentence": "I wrote a Redis-compatible cache server in C++ that speaks the RESP protocol, supports 30 commands "
-                     "with TTL, has O(1) LRU and LFU eviction, and serves clients from a thread pool.",
+         "bullet": "Cache Server (C++): redis-cli-compatible C++17 server speaking RESP with 29 commands, TTL expiry, "
+                   "configurable LRU/LFU eviction and a thread pool.",
+         "sentence": "I wrote a redis-cli-compatible cache server in C++17 that speaks the RESP protocol, supports 29 "
+                     "commands with TTL, has configurable LRU and LFU eviction, and serves clients from a thread pool.",
          "tags": ["c++", "redis", "multithreading", "dsa"]},
         {"id": "dataannotation",
          "bullet": "Coding Expert, DataAnnotation: fixed XTC sampling in the llama.cpp C++ inference engine while "
@@ -77,16 +78,16 @@ RESUME_FACTS = {
                      "and kept the API compatible, with regression tests to confirm it.",
          "tags": ["c++", "llm", "testing"]},
         {"id": "cp",
-         "bullet": "Competitive programming: LeetCode contest rating 1709 (900+ solved), Codeforces Specialist "
-                   "(peak 1425), CodeChef 3-star (1632).",
-         "sentence": "My LeetCode contest rating is 1709 with more than 900 problems solved, I am a Codeforces "
-                     "Specialist (peak 1425), and I am 3-star on CodeChef (1632).",
+         "bullet": "Competitive programming: LeetCode contest rating 1750 (900+ solved), Codeforces Specialist "
+                   "(peak 1425), CodeChef 3-star (1654).",
+         "sentence": "My LeetCode contest rating is 1750 with more than 900 problems solved, I am a Codeforces "
+                     "Specialist (peak 1425), and I am 3-star on CodeChef (1654).",
          "tags": ["dsa", "c++", "python"]},
         {"id": "react_comps",
-         "bullet": "React-Comps: generates React components with an LLM, with Firebase authentication, Razorpay "
-                   "payments and NPM publishing.",
-         "sentence": "I built React-Comps, which generates React components with an LLM and includes Firebase "
-                     "authentication, Razorpay payments and NPM publishing.",
+         "bullet": "React-Comps: AI platform generating React components from prompts with live preview, Firebase "
+                   "sign-in, atomic credit deduction, Razorpay payments and an automated NPM release pipeline.",
+         "sentence": "I built React-Comps, which generates React components from prompts with live preview and includes "
+                     "Firebase sign-in, atomic credit deduction, Razorpay payments and an automated NPM release pipeline.",
          "tags": ["react", "javascript", "llm"]},
     ],
 }
@@ -126,14 +127,14 @@ _CLAIMABLE = {_canon(s) for s in RESUME_FACTS["skills"]} | {t for h in RESUME_FA
 
 # ---------------- Template text (deterministic fallback) ----------------
 PROJECT_STORIES = {
-    "railway": "The hardest project I have built is a distributed railway reservation system. It runs as 8 "
-               "microservices that talk over 13 Kafka topics. The difficult part was keeping bookings consistent under "
-               "concurrent requests: I combined Redis Lua locks with Postgres row locks, and used the Saga pattern so a "
-               "failed step undoes the earlier ones. An API gateway adds rate limiting and circuit breakers, and "
-               "Elasticsearch handles search.",
-    "cache": "A challenging project was a Redis-compatible cache server in C++. I wrote the RESP protocol handling and "
-             "30 commands with TTL expiry. The hard parts were making LRU and LFU eviction O(1) and serving many "
-             "clients through a thread pool while keeping the data correct.",
+    "railway": "The hardest project I have built is SR-CarRentals, a car rental and shared-ride platform. It runs as 8 "
+               "microservices that talk over 14 Kafka topics with dead-letter queues. The difficult part was preventing "
+               "double-booking under concurrent requests: I used three layers of concurrency control (Redis locks, "
+               "Postgres row locks and exclusion constraints), and the Saga pattern with compensating transactions so a "
+               "failed step undoes the earlier ones. An API gateway adds rate limiting and circuit breakers.",
+    "cache": "A challenging project was a redis-cli-compatible cache server in C++17. I wrote the RESP protocol handling "
+             "with pipelining and 29 commands with TTL expiry. The hard parts were configurable LRU and LFU eviction and "
+             "serving many clients through a thread pool while keeping the data correct.",
     "dataannotation": "At DataAnnotation I fixed XTC sampling in llama.cpp, a C++ inference engine. The challenge was "
                       "changing sampling behaviour inside an existing codebase without breaking the code that depends "
                       "on it, so I kept the API compatible and added regression tests to confirm the behaviour.",
@@ -144,13 +145,13 @@ PROJECT_STORIES = {
 
 SKILL_STORIES = [
     ("cpp", {"c++", "multithreading", "dsa", "llm"},
-     "C++. I used it to write a Redis-compatible cache server (RESP protocol, 30 commands, TTL, O(1) LRU/LFU "
+     "C++. I used it to write a redis-cli-compatible cache server (RESP protocol, 29 commands, TTL, LRU/LFU "
      "eviction, thread pool) and to fix XTC sampling in the llama.cpp inference engine at DataAnnotation. Alongside "
-     "this, my LeetCode contest rating is 1709 and I am a Codeforces Specialist (peak 1425)."),
+     "this, my LeetCode contest rating is 1750 and I am a Codeforces Specialist (peak 1425)."),
     ("backend", {"kafka", "redis", "postgresql", "elasticsearch", "microservices", "distributed", "sql"},
-     "Backend and distributed systems. My railway reservation project uses 8 microservices, 13 Kafka topics, Redis "
-     "Lua locks with Postgres row locks, the Saga pattern and an API gateway with rate limiting and circuit breakers. "
-     "I also wrote a Redis-compatible cache server in C++."),
+     "Backend and distributed systems. My SR-CarRentals project uses 8 microservices over 14 Kafka topics, Redis "
+     "locks, Postgres row locks and exclusion constraints against double-booking, the Saga pattern and an API gateway "
+     "with rate limiting and circuit breakers. I also wrote a redis-cli-compatible cache server in C++."),
     ("web", {"react", "node", "express", "javascript", "mongodb", "rest"},
      "Full-stack JavaScript with React, Node.js and Express. At Maruti Suzuki I built a MERN portal with 13 React "
      "pages and more than 120 REST APIs secured with JWT and role-based access control, and I built React-Comps "

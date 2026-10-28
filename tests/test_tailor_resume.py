@@ -10,7 +10,8 @@ import tailor_resume as tr  # noqa: E402
 
 TEXT = tr._resume_text(tr.RESUME)
 REST = "Developed **13 React.js pages** integrated with **120+ REST APIs** (Node.js/Express.js) backed by MongoDB."
-KAFKA = "Architected **8 microservices** (database-per-service, Prisma) linked by **13 Kafka topics** with dead-letter queues."
+KAFKA = ("Architected a car rental and **shared-ride** platform of **8 microservices** communicating over "
+         "**14 Kafka topics** with DLQs.")
 BACKEND_POSTING = """Backend Engineer. Build scalable distributed systems in C++ and Node.js. Experience with Apache Kafka,
 Redis caching, multithreading, PostgreSQL and RESTful services. Design event-driven microservices."""
 
@@ -23,7 +24,7 @@ def test_resume_transcribed():
     assert tr.RESUME["name"] == "Nandam Venkata Sai Raghava"
     assert len(tr.RESUME["education"]) == 2 and len(tr.RESUME["experience"]) == 2
     assert [len(e["bullets"]) for e in tr.RESUME["experience"]] == [3, 3]
-    assert [p["name"] for p in tr.RESUME["projects"]] == ["Distributed Railway Reservation Platform", "React-Comps",
+    assert [p["name"] for p in tr.RESUME["projects"]] == ["SR-CarRentals", "React-Comps",
                                                          "Cache Server"]
     assert len(tr.RESUME["skills"]) == 4
     assert len(tr.bullet_ids(tr.RESUME)) == 15
@@ -38,10 +39,10 @@ def test_accepts_terminology_rewrite(new):
 
 
 def test_accepts_distributed_systems_wording():
-    new = ("Architected a distributed system of **8 microservices** (database-per-service, Prisma) linked by "
-           "**13 Kafka topics** with dead-letter queues.")
+    new = ("Architected a distributed car rental and **shared-ride** platform of **8 microservices** communicating "
+           "over **14 Kafka topics** with DLQs.")
     assert len(new) <= 1.15 * len(KAFKA) or check(new, KAFKA) == "too long"
-    short = "Built **8 event-driven microservices** (database-per-service, Prisma) over **13 Kafka topics** with dead-letter queues."
+    short = "Architected a car rental and **shared-ride** platform of **8 event-driven microservices** over **14 Kafka topics** with DLQs."
     assert check(short, KAFKA) is None
 
 
@@ -86,10 +87,10 @@ def test_rejects_too_long_first_person_emoji_and_bold():
 def test_reorders_projects_for_backend_posting():
     new = copy.deepcopy(tr.RESUME)
     changes = tr.reorder(new, BACKEND_POSTING)
-    assert [p["name"] for p in new["projects"]] == ["Distributed Railway Reservation Platform", "Cache Server",
+    assert [p["name"] for p in new["projects"]] == ["SR-CarRentals", "Cache Server",
                                                    "React-Comps"]
-    assert ("Projects order", "Distributed Railway Reservation Platform, React-Comps, Cache Server",
-            "Distributed Railway Reservation Platform, Cache Server, React-Comps") in changes
+    assert ("Projects order", "SR-CarRentals, React-Comps, Cache Server",
+            "SR-CarRentals, Cache Server, React-Comps") in changes
     front = copy.deepcopy(tr.RESUME)
     tr.reorder(front, "Frontend engineer: React, Redux, Firebase, Tailwind, payments with Razorpay.")
     assert front["projects"][0]["name"] == "React-Comps"
@@ -114,7 +115,7 @@ def test_render_is_one_page():
 
 def test_tailor_applies_guarded_llm_rewrites():
     good = REST.replace("120+ REST APIs", "120+ RESTful services")
-    bad = KAFKA.replace("Prisma", "Prisma, Kubernetes")
+    bad = KAFKA.replace("with DLQs", "with DLQs on Kubernetes")
 
     def fake(prompt):
         assert "RESTful services" in prompt and "e1.2" in prompt

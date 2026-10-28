@@ -38,12 +38,12 @@ def compose(company, role=None, name=None):
         f"{what} at {company}.",
         "",
         "A few things I have built:",
-        "- A distributed railway reservation backend: 8 microservices, 13 Kafka topics, Redis Lua locks with Postgres "
-        "row locks and Saga-based rollback.",
-        "- A Redis-compatible cache server in C++ (RESP, 30 commands, O(1) LRU/LFU eviction, thread pool).",
+        "- SR-CarRentals, a car rental and shared-ride backend: 8 microservices over 14 Kafka topics, 3-layer "
+        "concurrency control against double-booking (Redis locks, row locks, exclusion constraints) and Saga rollbacks.",
+        "- A redis-cli-compatible cache server in C++17 (RESP, 29 commands, LRU/LFU eviction, thread pool).",
         "- Software Engineering Intern at Maruti Suzuki (MERN portal, 120+ REST APIs); Coding Expert at DataAnnotation "
         "(C++ fixes in llama.cpp).",
-        "- Codeforces Specialist, LeetCode contest rating 1709.",
+        "- Codeforces Specialist, LeetCode contest rating 1750.",
         "",
         "I'm available for a 6-month internship from January 2027 or full-time from January 2027. My resume is attached; "
         "I'd be grateful for a chance to interview, or a pointer to the right person.",

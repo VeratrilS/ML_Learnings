@@ -8,7 +8,7 @@ Features:
     * CTC: >= 20 LPA (including high-stipend summer internships with PPO)
     * Branch: CSE, IT, Circuit
 - Built-in Deterministic Skill Matcher:
-    * Compares verified skills from Sai Raghava's resume (NIT Rourkela, CGPA 8.99, LC 1709, Kafka/C++ projects).
+    * Compares verified skills from Sai Raghava's resume (NIT Rourkela, CGPA 8.99, LC 1750, Kafka/C++ projects).
     * Calculates ATS match score based on transparent skill overlap.
     * Integrates with verified application pack generator for authentic screening question answers.
 - Zero Auto-Submit Integrity:
@@ -242,15 +242,15 @@ def _get_or_create_profile(db):
         "MongoDB", "Prisma ORM", "Git", "GitHub", "TCP Sockets", "Multithreading", "LLM Inference Engine",
     ]
     achievements = (
-        "NIT Rourkela CSE (CGPA: 8.99, Batch 2027) | LeetCode Contest Rating: 1709 (900+ solved, 15 badges) | "
-        "Codeforces Specialist (1425 peak rating, 325+ solved) | CodeChef 3-Star (1632 peak rating) | "
+        "NIT Rourkela CSE (CGPA: 8.99, Batch 2027) | LeetCode Contest Rating: 1750 (900+ solved, 15 badges) | "
+        "Codeforces Specialist (1425 peak rating, 310+ solved) | CodeChef 3-Star (1654 peak rating) | "
         "Ex-SWE Intern at Maruti Suzuki (Built MERN portal, 13 React pages, 120+ REST APIs, JWT, RBAC) | "
         "DataAnnotation.tech C++ LLM inference engine expert (llama.cpp XTC sampling)."
     )
     resume_summary = (
         "Nandam Venkata Sai Raghava is a top-performing 2027 Computer Science student at NIT Rourkela with 8.99 CGPA. "
-        "Architected a Distributed Railway Reservation platform with 8 microservices, 13 Kafka topics, Redis Lua locks, and Saga rollback. "
-        "Built a high-performance Redis-compatible Cache Server in C++ over raw TCP sockets with custom RESP parser and O(1) LRU/LFU eviction. "
+        "Architected SR-CarRentals, a car rental and shared-ride platform of 8 microservices over 14 Kafka topics, with 3-layer concurrency control and Saga rollback. "
+        "Built a redis-cli-compatible Cache Server in C++17 over raw TCP sockets with a pipelining-capable RESP parser, 29 commands and LRU/LFU eviction. "
         "Proven software engineering internship experience at Maruti Suzuki India Ltd."
     )
     now = _utcnow()
@@ -775,7 +775,7 @@ def get_job_referral(job_id):
 
         template = (
             f"Hi [Name],\n\n"
-            f"Hope you are doing well! I'm a final-year CSE student at NIT Rourkela (8.99 CGPA, LeetCode 1709, ex-MSIL intern) "
+            f"Hope you are doing well! I'm a final-year CSE student at NIT Rourkela (8.99 CGPA, LeetCode 1750, ex-MSIL intern) "
             f"and saw the {role} opening at {company}.\n\n"
             f"I have strong hands-on experience in distributed systems (Kafka microservices) and low-level C++. "
             f"Would you be open to referring me for this role? Happy to share my resume and details.\n\n"

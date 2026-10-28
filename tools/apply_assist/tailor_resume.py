@@ -56,7 +56,7 @@ RESUME = {
          "bullets": [
              "Built the internal **ITEA Department Portal** (MERN) with employee, attendance, leave, project and task modules.",
              "Developed **13 React.js pages** integrated with **120+ REST APIs** (Node.js/Express.js) backed by MongoDB.",
-             "Implemented JWT authentication and **role-based access control** (User, Manager, Admin); reviewed backend code.",
+             "Implemented JWT authentication and **role-based access control** (User, Manager, Admin); conducted code reviews.",
          ]},
         {"id": "e2", "title": "DataAnnotation.tech", "date": "May 2026 – Present",
          "link": {"text": "Proof",
@@ -64,40 +64,40 @@ RESUME = {
          "subtitle": "Coding Expert (Freelance)", "location": "Remote",
          "bullets": [
              "Fixed XTC sampling in a **llama.cpp**-based C++ LLM inference engine to preserve end-of-sequence and special tokens.",
-             "Preserved sampler API **backward compatibility** via vocabulary-derived token IDs, verified by regression tests.",
+             "Ensured sampler API **backward compatibility** via vocabulary-derived token IDs, validated by regression tests.",
              "Evaluated AI-generated **JavaScript** solutions for graph problems such as Kahn’s topological sort and cycle detection.",
          ]},
     ],
     "projects": [
-        {"id": "p1", "name": "Distributed Railway Reservation Platform",
-         "tech": "Node.js, Apache Kafka, Redis, PostgreSQL, Elasticsearch", "date": "Aug 2026",
+        {"id": "p1", "name": "SR-CarRentals",
+         "tech": "Node.js, Apache Kafka, Redis, PostgreSQL, Elasticsearch, React.js", "date": "Jul 2026",
          "bullets": [
-             "Architected **8 microservices** (database-per-service, Prisma) linked by **13 Kafka topics** with dead-letter queues.",
-             "Prevented **double-booking** via Redis Lua locks and PostgreSQL row locks; a Saga rolls back failed payments.",
-             "Designed an **API gateway** (JWT, sliding-window rate limiting, circuit breakers) and Elasticsearch fuzzy search.",
+             "Architected a car rental and **shared-ride** platform of **8 microservices** communicating over **14 Kafka topics** with DLQs.",
+             "Eliminated **double-booking** via **3-layer concurrency control**: Redis locks, row locks and exclusion constraints.",
+             "Applied the **Saga pattern** with compensating transactions; built an API gateway with rate limiting and circuit breakers.",
          ]},
         {"id": "p2", "name": "React-Comps", "tech": "React.js, Vite, Express.js, MongoDB, Redux, Firebase, Razorpay",
          "date": "May 2026", "link": {"text": "GitHub", "url": "https://github.com/VeratrilS/React-Comps"},
          "bullets": [
-             "Built a full-stack platform that converts text prompts into **React components** using an LLM, with live preview.",
-             "Integrated Google sign-in (Firebase), JWT-based sessions, a credit system and **Razorpay** payments.",
-             "Automated publishing to an **NPM component library**: a single admin action builds, versions and publishes the package.",
+             "Built an AI platform generating **React components** from prompts with live preview via Gemini (OpenRouter fallback).",
+             "Implemented Firebase Google sign-in, **atomic credit deduction** and **Razorpay** payments with HMAC verification.",
+             "Automated the **sai-ui-comps NPM library** release pipeline (build, versioning, publishing) with rollback on failed builds.",
          ]},
         {"id": "p3", "name": "Cache Server", "tech": "C++, TCP Sockets, Multithreading, RESP", "date": "Jun 2026",
          "link": {"text": "GitHub", "url": "https://github.com/VeratrilS/Cache-Server"},
          "bullets": [
-             "Developed a **Redis-compatible** cache server in C++ on raw TCP sockets, with a RESP parser for pipelined requests.",
-             "Implemented **30 commands** across strings, lists and hashes with TTL expiry and **O(1) LRU/LFU eviction**.",
-             "Handled clients via a **thread pool** with mutex-guarded state; added snapshots, graceful shutdown and hit-rate metrics.",
+             "Engineered a **redis-cli-compatible** C++17 cache server on raw TCP sockets with a pipelining-capable RESP parser.",
+             "Implemented **29 commands** across strings, lists and hashes with TTL expiry and configurable **LRU/LFU eviction**.",
+             "Handled concurrent clients via a **thread pool** and mutex locking; added periodic snapshots and graceful shutdown.",
          ]},
     ],
     "achievements": [
-        {"text": "**LeetCode**: Contest rating **1709**; 900+ problems solved and 15 badges (365 Days, SQL).",
+        {"text": "**LeetCode**: Contest rating **1750**; 900+ problems solved and 15 badges (365 Days, Top SQL 50).",
          "links": [{"text": "Contest", "url": "https://leetcode.com/u/Veratril/"},
                    {"text": "Profile", "url": "https://leetcode.com/u/Sairaghava1318/"}]},
-        {"text": "**Codeforces Specialist**: Peak rating **1425** with 325+ problems solved (Oct 2025).",
+        {"text": "**Codeforces Specialist**: Peak rating **1425** with 310+ problems solved (Oct 2025).",
          "links": [{"text": "Profile", "url": "https://codeforces.com/profile/Raghavan_CP"}]},
-        {"text": "**CodeChef 3-Star**: Peak rating **1632** across 23 rated contests; 437 problems solved (Jul 2025).",
+        {"text": "**CodeChef 3-Star**: Peak rating **1654** across 24 rated contests.",
          "links": [{"text": "Profile", "url": "https://www.codechef.com/users/sairaghava1318"}]},
     ],
     "skills": [
@@ -110,7 +110,7 @@ RESUME = {
     "extracurricular": [
         {"title": "OpenCode Club, NIT Rourkela", "date": "Nov 2023 – Present", "subtitle": "Technical Team Member",
          "location": "",
-         "bullets": ["Contributed to organizing technical events, hands-on workshops and club activities."]},
+         "bullets": ["Co-organized technical events and hands-on coding workshops for students at NIT Rourkela."]},
     ],
 }
 
