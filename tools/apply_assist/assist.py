@@ -510,6 +510,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"positive declaration|i understand that (a|my) (declaration|disclosure)", "accept_privacy_notice"),
     (r"ai-assisted screening|hiredscore|use of (ai|artificial intelligence).{0,40}(screen|assess|tool)", "accept_privacy_notice"),
     (r"citizen of any of the following countries|cuba, iran|north korea, (sudan|syria)", "embargoed_citizen"),
+    (r"dual (citizenship|nationality)|(other|another|additional|second|any other|more than one) (citizenship|nationality)|"
+     r"citizen(ship)? of (any|another) (other )?country|citizen of any country other than", "other_citizenship"),  # India only
     (r"citizenship|nationality|country of (citizenship|nationality)|citizen of which", "citizenship"),
     (r"employment status|current(ly)? (employment|working)|are you (currently )?(employed|working)", "currently_employed"),
     (r"(currently|previously) .{0,40}(directly )?employed", "previously_employed"),
@@ -944,6 +946,7 @@ AUTO_DEFAULTS = {
     "other_offers": "None (no offers)",
     "is_referral": "No",
     "citizenship": "India",
+    "other_citizenship": "No",
     "currently_employed": "No (full-time student)",
     "active_backlogs": "No",
     "notice_period": "Not applicable (final-year student: internship from January 2027, full-time from May 2027)",
