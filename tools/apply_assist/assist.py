@@ -2408,7 +2408,8 @@ class PlaywrightDriver:
             user32.EnumWindows(each, 0)
             flags = 0x0001 | 0x0002 | 0x0040  # SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
             for hwnd in found[:1]:
-                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE first: Windows lets a restored window take the foreground
+                user32.ShowWindow(hwnd, 9)  # SW_RESTORE (alone, it stayed behind Sai's editor on 2026-10-28)
                 user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, flags)  # HWND_TOPMOST: jump above everything...
                 user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, flags)  # ...then normal again, so Sai can switch away
                 user32.SetForegroundWindow(hwnd)
