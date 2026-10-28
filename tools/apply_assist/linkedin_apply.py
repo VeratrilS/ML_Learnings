@@ -12,6 +12,7 @@ one submission at a time across all runners (SubmitGate). A job with the company
 link (run it through assist.py --url). Questions nobody answered are never guessed: the job is left for Sai.
 """
 import argparse
+import os
 import re
 import sys
 import time
@@ -21,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import assist  # noqa: E402
 
 PROFILE = assist.HERE / ".profile-li"
-MODAL = ".jobs-easy-apply-modal, [data-test-modal-id='easy-apply-modal'], div[role='dialog']:has(button[aria-label*='Easy Apply' i]), div[role='dialog']:has(form)"
+MODAL = "dialog[data-testid='dialog'], dialog[open], .jobs-easy-apply-modal, [data-test-modal-id='easy-apply-modal'], div[role='dialog']:has(button[aria-label*='Easy Apply' i]), div[role='dialog']:has(form)"
 NEXT = ["Submit application", "Review your application", "Continue to next step"]
 SENT = re.compile(r"application (was )?sent|you applied|applied \d+ (second|minute)s? ago", re.I)
 
@@ -126,6 +127,12 @@ class LinkedIn:
         role = self._text(".job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1")
         company = self._text(".job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name")
         desc = self._text("#job-details, .jobs-description__content, .jobs-box__html-content")
+        if not (role and company):  # 2026 layout: no classes; the tab title is "Role | Company | LinkedIn"
+            parts = [p.strip() for p in (self.page.title() or "").split("|")]
+            if len(parts) >= 3:
+                role, company = role or parts[0], company or parts[1]
+        if not desc:  # never judge the requirements on an empty description
+            desc = self._text("main") or self.page.inner_text("body")
         job = {"company": company or "?", "role": role or "?", "url": url, "board": "linkedin"}
         print(f"{job['company']} - {job['role']}")
         if any(assist._norm(company) == assist._norm(h) or assist._norm(h) in assist._norm(company)
@@ -139,6 +146,12 @@ class LinkedIn:
         if re.search(r"no longer accepting applications", self.page.inner_text("body"), re.I):
             return {**job, "outcome": "skipped", "reason": "closed (no longer accepting applications)"}
         btn = self.page.locator("button.jobs-apply-button, .jobs-apply-button--top-card button").first
+        if not btn.count():  # 2026 layout: the top-card button is only recognisable by its aria-label
+            btn = self.page.locator("[aria-label='Easy Apply to this job'], [aria-label='Apply on company website']").first
+        if btn.count() and (btn.get_attribute("href") or "").startswith("https://www.linkedin.com/safety/go/"):
+            from urllib.parse import parse_qs, urlparse
+            link = parse_qs(urlparse(btn.get_attribute("href")).query).get("url", [""])[0]
+            return {**job, "outcome": "external", "reason": "company site", "external_url": link}
         if not btn.count():
             body = self.page.inner_text("body")
             if re.search(r"\bApplied\b", body[:4000]):
@@ -165,6 +178,9 @@ class LinkedIn:
             if modal is None:
                 break
             filled, left = self._fill_step(fc)
+            if os.environ.get("LI_DEBUG"):
+                print("   step", _step, [a.label for a in filled], "left:", left, "|",
+                      re.sub(r"\s+", " ", modal.inner_text())[:300 if os.environ["LI_DEBUG"] == "1" else 3000])
             all_filled += [a.label for a in filled]
             if left:
                 self._discard()
@@ -199,7 +215,7 @@ class LinkedIn:
                     pass
                 return {**job, "outcome": "submitted" if ok else "unconfirmed",
                         "reason": "" if ok else "no 'application sent' message", "filled": all_filled}
-            nxt = self._button(modal, "Review your application") or self._button(modal, "Continue to next step")
+            nxt = self._button(modal, "Review your application") or self._button(modal, "Continue to next step") or self._button(modal, "Next")  # 2026 layout: plain "Next"
             if nxt is None:
                 self._discard()
                 return {**job, "outcome": "needs-you", "reason": "no Next/Review/Submit button in the form"}
@@ -208,6 +224,8 @@ class LinkedIn:
             self.page.wait_for_timeout(1800)
             m2 = self._modal()
             errs = self._errors(m2) if m2 is not None else []
+            if not errs and m2 is not None and "This field is required" in m2.inner_text():  # 2026 layout: no error class
+                errs = ["a required field LinkedIn takes from your profile is empty (e.g. dates of a work-experience entry)"]
             if errs and m2 is not None and m2.inner_text()[:600] == before:
                 stuck_rounds += 1
                 if stuck_rounds >= 2:
