@@ -291,7 +291,7 @@ SCREENING = [
      "combobox", "Yes"),
     ("How did you learn about this job?*", "", "Company careers website"),
     ("Are you available to start a full-time role in July 2027?*", "combobox", "Yes"),
-    ("When can you start?*", "", "July 2027 (after graduation)"),
+    ("When can you start?*", "", "May 2027 (after graduation)"),
 ]
 
 
@@ -1609,3 +1609,10 @@ def test_experience_ceiling_is_not_a_requirement():
     assert aa.min_quals_problem("New grad candidates should have no more than 18 months of professional experience") is None
     assert aa.min_quals_problem("Requires 18 months of work experience") == "asks for 18+ months of work experience"
     assert aa.min_quals_problem("3+ years of experience") == "asks for 3+ years of experience"
+
+
+def test_start_date_follows_the_role():
+    # Sai: winter internships from December 2026, 6-month internships from January 2027, full-time from May 2027
+    assert aa.build_values({}, {}, None, "Software Engineer (CPD) - Winter Intern")["start_date"] == "December 2026"
+    assert aa.build_values({}, {}, None, "Intern, Software Engineer")["start_date"] == "January 2027"
+    assert aa.build_values({}, {}, None, "SDE I")["start_date"] == "May 2027 (after graduation)"

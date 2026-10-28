@@ -567,7 +567,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     # Sai is a student: he can't join before January 2027, so "join immediately / within N days" is always No.
     (r"join (us )?(immediately|right away|asap|now)|immediate(ly)? (join|joining|start)|join within \d+", "join_immediately"),
     (r"^(are|is|will|would|can|could|do) you\b.{0,25}\b(available|able|willing|open|ready) to", "available"),  # yes/no
-    (r"earliest (start|joining)|(when|how soon) can you (start|join)|start date|joining date|available to (start|join)",
+    (r"earliest (start|joining)|(when|how soon) can you (start|join)|start date|joining date|available to (start|join|commence)|"
+     r"expect you to (start|join)|commence work",
      "start_date"),
     (r"relocation (assistance|support|package|benefit)|(require|need) relocation", "relocation_assistance"),
     (r"relocat", "willing_to_relocate"),
@@ -945,12 +946,13 @@ AUTO_DEFAULTS = {
     "citizenship": "India",
     "currently_employed": "No (full-time student)",
     "active_backlogs": "No",
-    "notice_period": "Not applicable (final-year student, available from January 2027)",
+    "notice_period": "Not applicable (final-year student: internship from January 2027, full-time from May 2027)",
     "data_use_future": "Use my data for future recruitment opportunities too",
     "current_ctc": "0 / Not applicable",
     "expected_ctc": "As per company norms",
-    "start_date_fte": "July 2027 (after graduation)",
+    "start_date_fte": "May 2027 (after graduation)",
     "start_date_internship": "January 2027",
+    "start_date_winter": "December 2026",
     "address": "NIT Rourkela, Sector 1, Rourkela, Odisha 769008, India",
     "pin_code": "769008",
     "state": "Odisha",
@@ -960,7 +962,7 @@ AUTO_DEFAULTS = {
 ADDRESS_DEFAULT_KEYS = ("pin_code", "state")
 
 
-def build_values(profile, answers, role_type=None):
+def build_values(profile, answers, role_type=None, role=""):
     """Profile (Job Radar) + answers.yaml + AUTO_DEFAULTS -> the values the rules use. answers.yaml wins; phone only
     from answers."""
     p, a = profile or {}, answers or {}
@@ -982,8 +984,11 @@ def build_values(profile, answers, role_type=None):
         v[key] = _s(a.get(key)) or _s(p.get(key))
     v["current_city"] = _s(a.get("current_city")) or _s(p.get("location")) or _s(p.get("location_pref")).split(",")[0].strip()
     v["preferred_cities"] = _s(a.get("preferred_cities")) or _s(p.get("location_pref"))
-    intern = (role_type or "").startswith("intern")
-    v["start_date"] = _s(a.get("start_date_internship" if intern else "start_date_fte")) or _s(a.get("start_date"))
+    # Sai: winter internships from December 2026, 6-month internships from January 2027, full-time from May 2027
+    intern = (role_type or "").startswith("intern") or bool(re.search(r"\bintern(ship)?s?\b", role or "", re.I))
+    winter = intern and bool(re.search(r"\bwinter\b", role or "", re.I))
+    which = "start_date_winter" if winter else "start_date_internship" if intern else "start_date_fte"
+    v["start_date"] = _s(a.get(which)) or _s(AUTO_DEFAULTS.get(which)) or _s(a.get("start_date"))
     # Address blocks split into line 1 / city: default to the whole address and the current city.
     v["address_line1"] = _s(a.get("address_line1")) or _s(v.get("address"))
     v["address_city"] = _s(a.get("address_city")) or v["current_city"]
@@ -4117,7 +4122,7 @@ def _fill_context_factory(api, profile, answers, learned, resume, use_ai=True):
         if job.get("id") not in packs:
             jid = job.get("id")
             packs[jid] = LazyPack(lambda: api.pack(jid)) if jid else {}
-        return FillContext(values=build_values(profile, answers, job.get("role_type")), company=job.get("company") or "",
+        return FillContext(values=build_values(profile, answers, job.get("role_type"), job.get("role") or ""), company=job.get("company") or "",
                            custom=(answers or {}).get("custom") or [], questions=questions, learned=learned,
                            pack=packs[job.get("id")], resume=bool(resume), ai=ai, role=job.get("role") or "")
     return make

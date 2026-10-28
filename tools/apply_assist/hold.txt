@@ -11,3 +11,4 @@ Qualcomm  # Sai asking his senior for a referral (2026-10-20): runner must not a
 Wayfair  # Sai got a rejection for the SWE intern (2026-10-20): do not apply again
 Rubrik  # Sai already applied and is in their process (TA call, 2026-10-23): runner must not apply
 Accenture  # Sai (2026-10-28): CTC too low for freshers, never apply
+Visa  # Sai (2026-10-28): his senior will refer him - runner must not apply (New Grad SWE REF084575W)

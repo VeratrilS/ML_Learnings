@@ -45,7 +45,7 @@ def compose(company, role=None, name=None):
         "(C++ fixes in llama.cpp).",
         "- Codeforces Specialist, LeetCode contest rating 1750.",
         "",
-        "I'm available for a 6-month internship from January 2027 or full-time from January 2027. My resume is attached; "
+        "I'm available for a 6-month internship from January 2027 or full-time from May 2027. My resume is attached; "
         "I'd be grateful for a chance to interview, or a pointer to the right person.",
         "",
         "Thanks,",
