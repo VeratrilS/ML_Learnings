@@ -1595,3 +1595,10 @@ def test_mechanical_and_hardware_design_titles_are_not_my_field():
         assert aa.NOT_MY_FIELD.search(role), role
     for role in ("Software Design Engineer", "Software Engineer - Structural Data", "Data Engineer"):
         assert not aa.NOT_MY_FIELD.search(role), role
+
+
+def test_nested_json_answer_is_unwrapped():
+    assert aa._unwrap_answer('{"answer": "January 2027"}') == "January 2027"
+    assert aa._unwrap_answer("January 2027") == "January 2027"
+    assert aa._unwrap_answer("{not json") == "{not json"
+    assert aa._unwrap_answer('```json\n{"answer": "B.Tech"}\n```') == "B.Tech"

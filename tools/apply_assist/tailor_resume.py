@@ -358,8 +358,11 @@ def default_generate():
             return client.generate_json(prompt, temperature=0.3, system=SYSTEM)
         except ValueError:  # an empty or prose reply now and then: ask once more, plainly
             text = client.generate(prompt + "\nReply with only the JSON object, no other text.", temperature=0.2,
-                                   system=SYSTEM)
-            return json.loads(text[text.find("{"):text.rfind("}") + 1])
+                                   system=SYSTEM) or ""
+            try:
+                return json.loads(text[text.find("{"):text.rfind("}") + 1])
+            except ValueError:
+                return None  # no usable reply (e.g. quota): keep the reordered resume
     return generate
 
 

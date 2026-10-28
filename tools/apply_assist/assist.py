@@ -1689,6 +1689,21 @@ def ai_facts(values):
 
 
 # A model's safety label or refusal instead of an answer ("User Safety: safe" was saved for "Country")
+def _unwrap_answer(ans):
+    """'{"answer": "January 2027"}' -> 'January 2027': the model sometimes nests its JSON (WorldQuant got the raw text)."""
+    for _ in range(3):
+        if ans:  # also '```json\n{"answer": ...}\n```'
+            ans = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", ans)
+        if not (ans and ans.lstrip().startswith("{")):
+            break
+        try:
+            inner = json.loads(ans)
+        except ValueError:
+            break
+        ans = _s(inner.get("answer")) if isinstance(inner, dict) else ans
+    return ans
+
+
 JUNK_ANSWER = re.compile(r"user safety|safety\s*:|\bas an ai\b|i (can't|cannot) (help|answer|provide)", re.I)
 PHONE_CODE_OPTION = re.compile(r"\(\+\d{1,4}\)\s*$")  # "India (+91)"
 
@@ -1729,7 +1744,7 @@ def make_ai_answerer(values, generate=None, path=AI_PATH):
         prompt = (f"Candidate facts:\n{facts}\n\nCompany: {company}\nRole: {role}\nQuestion: {question}\n"
                   f"Field type: {ftype}\n" + (f"Options: {json.dumps(options, ensure_ascii=False)}\n" if options else ""))
         out = generate(prompt)
-        ans = _s(out.get("answer") if isinstance(out, dict) else None)
+        ans = _unwrap_answer(_s(out.get("answer") if isinstance(out, dict) else None))
         if not ans or _norm(ans) in ("null", "none", "unknown") or JUNK_ANSWER.search(ans):
             return None
         if bank.learn(question, ans, ftype, options, company, role) and path:
