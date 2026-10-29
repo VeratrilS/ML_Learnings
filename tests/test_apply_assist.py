@@ -1637,3 +1637,10 @@ def test_internship_and_full_time_questions_follow_the_role():
     assert aa.rule_key({"label": "Are you applying for an Internship/Co-Op?*"}) == "applying_internship"
     assert (fte["applying_internship"], fte["applying_fulltime"]) == ("No", "Yes")
     assert (intern["applying_internship"], intern["applying_fulltime"]) == ("Yes", "No")
+
+
+def test_ops_and_support_titles_are_not_my_field():
+    # Sai: "cloud service op ... I need only relevant to my skill set and degree, its 1+ exp people there"
+    assert aa.NOT_MY_FIELD.search("Cloud Service Operations Engineer (*Windchill Support)")
+    assert not aa.NOT_MY_FIELD.search("Operations Research Engineer")
+    assert not aa.NOT_MY_FIELD.search("Software Engineer")
