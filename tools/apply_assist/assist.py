@@ -519,6 +519,8 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"are you a referral|referred by (a|an) (current )?employee|employee referral|"
      r"do you (know|have) (anyone|someone|any (friends?|family|employees?|relatives?)).{0,40}(work|employ|at|from)",
      "is_referral"),  # Sai: "if they ask do you know anyone from the company keep no"
+    (r"applying (for|to) (an |a )?(internship|co-?op|intern\b)", "applying_internship"),  # follows the role type
+    (r"applying (for|to) (a |an )?full[- ]time", "applying_fulltime"),
     # Sai holds no offers (said many times): every wording of "other offers / offer deadline" is No / None
     (r"(any|other|existing|pending|competing|active|current|outstanding|holding|hold|have)\b.{0,30}\boffers?\b|offers? (in hand|deadline|from (any|other))|recruiting[- ]process deadline|deadline we should be aware", "other_offers"),
     # Before the college rule: "employed by ... government or public institution" is a No, not a school name
@@ -1001,6 +1003,7 @@ def build_values(profile, answers, role_type=None, role=""):
     winter = intern and bool(re.search(r"\bwinter\b", role or "", re.I))
     which = "start_date_winter" if winter else "start_date_internship" if intern else "start_date_fte"
     v["start_date"] = _s(a.get(which)) or _s(AUTO_DEFAULTS.get(which)) or _s(a.get("start_date"))
+    v["applying_internship"], v["applying_fulltime"] = ("Yes", "No") if intern else ("No", "Yes")
     # Address blocks split into line 1 / city: default to the whole address and the current city.
     v["address_line1"] = _s(a.get("address_line1")) or _s(v.get("address"))
     v["address_city"] = _s(a.get("address_city")) or v["current_city"]

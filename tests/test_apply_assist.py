@@ -1629,3 +1629,11 @@ def test_meet_minimum_qualifications_is_yes_not_the_degree():
     q = "Do you meet the minimum qualification requirements for this role as stated in the job description?*"
     assert aa.rule_key({"label": q}) == "meets_requirements"
     assert aa.rule_key({"label": "Highest qualification"}) == "degree"
+
+
+def test_internship_and_full_time_questions_follow_the_role():
+    # Cisco asked both questions and got "Yes" twice for a full-time role
+    fte, intern = aa.build_values({}, {}, None, "Software Engineer"), aa.build_values({}, {}, None, "SWE Intern")
+    assert aa.rule_key({"label": "Are you applying for an Internship/Co-Op?*"}) == "applying_internship"
+    assert (fte["applying_internship"], fte["applying_fulltime"]) == ("No", "Yes")
+    assert (intern["applying_internship"], intern["applying_fulltime"]) == ("Yes", "No")
