@@ -1143,6 +1143,13 @@ def min_quals_problem(text):
               and not re.search(r"\d\s*(?:-|–|to)\s*$", t[max(0, m.start(1) - 6):m.start(1)])]  # "0-6 months"
     if months:
         return f"asks for {min(months)}+ months of work experience"
+    # Carrier "Optimization Engineer": degree in mechanical / chemical / controls, thermo-fluid modelling, leadership
+    if (re.search(r"(degree|discipline)[^.]{0,100}\b(mechanical|chemical|civil|controls|thermal)\b", t, re.I)
+            and not re.search(r"computer science|computer engineering|\bCSE?\b|software engineering|information technology",
+                              t, re.I)):
+        return "degree asked for is not CS (mechanical / chemical / controls)"
+    if re.search(r"provide technical leadership|lead a team of|people manager", t, re.I):
+        return "senior role (technical leadership)"
     m = HIGHER_DEGREE_REQ.search(t)
     if m and not re.search(r"bachelor|b\.?tech|b\.?e\b", m.group(0), re.I):
         return "requires a higher degree (" + m.group(1) + ")"

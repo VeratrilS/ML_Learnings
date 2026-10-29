@@ -1644,3 +1644,11 @@ def test_ops_and_support_titles_are_not_my_field():
     assert aa.NOT_MY_FIELD.search("Cloud Service Operations Engineer (*Windchill Support)")
     assert not aa.NOT_MY_FIELD.search("Operations Research Engineer")
     assert not aa.NOT_MY_FIELD.search("Software Engineer")
+
+
+def test_non_cs_degree_and_leadership_postings_are_skipped():
+    carrier = ("The candidate will provide technical leadership ... thermo-fluid systems ... Python. "
+               "Requirements: Prefer degree in an Engineering discipline (e.g., applied mathematics, controls, mechanical or "
+               "chemical engineering) PhD is preferred.")
+    assert aa.min_quals_problem(carrier)
+    assert aa.min_quals_problem("Bachelor's degree in Computer Science or a related field. 0-1 years.") is None
