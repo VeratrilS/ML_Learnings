@@ -12,3 +12,5 @@ Wayfair  # Sai got a rejection for the SWE intern (2026-10-20): do not apply aga
 Rubrik  # Sai already applied and is in their process (TA call, 2026-10-23): runner must not apply
 Accenture  # Sai (2026-10-28): CTC too low for freshers, never apply
 Visa  # Sai (2026-10-28): his senior will refer him - runner must not apply (New Grad SWE REF084575W)
+Oracle  # Sai (2026-10-29): applied via his senior's referral (Application Software Engineer 1) - runner must not apply
+Bosch  # Sai (2026-10-29): Bosch's site detects the runner (CAPTCHA wall) - hold
