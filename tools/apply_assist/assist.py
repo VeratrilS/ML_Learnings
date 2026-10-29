@@ -570,7 +570,7 @@ RULES = [  # (pattern, key) in priority order; matched against label, aria-label
     (r"expected (ctc|salary|compensation|pay)|salary expectation|desired (salary|compensation)", "expected_ctc"),
     (r"current (ctc|salary|compensation)|present (ctc|salary)", "current_ctc"),
     (r"notice period", "notice_period"),
-    # Sai is a student: he can't join before January 2027, so "join immediately / within N days" is always No.
+    # Sai is a student: he can't join before December 2026, so "join immediately / within N days" is always No.
     (r"join (us )?(immediately|right away|asap|now)|immediate(ly)? (join|joining|start)|join within \d+", "join_immediately"),
     (r"^(are|is|will|would|can|could|do) you\b.{0,25}\b(available|able|willing|open|ready) to", "available"),  # yes/no
     (r"earliest (start|joining)|(when|how soon) can you (start|join)|start date|joining date|available to (start|join|commence)|"
@@ -960,12 +960,12 @@ AUTO_DEFAULTS = {
     "meets_requirements": "Yes",
     "currently_employed": "No (full-time student)",
     "active_backlogs": "No",
-    "notice_period": "Not applicable (final-year student: internship from January 2027, full-time from May 2027)",
+    "notice_period": "Not applicable (final-year student: internship from December 2026, full-time from May 2027)",
     "data_use_future": "Use my data for future recruitment opportunities too",
     "current_ctc": "0 / Not applicable",
     "expected_ctc": "As per company norms",
     "start_date_fte": "May 2027 (after graduation)",
-    "start_date_internship": "January 2027",
+    "start_date_internship": "December 2026",
     "start_date_winter": "December 2026",
     "address": "NIT Rourkela, Sector 1, Rourkela, Odisha 769008, India",
     "pin_code": "769008",
@@ -998,7 +998,7 @@ def build_values(profile, answers, role_type=None, role=""):
         v[key] = _s(a.get(key)) or _s(p.get(key))
     v["current_city"] = _s(a.get("current_city")) or _s(p.get("location")) or _s(p.get("location_pref")).split(",")[0].strip()
     v["preferred_cities"] = _s(a.get("preferred_cities")) or _s(p.get("location_pref"))
-    # Sai: winter internships from December 2026, 6-month internships from January 2027, full-time from May 2027
+    # Sai (2026-10-29): internships (winter or 6-month) start December 2026, full-time from May 2027
     intern = (role_type or "").startswith("intern") or bool(re.search(r"\bintern(ship)?s?\b", role or "", re.I))
     winter = intern and bool(re.search(r"\bwinter\b", role or "", re.I))
     which = "start_date_winter" if winter else "start_date_internship" if intern else "start_date_fte"
@@ -1690,9 +1690,10 @@ AI_SYSTEM = (
     "- Professional experience is 0 years (internships only, under a year in total): for years-of-experience "
     "questions answer 0, or the lowest option.\n"
     "- Languages: the candidate speaks English, Hindi and Telugu. Pick only those; if none is listed, answer null.\n"
-    "- Availability: he is a student and can join only from January 2027 (6-month internship Jan-Jun 2027, or full-time "
-    "from January 2027). He can NOT join immediately or before January 2027: answer No to 'join immediately / now / "
-    "within N days' questions, or pick the option closest to January 2027.\n"
+    "- Availability (Sai's own rule): an INTERNSHIP starts December 2026; a FULL-TIME role starts May 2027 (after "
+    "graduation). Use the role named above to decide which. For a "
+    "start month/year, answer with that month and year. He can NOT join immediately: answer No to 'join immediately / "
+    "now / within N days' questions, or pick the option closest to his start date.\n"
     'Return JSON: {"answer": "<text>"} or {"answer": null}.')
 AI_PRIVATE_KEYS = {"phone", "address", "address_line1", "pin_code", "date_of_birth", "dob_day", "dob_month", "dob_year", "email",
                    "workday_password", "workday_passwords_old", "avature_password"}

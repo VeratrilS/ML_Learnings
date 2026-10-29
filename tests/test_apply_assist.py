@@ -1612,9 +1612,9 @@ def test_experience_ceiling_is_not_a_requirement():
 
 
 def test_start_date_follows_the_role():
-    # Sai: winter internships from December 2026, 6-month internships from January 2027, full-time from May 2027
+    # Sai (2026-10-29): internships start December 2026, full-time May 2027
     assert aa.build_values({}, {}, None, "Software Engineer (CPD) - Winter Intern")["start_date"] == "December 2026"
-    assert aa.build_values({}, {}, None, "Intern, Software Engineer")["start_date"] == "January 2027"
+    assert aa.build_values({}, {}, None, "Intern, Software Engineer")["start_date"] == "December 2026"
     assert aa.build_values({}, {}, None, "SDE I")["start_date"] == "May 2027 (after graduation)"
 
 
