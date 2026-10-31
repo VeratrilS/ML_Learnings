@@ -3599,7 +3599,7 @@ def known_ats(job):
     """True for application systems the runner knows how to submit and confirm (it may press Submit there)."""
     url = job.get("url") or ""
     kind = application_url(url, job.get("company"), {})[1] if url else "other"
-    return kind in AUTO_SUBMIT_BOARDS or (job.get("board") or "").lower() in AUTO_SUBMIT_BOARDS or         "myworkdayjobs.com" in url or "smartrecruiters.com" in url or "careers.qualcomm.com" in url or         "oraclecloud.com" in url or "higher.gs.com" in url or bool(ORACLE_CX.search(url))  # Qualcomm: confirmed by email; Oracle CX flow taught 2026-10-19
+    return kind in AUTO_SUBMIT_BOARDS or (job.get("board") or "").lower() in AUTO_SUBMIT_BOARDS or         "myworkdayjobs.com" in url or "smartrecruiters.com" in url or "careers.qualcomm.com" in url or         "oraclecloud.com" in url or "higher.gs.com" in url or "ats.rippling.com" in url or bool(ORACLE_CX.search(url))  # Qualcomm: confirmed by email; Oracle CX flow taught 2026-10-19
 
 
 NO_HANDOFF = re.compile(r"No application form found|Doesn't look like an application form|blocked this browser|"
