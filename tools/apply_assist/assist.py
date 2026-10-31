@@ -361,7 +361,8 @@ class SubmitBlocked(RuntimeError):
 
 SUBMIT_WORDS = re.compile(r"\b(submit|apply|send|finish|complete|confirm)\b", re.I)
 APPLY_ENTRY = (r"apply|apply now|apply for this (job|role|position)|apply here|apply online|apply to this job|"
-               r"apply manually|start (your )?application|i.?m interested")
+               r"apply manually|start (your )?application|i.?m interested|"
+               r"(apply )?apply for (the )?[a-z0-9 ,&/().-]{2,80}")  # Dayforce: "Apply Apply for Associate Developer"
 ACCOUNT_BUTTONS = r"create account|sign in|sign in with email|log ?in|create (?:a |your )?profile|register"  # Avature: Login / Create profile
 WD_BUTTON_IDS = {"Create Account": "createAccountSubmitButton", "Sign In": "signInSubmitButton"}
 NEXT_BUTTONS = r"save and continue|next|continue|verify"
